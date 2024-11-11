@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# Please adjust the values as necessary
+export OMP_NUM_THREADS=8
+ulimit -s 16384
+export OMP_STACKSIZE=16M
+export KMP_AFFINITY=disabled
+
+#For energy minimization calculation
+#j_presto md_run min.inp > min.log
+
+#For MD simulation
+#j_presto md_run md.inp > md.log

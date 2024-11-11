@@ -1,0 +1,21 @@
+#!/bin/bash
+
+j_presto gen_db -o test -i leaprc.protein.ff14SB leaprc.water.tip3p -rr TP3:WAT | tee gen_db.log
+
+#################################################################################################
+#
+#  Description of the script
+#
+#  -i leaprc.protein.ff14SB leaprc.water.tip3p :
+#	Specification of the input AMBER parameters.
+#	The file leaprc.protein.ff14SB is used to input a set of files necessary for using the AMBER force field ff14SB all at once.
+#	This setting is synonymous with :
+#		-i parm10.dat frcmod.ff14SB amino12.lib aminoct12.lib aminont12.lib
+#       The file leaprc.water.tip3p is used to input a set of files necessary for using force field for tip3p water and ions.
+#       This setting is synonymous with :
+#		-i atomic_ions.lib solvents.lib frcmod.tip3p frcmod.ionsjc_tip3p frcmod.ions234lm_126_tip3p
+#	If you want to perform simulations that also include nucleic acids, saccharides, lipids, and small molecules such as ligands, please add their parameter files here.
+#
+# -rr TP3:WAT
+#	This setting renames the residue name "TP3", which is defined in the solvent.lib file for TIP3P water, to "WAT".
+#

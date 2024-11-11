@@ -1,0 +1,4 @@
+#!/bin/bash
+
+j_presto prep -o test -i aaa.pdb -db test.tpldb -s WAT -ss CAP -mc -ia 'Na+' 0.154M 'Cl-' 0.154M -shake | tee prep.log
+

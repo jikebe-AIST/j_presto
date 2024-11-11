@@ -1,0 +1,1754 @@
+#!/usr/bin/env python3
+
+import argparse, os, sys, math, subprocess, shutil, time, itertools
+import numpy as np
+from statistics import mean
+from concurrent.futures import ProcessPoolExecutor
+from calc_Efield import calc_pot
+
+###############################################################################
+# Parameters
+CYS_pK = 8.37 ; ASP_pK = 3.9 ; GLU_pK = 4.07 ; LYS_pK = 10.54 ; HIS_pK = 6.04
+default_sp = 12.0
+
+atom_name_translator = {
+    "O5* ":"O5' ", "C5* ":"C5' ", "C4* ":"C4' ", "O4* ":"O4' ", "C3* ":"C3' ",
+    "O3* ":"O3' ", "C2* ":"C2' ", "O2* ":"O2' ", "C1* ":"C1' ", "C5M ":"C7  ",
+    "H1* ":"H1' ", "H2*1":"H2' ", "'H2'":"H2''", "H2*2":"H2''", "H2'1":"H2' ",
+    "H2'2":"H2''", "H3* ":"H3' ", "H4* ":"H4' ", "H5*1":"H5' ", "H5*2":"H5''",
+    "H5'1":"H5' ", "H5'2":"H5''", "'H5'":"H5''", "HO'2":"HO2'", "H5T ":"HO5'",
+    "H3T ":"HO3 ", "O1' ":"O4' ", "OA  ":"OP1 ", "OB  ":"OP2 ", "O1P ":"OP1 ",
+    "O2P ":"OP2 ", "CH3 ":"CA  "}
+
+residue_name_translator = {
+    "AD  ":"ADE ", "AD5 ":"ADE5", "AD3 ":"ADE3", "GU  ":"GUA ", "GU5 ":"GUA5",
+    "GU3 ":"GUA3", "CY  ":"CYT ", "CY5 ":"CYT5", "CY3 ":"CYT3", "UR  ":"URA ",
+    "UR5 ":"URA5", "UR3 ":"URA3", "DA  ":"DAD ", "DA5 ":"DAD5", "DA3 ":"DAD3",
+    "DG  ":"DGU ", "DG5 ":"DGU5", "DG3 ":"DGU3", "DC  ":"DCY ", "DC5 ":"DCY5",
+    "DC3 ":"DCY3", "DT  ":"DTH ", "DT5 ":"DTH5", "DT3 ":"DTH3", "NHYP":"HYP ",
+    "CHYP":"HYP ", "NALA":"ALA ", "CALA":"ALA ", "NARG":"ARG ", "CARG":"ARG ",
+    "NASN":"ASN ", "CASN":"ASN ", "NASP":"ASP ", "CASP":"ASP ", "NCYS":"CYS ",
+    "CCYS":"CYS ", "NCYX":"CYX ", "CCYX":"CYX ", "NGLN":"GLN ", "CGLN":"GLN ",
+    "NGLU":"GLU ", "CGLU":"GLU ", "NGLY":"GLY ", "CGLY":"GLY ", "NHID":"HID ",
+    "CHID":"HID ", "NHIE":"HIE ", "CHIE":"HIE ", "NHIP":"HIP ", "CHIP":"HIP ",
+    "NILE":"ILE ", "CILE":"ILE ", "NLEU":"LEU ", "CLEU":"LEU ", "NLYS":"LYS ",
+    "CLYS":"LYS ", "NMET":"MET ", "CMET":"MET ", "NPHE":"PHE ", "CPHE":"PHE ",
+    "NPRO":"PRO ", "CPRO":"PRO ", "NSER":"SER ", "CSER":"SER ", "NTHR":"THR ",
+    "CTHR":"THR ", "NTRP":"TRP ", "CTRP":"TRP ", "NTYR":"TYR ", "CTYR":"TYR ",
+    "NVAL":"VAL ", "CVAL":"VAL ", "NHIS":"HIS ", "CHIS":"HIS ", "G   ":"GUA ",
+    "G5  ":"GUA5", "G3  ":"GUA3", "A   ":"ADE ", "A5  ":"ADE5", "A3  ":"ADE3",
+    "C   ":"CYT ", "C5  ":"CYT5", "C3  ":"CYT3", "U   ":"URA ", "U5  ":"URA5",
+    "U3  ":"URA3", "RA  ":"ADE ", "RA5 ":"ADE5", "RA3 ":"ADE3", "RC  ":"CYT ",
+    "RC5 ":"CYT5", "RC3 ":"CYT3", "RG  ":"GUA ", "RG5 ":"GUA5", "RG3 ":"GUA3",
+    "RU  ":"URA ", "RU5 ":"URA5", "RU3 ":"URA3", "HOH ":"WAT "}
+
+tpl_db = {} ; pdb_tpl = {"tpl_inf": [], "atm_inf": [], "seq": [], "nmol": []}
+iaSS = [] ; iaLINK = [] ; ion_list = {} ; islv = None
+###############################################################################
+
+class RadiusAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        if len(values) == 1:
+            try:
+                radius = float(values[0])
+                setattr(namespace, self.dest, radius)
+            except ValueError:
+                raise argparse.ArgumentTypeError("Radius must be a floating point number.")
+        elif len(values) == 3:
+            try:
+                radius_values = list(map(float, values))
+                setattr(namespace, self.dest, radius_values)
+            except ValueError:
+                raise argparse.ArgumentTypeError("Radius must be three floating point numbers.")
+        else:
+            raise argparse.ArgumentTypeError("Radius must be either a single floating point number or three floating point numbers.")
+
+class CenterAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        if len(values) == 1:
+            try:
+                chain_number = int(values[0])
+                setattr(namespace, self.dest, chain_number)
+            except ValueError:
+                raise argparse.ArgumentTypeError("Chain number must be an integer.")
+        elif len(values) == 3:
+            try:
+                x, y, z = map(float, values)
+                setattr(namespace, self.dest, [x, y, z])
+            except ValueError:
+                raise argparse.ArgumentTypeError("Coordinates must be three floating point numbers.")
+        else:
+            raise argparse.ArgumentTypeError("Input must be either three float values (x, y, z) or a single integer chain number.")
+
+def validate_ions(ion_list):
+    if len(ion_list) % 2 != 0:
+        raise argparse.ArgumentTypeError("Arguments for -ia must be in pairs of ion name and ion count/concentration.")
+    for i in range(0, len(ion_list), 2):
+        ion_name = ion_list[i] ; ion_value = ion_list[i + 1]
+        if ion_value.endswith('M'):
+            try:
+                float(ion_value[:-1])  # Try to convert the concentration to a float
+            except ValueError:
+                raise argparse.ArgumentTypeError(f"Invalid concentration value: {ion_value}")
+        else:
+            try:
+                int(ion_value)  # Try to convert the count to an integer
+            except ValueError:
+                raise argparse.ArgumentTypeError(f"Invalid count value: {ion_value}")
+    return ion_list
+
+def find_file_in_directory(directory, filename):
+    for root, dirs, files in os.walk(directory):
+        if filename in files:
+            return os.path.join(root, filename)
+
+def find_file(filename, option):
+    if os.path.isfile(filename):
+        return filename
+    for env_var in ["J_PRESTO_PATH"]:
+        paths = os.environ.get(env_var, "")
+        for directory in paths.split(os.pathsep):
+            if directory:
+                found_file = find_file_in_directory(directory, filename)
+                if found_file:
+                    return found_file
+    sys.exit(f'!! ERROR !!\nThe file {fil} is NOT found.\n You have to set the correct path with {option} option.')
+
+def read_datablock(contents):
+    block = [] ; lines = [] ; link_flag = False
+    for line in contents:
+        line = line.strip()
+        if line.startswith(";PRE>LINK"):
+            link_flag = True
+        if not link_flag:
+            if not line:
+                block.append(lines) ; lines = []
+            elif line.startswith(";"):
+                continue
+            else:
+                lines.append(line)
+        else:
+            if not line:
+                block.append(lines) ; lines = [] ; link_flag = False
+            lines.append(line[1:].strip())
+    else:
+        if lines:
+            block.append(lines)
+    block = [item for item in block if item]
+    return block
+
+def input_tpldb():
+    def input_atom_inf(mol, txt):
+        global tpl_db
+        if txt.strip() != "":
+            a = txt.split()
+            b = {"aname": a[0], "atype": a[1], "itype": int(a[2]), "rname": a[3], "nres": int(a[4]), "mass": float(a[5]), "rad": float(a[6]), "chg": float(a[7]), "nb": [int(a[8]), int(a[9]), int(a[10])], "iib": [int(a[-7]), int(a[-6]), int(a[-5]), int(a[-4])], "blen": float(a[-3]), "angl": float(a[-2]), "phi": float(a[-1])}
+            nb_sum = sum(b["nb"]) ; b["ib"] = [int(a[11+i]) for i in range(nb_sum)] if nb_sum != 0 else []
+            tpl_db["ATOMS"][mol].append(b)
+
+    with open(tpldb, "r") as fil:
+        blocks = read_datablock(fil.readlines())
+    tpl_db["ATOMS"] = {} ; tpl_db["BONDS"] = {} ; tpl_db["ANGLES"] = {} ; tpl_db["TORSIONS"] = {}
+    tpl_db["IMPROPER-TORSIONS"] = {}
+    for block in blocks:
+        keyword = block[0][4:].strip() ; mol = block[1].strip() ; txt = ""
+        if keyword == "MOLECULES":
+            for line in block[1:]:
+                line = line.split(";")[0].split()[0]
+                if not line:
+                    tpl_db["MOLECULES"].append(line)
+        elif keyword == "ATOMS":
+            tpl_db["ATOMS"][mol] = []
+            for line in block[2:]:
+                if not line.startswith("<"):
+                    input_atom_inf(mol, txt) ; txt = line.split(";")[0] + " "
+                else:
+                    txt += line.split(";")[0][1:] + " "
+            else:
+                input_atom_inf(mol, txt)
+        elif keyword == "BONDS":
+            tpl_db["BONDS"][mol] = [[int(a[0]), int(a[1]), float(a[2]), float(a[3])] for l in block[2:] for a in [l.split(";")[0].split()]]
+        elif keyword == "ANGLES":
+            tpl_db["ANGLES"][mol] = [[int(a[0]), int(a[1]), int(a[2]), float(a[3]), float(a[4])] for l in block[2:] for a in [l.split(";")[0].split()]]
+        elif keyword == "TORSIONS":
+            tpl_db["TORSIONS"][mol] = [[int(a[0]), int(a[1]), int(a[2]), int(a[3]), float(a[4]), int(a[5]), int(a[6]), float(a[7]), int(a[8])] for l in block[2:] for a in [l.split(";")[0].split()]]
+        elif keyword == "IMPROPER-TORSIONS":
+            tpl_db["IMPROPER-TORSIONS"][mol] = [[int(a[0]), int(a[1]), int(a[2]), int(a[3]), float(a[4]), int(a[5]), int(a[6]), float(a[7]), int(a[8])] for l in block[2:] for a in [l.split(";")[0].split()]]
+        elif keyword == "FUNCTIONS":
+            tpl_db["FUNCTIONS"] = [l.split(";")[0].split() for l in block[1:]]
+        elif keyword == "NONBONDS":
+            tpl_db["NONBONDS"] = [[int(a[0]), int(a[1]), int(a[2]), float(a[3]), float(a[4]), float(a[5]), float(a[6])] for l in block[1:] for a in [l.split(";")[0].split()]]
+        elif keyword == "LINK":
+            tpl_db["LINK"] = [l.split(";")[0].split() for l in block[1:]]
+
+def prepare_slv_center():
+    global slv_center
+    if not slv_center:
+        if trim_center  and slv_shape == trim_shape:
+            slv_center = trim_center
+        else:
+            slv_center = 0
+    if not isinstance(slv_center, int) and not isinstance(slv_center, list):
+        slv_center = 0
+    if isinstance(slv_center, int):
+        if slv_center < 0:
+            slv_center = 0
+        if slv_center == 0:
+            print(f'{"Solvent center : ".rjust(line_len)} Center of mass of the all chains')
+        elif slv_center == 1:
+            print(f'{"Solvent center : ".rjust(line_len)} Center of mass of chain 1')
+        else:
+            print(f'{"Solvent center : ".rjust(line_len)} Center of mass of chains 1-{slv_center}')
+    elif isinstance(slv_center, list):
+        print(f'{"Solvent center : ".rjust(line_len)} {slv_center}')
+
+def prepare_slv_radius():
+    global slv_radius, slv_padding
+    if not slv_radius and not slv_padding and trim_radius and slv_shape == trim_shape:
+        slv_radius = trim_radius
+    if slv_radius:
+        if (isinstance(slv_radius, float) and slv_radius >= 0.0) or (len(slv_radius) == 3 and min(slv_radius) >= 0.0):
+            print(f'{"Solvent radius : ".rjust(line_len)} {slv_radius} (Å)')
+        else:
+            print(f"!! ERROR !!\n -sr radius must be positive value(s).") ; sys.exit()
+    elif slv_padding is not None:
+        print(f'{"Solvent padding : ".rjust(line_len)} {slv_padding} (Å)')
+    else:
+        print(f'{"Solvent padding : ".rjust(line_len)} {default_sp}  (Å) (default value)') ; slv_padding = default_sp
+
+def calc_Odist(tmp, Olist, HIS_list):
+    x, y, z = float(tmp[30:38]), float(tmp[38:46]),float(tmp[46:54]) ; Odist = sys.maxsize
+    for Ocod in Olist:
+        dx, dy, dz = Ocod[0] - x, Ocod[1] - y, Ocod[2] - z
+        Odist = min(Odist, dx*dx+dy*dy+dz*dz)
+    return Odist
+
+def dot_product(v1, v2):
+    return sum(v1[i] * v2[i] for i in range(3))
+
+def distance_and_normalized_vector(v1, v2):
+    v = [v1[i] - v2[i] for i in range(3)] ; dist = math.sqrt(dot_product(v, v))
+    return dist, [v[i] / dist for i in range(3)]
+
+def cross(t1, t2):
+    t = [t1[1]*t2[2] - t1[2]*t2[1], t1[2]*t2[0] - t1[0]*t2[2], t1[0]*t2[1] - t1[1]*t2[0]]
+    r = math.sqrt(dot_product(t, t))
+    return [t[i] / r for i in range(3)]
+
+def z_matrix_to_cartesian(cod, dist, angl, tors):
+    rad = math.pi / 180.0 ; angl = (180.0 - angl) * rad ; tors = tors * rad
+    tcod = [dist*math.cos(angl),dist*math.cos(tors)*math.sin(angl),dist*math.sin(tors)*math.sin(angl)]
+    _, M1 = distance_and_normalized_vector(cod[2], cod[1])
+    tM = [cod[1][i] - cod[0][i] for i in range(3)]
+    M3 = cross(tM, M1) ; M2 = cross(M3, M1) ; M = [M1, M2, M3]
+    return [sum(M[j][i] * tcod[j] for j in range(3)) + cod[2][i] for i in range(3)]
+
+def prepare_pdb():
+    global iaSS, iaLINK
+    # Deletion of atoms with low occupancy if the pdb has multiple models
+    with open(input_file, "r") as ifile:
+        lines = ifile.readlines() ; out_flg = [True] * len(lines) ; pdb = []
+        for j in range(len(lines)):
+            if lines[j].startswith("HETATM"):
+                lines[j] = lines[j].replace("HETATM", "ATOM  ")
+        for j, jtmp in enumerate(lines):
+            if out_flg[j]:
+                if jtmp.startswith("ATOM") and jtmp[16:17] != " ":
+                    jatmnam = jtmp[12:16] ; jresnum = jtmp[22:26] ; joccu = float(jtmp[54:60].strip())
+                    for i, itmp in enumerate(lines[j+1:]):
+                        if itmp.startswith("ATOM"):
+                            iatmnam = itmp[12:16] ; iresnum = itmp[22:26] ; ioccu = float(itmp[54:60].strip())
+                            if jresnum != iresnum:
+                                break
+                            elif jatmnam == iatmnam:
+                                out_flg[i] = False
+                                if joccu < ioccu:
+                                    jtmp = itmp
+                    jtmp = jtmp[:16]+" "+jtmp[17:]
+                pdb.append(jtmp)
+    if not pdb[-1].startswith("TER"):
+        pdb.append("TER")
+
+    ## For SSBOND & LINK
+    iSS = [] ; iLINK = []
+    for tmp in pdb:
+        if tmp.startswith("SSBOND"):
+            iSS.append({"chain": tmp[15:16], "nres": int(tmp[17:21])})
+            iSS.append({"chain": tmp[29:30], "nres": int(tmp[31:35])})
+        elif tmp.startswith("LINK"):
+            iLINK.append({"aname": tmp[12:16], "rname": residue_name_translator.get(tmp[17:21], tmp[17:21]), 
+                          "chain": tmp[21:22], "nres": int(tmp[22:26])})
+            iLINK.append({"aname": tmp[42:46], "rname": residue_name_translator.get(tmp[47:51], tmp[47:51]), 
+                          "chain": tmp[51:52], "nres": int(tmp[52:56])})
+    for tSS in iSS:
+        flag = False
+        for i, tmp in enumerate(pdb):
+            if tmp.startswith("ATOM") and tSS["chain"] == tmp[21:22] and tSS["nres"] == int(tmp[22:26]):
+                resnm = tmp[17:21]
+                if resnm != "CYS " and resnm != "CYX " and resnm != "CYM ":
+                    print("!! ERROR for setting SSBOND !!")
+                    print("The below residue set for SSBOND was NOT cystein.")
+                    print(tmp) ; sys.exit()
+                pdb[i] = pdb[i][0:17] + "CYX " + pdb[i][21:] ; flag = True
+        if not flag:
+            print("!! ERROR for setting SSBOND")
+            print("The below residue for SSBOND was NOT found.")
+            print(tSS) ; sys.exit()
+
+    # Residue name changed according to pH
+    dist_his2 = dist_his * dist_his
+    for i in range(len(pdb)):
+        if pdb[i].startswith("ATOM"):
+            resnm = pdb[i][17:21]
+            resnm = residue_name_translator.get(resnm, resnm)
+            if resnm in ["CYS ", "CYM "]:
+                new_resnm = "CYM " if pH > CYS_pK else "CYS "
+            elif resnm in ["ASP ", "ASH "]:
+                new_resnm = "ASH " if pH < ASP_pK else "ASP "
+            elif resnm in ["GLU ", "GLH "]:
+                new_resnm = "GLH " if pH < GLU_pK else "GLU "
+            elif resnm in ["LYS ", "LYN "]:
+                new_resnm = "LYN " if pH > LYS_pK else "LYS "
+            else:
+                new_resnm = resnm
+            pdb[i] = pdb[i][:17] + new_resnm + pdb[i][21:]
+    if auto_his:
+        if any(line.startswith("ATOM") and line[17:21] in ["HIS ", "HID ", "HIE ", "HIP "] for line in pdb):
+            print(f'\n+++ Histidine protonation information +++\n')
+        if pH < HIS_pK:
+            for i in range(len(pdb)):
+                if pdb[i].startswith("ATOM"):
+                    resnm = pdb[i][17:21]
+                    if resnm == "HIS " or resnm == "HIE " or resnm == "HID ":
+                        pdb[i] = pdb[i][0:17] + "HIP " + pdb[i][21:]
+        else:
+            Olist = []
+            for i, tmp in enumerate(pdb):
+                if tmp.startswith("ATOM"):
+                    atmnm = tmp[12:16]
+                    if atmnm[0:2] == " O":
+                        x, y, z = float(tmp[30:38]), float(tmp[38:46]),float(tmp[46:54])
+                        Olist.append([x, y, z])
+            HIS_list = [] ; ires = -1 ; chk_resold = ""
+            for i, tmp in enumerate(pdb):
+                if tmp.startswith("ATOM"):
+                    resnm = tmp[17:21] ; resnum = tmp[22:26]
+                    if chk_resold != resnum:
+                        ires += 1 ; chk_resold = resnum
+                        if resnm == "HIS ":
+                            HIS_list.append({}) ; HIS_list[-1]["ires"] = ires
+                    if resnm == "HIS ":
+                        atmnm = tmp[12:16]
+                        if atmnm[0:3] == " ND":
+                            HIS_list[-1]["ND"] = calc_Odist(tmp, Olist, HIS_list)
+                        elif atmnm[0:3] == " NE":
+                            HIS_list[-1]["NE"] = calc_Odist(tmp, Olist, HIS_list)
+            for i, items in enumerate(HIS_list):
+                ND = items["ND"] ; NE = items["NE"]
+                if min(ND, NE) > dist_his2:
+                    HIS_list[i]["name"] = def_his
+                    print(f'+ residue {items["ires"]+1} HIS was set to the Default HIS("{def_his}")')
+                elif ND > NE:
+                    HIS_list[i]["name"] = "HIE "
+                    print(f'+ residue {items["ires"]+1} HIS was set to HIE')
+                else:
+                    HIS_list[i]["name"] = "HID "
+                    print(f'+ residue {items["ires"]+1} HIS was set to HID')
+            ires = -1 ; chk_resold = ""
+            for i, tmp in enumerate(pdb):
+                if tmp.startswith("ATOM"):
+                    resnm = tmp[17:21] ; resnum = tmp[22:26]
+                    if chk_resold != resnum:
+                        ires += 1 ; chk_resold = resnum
+                        HIS_name = next((d['name'] for d in HIS_list if d.get('ires') == ires), None)
+                    if HIS_name:
+                        pdb[i] = pdb[i][0:17] + HIS_name + pdb[i][21:]
+    else:
+        for i, tmp in enumerate(pdb):
+            if tmp.startswith("ATOM"):
+                resnm = tmp[17:21]
+                if resnm == "HIS ":
+                    pdb[i] = pdb[i][0:17] + def_his + pdb[i][21:]
+
+    # Atom & residue name & number change
+    natm = 0 ; nres = 0 ; Cnatm_old = "" ; Cnres_old = "" ; atm_inf = [] ; atm_info = []
+    iaSS = [[] for _ in range(len(iSS))] ; iaLINK = [[] for _ in range(len(iLINK))]
+    for i, tmp in enumerate(pdb):
+        if tmp.startswith("ATOM"):
+            Cnatm = tmp[4:11] ; Catmnm = tmp[12:16] ; Cresnm = tmp[17:21] ; Cchain = tmp[21:22] ; Cnres = tmp[22:30]
+            if len(tmp) > 29:
+                cod = [float(tmp[30:38]), float(tmp[38:46]), float(tmp[46:54])]
+            else:
+                cod = None
+            if Cnatm != Cnatm_old:
+                natm += 1
+            if Cnres != Cnres_old:
+                nres += 1
+            Cnatm_old = Cnatm ; Cnres_old = Cnres
+            Catmnm = atom_name_translator.get(Catmnm, Catmnm)
+            atm_info.append({"natm":natm, "aname":Catmnm, "rname":Cresnm, "chain":Cchain, "nres":nres, "cod": cod})
+            # For SSBOND
+            if Cresnm == "CYX " and Catmnm == " SG ":
+                for j, tSS in enumerate(iSS):
+                    if tSS["chain"] == tmp[21:22] and tSS["nres"] == int(tmp[22:26]):
+                        iaSS[j] = cod
+            # For LINK
+            for j, tLINK in enumerate(iLINK):
+                if int(Cnres) == tLINK["nres"] and Catmnm.strip() == tLINK["aname"].strip() and \
+                   (Cresnm.strip() == tLINK["rname"].strip() or (Cresnm.strip()[0:2]=="HI" and tLINK["rname"].strip()[0:2]=="HI")) and Cchain == tLINK["chain"]:
+                    iaLINK[j] = cod
+            nres_width = max(4, min(7, len(str(nres))))
+            pdb[i] = "{:4}{:>7} {:4} {:4}{:1}{:>{nres_width}}{}{}".format("ATOM", natm, Catmnm, Cresnm, Cchain, str(nres), " "*(8-nres_width), tmp[30:], nres_width=nres_width)
+        elif tmp.startswith("TER"):
+            atm_inf.append(atm_info) ; atm_info = [] ; natm = 0 ; nres = 0
+
+    # Trim the system
+    if trim_shape is not None:
+        on_res = []
+        if trim_shape == "CAP":
+            rad2 = trim_radius * trim_radius
+            for atm_info in atm_inf:
+                Ton_res = [True] * atm_info[-1]["nres"]
+                for tmp in atm_info:
+                    ires = tmp["nres"] - 1
+                    if Ton_res[ires]:
+                        dx, dy, dz = [tmp["cod"][i] - trim_center[i] for i in range(3)]
+                        if dx*dx + dy*dy + dz*dz > rad2:
+                            Ton_res[ires] = False
+                on_res.append(Ton_res)
+        elif trim_shape == "BOX":
+            for atm_info in atm_inf:
+                Ton_res = [True] * atm_info[-1]["nres"]
+                for tmp in atm_info:
+                    ires = tmp["nres"] - 1
+                    if Ton_res[ires]:
+                        if (tmp['cod'][0] < trim_bound[0] or tmp['cod'][0] > trim_bound[1] or
+                            tmp['cod'][1] < trim_bound[2] or tmp['cod'][1] > trim_bound[3] or
+                            tmp['cod'][2] < trim_bound[4] or tmp['cod'][2] > trim_bound[5]):
+                            Ton_res[ires] = False
+                on_res.append(Ton_res)
+        elif trim_shape == "ELL":
+            rad = [1.0 / (r * r) for r in trim_radius]
+            for atm_info in atm_inf:
+                Ton_res = [True] * atm_info[-1]["nres"]
+                for tmp in atm_info:
+                    ires = tmp["nres"] - 1
+                    if Ton_res[ires]:
+                        dx, dy, dz = [tmp["cod"][i] - trim_center[i] for i in range(3)]
+                        dd = dx*dx + dy*dy + dz*dz
+                        if dx*dx*rad[0] + dy*dy*rad[1] + dz*dz*rad[2] > 1.0:
+                            Ton_res[ires] = False
+                on_res.append(Ton_res)
+        # For DNA pair
+        for i in DNApair:
+            L = atm_inf[i[0]][-1]["nres"]
+            if L != atm_inf[i[1]][-1]["nres"]:
+                print(f"DNA chain lengths {i[0]+1} & {i[1]+1} are NOT the same.")
+                sys.exit()
+            for j in range(L):
+                if not on_res[i[0]][j] or not on_res[i[1]][L - j - 1]:
+                    on_res[i[0]][j] = False
+                    on_res[i[1]][L - j - 1] = False
+    else:
+        on_res = [[True] * atm_info[-1]["nres"] for atm_info in atm_inf]
+
+    # Make new chain data list
+    switch = False ; old_chn, old_fres, old_lres, new_ACE_flag, new_NME_flag = [], [], [], [], []
+    for ichn, tmp in enumerate(on_res):
+        DNAcheck = any(kwd in atm_inf[ichn][0]["rname"] for kwd in ["DAD", "DTH", "DCY", "DGU"])
+        for ires, tmp2 in enumerate(tmp):
+            if not switch:
+                if tmp2:
+                    switch = True ; old_chn.append(ichn) ; old_fres.append(ires)
+                    new_ACE_flag.append(not DNAcheck and (ires != 0 or ichn + 1 in ACE))
+            else:
+                if not tmp2:
+                    switch = False ; old_lres.append(ires-1)
+                    new_NME_flag.append(not DNAcheck and (ires != atm_inf[ichn][-1]["nres"]-1 or ichn + 1 in NME))
+        if switch:
+            switch = False ; old_lres.append(atm_inf[ichn][-1]["nres"]-1)
+            new_NME_flag.append(not DNAcheck and ichn + 1 in NME)
+
+    if any(new_ACE_flag) or any(new_NME_flag):
+        print(f"\n+++ System trimming information for protein termini +++\n")
+    addCAP = [] ; inf = []
+    for ichn in range(len(old_chn)):
+        iatm = 0 ; ires = 0 ; info = {"atm_inf": []}
+        ## Add ACE group
+        if new_ACE_flag[ichn]:
+            cod = [[] for _ in range(3)]
+            for atm_info in atm_inf[old_chn[ichn]]:
+                nres = atm_info["nres"] - 1 ; aname = atm_info["aname"]
+                if nres == old_fres[ichn] and aname in [" N  ", " CA ", " C  "]:
+                    cod[[" C  ", " CA ", " N  "].index(aname)] = atm_info["cod"]
+                if all(item for item in cod):
+                    break
+            else:
+                print("!! ERROR for adding ACE group!!")
+                print(f"Some of the N, CA, or C atoms required to add the ACE group to the {old_chn[ichn]}\'s-chain are NOT exist.")
+                sys.exit()
+            tcod1 = z_matrix_to_cartesian(cod, 1.335, 121.9, 180.0) ; iatm += 2 ; ires += 1
+            cod.append(tcod1) ; cod = cod[1:4] ; tcod2 = z_matrix_to_cartesian(cod,1.530,116.6,180.0)
+            info["atm_inf"].append({"aname": "CA", "rname": "ACE", "nres": ires, "cod": tcod2})
+            info["atm_inf"].append({"aname": "C", "rname": "ACE", "nres": ires, "cod": tcod1})
+            info["seq"].append("ACE")
+        reschk = ""
+        for atm_info in atm_inf[old_chn[ichn]]:
+            nres = atm_info["nres"] - 1
+            if nres < old_fres[ichn]:
+                continue
+            elif nres > old_lres[ichn]:
+                break
+            elif nres != reschk:
+                reschk = nres ; ires += 1
+            iatm += 1 ; ires_width = max(4, min(7, len(str(ires)))) ; x, y, z = atm_info["cod"]
+            info["atm_inf"].append({"aname": atm_info["aname"].strip(), "rname": atm_info["rname"].strip(), "nres": ires, "cod": atm_info["cod"]})
+        ## Add NME group
+        if new_NME_flag[ichn]:
+            cod = [[] for _ in range(3)]
+            for atm_info in reversed(atm_inf[old_chn[ichn]]):
+                nres = atm_info["nres"] - 1 ; aname = atm_info["aname"]
+                if nres == old_lres[ichn] and aname in [" N  ", " CA ", " C  "]:
+                    cod[[" N  ", " CA ", " C  "].index(aname)] = atm_info["cod"]
+                if all(item for item in cod):
+                    break
+            else:
+                print("!! ERROR for adding NME group!!")
+                print(f"Some of the N, CA, or C atoms required to add the NME group to the {old_chn[ichn]}\'s-chain are NOT exist.")
+                sys.exit()
+            tcod1 = z_matrix_to_cartesian(cod, 1.335, 116.6, 180.0) ; iatm += 1 ; ires += 1
+            info["atm_inf"].append({"aname": "N", "rname": "NME", "nres": ires, "cod": tcod1})
+        if new_ACE_flag[ichn] and new_NME_flag[ichn]:
+            print("      NEW chain " + str(ichn+1).rjust(3) + " is added ACE & NME") ; addCAP.append(3)
+        elif new_ACE_flag[ichn]:
+            print("      NEW chain " + str(i+1).rjust(3) + " is added ACE") ; addCAP.append(1)
+        elif new_NME_flag[ichn] :
+            print("      NEW chain " + str(i+1).rjust(3) + " is added         NME") ; addCAP.append(2)
+        else :
+            addCAP.append(0)
+        info["seq"] = [dat["rname"] for i, dat in enumerate(info["atm_inf"]) if i == 0 or dat["nres"] != info["atm_inf"][i-1]["nres"]]
+        inf.append(info)
+
+    # Output information
+    if trim_shape is not None:
+        ichn = 0 ; iresc = 1
+        for ochn, atm_info in enumerate(atm_inf):
+            print("-" * 80)
+            print("\nOld_chain", ochn + 1, "(#res =", atm_info[-1]["nres"], ") was separated into ...\n")
+            while ichn < len(old_chn) and old_chn[ichn] <= ochn:
+                if addCAP[ichn] == 1 or addCAP[ichn] == 3:
+                    iresc += 1
+                irescnxt = iresc + old_lres[ichn] - old_fres[ichn]
+                print("  res.", old_fres[ichn]+1, "-", old_lres[ichn]+1, " -> NEW chain", ichn+1, 
+                      "res.", iresc, "-", irescnxt)
+                if addCAP[ichn] == 2 or addCAP[ichn] == 3:
+                    irescnxt += 1
+                iresc = irescnxt + 1 ; ichn += 1
+            print("\n    0        10        20        30        40        50")
+            print("    |" + "         |" * 5)
+            mark = ['*' if on_res[ochn][j] else '-' for j in range(atm_inf[ochn][-1]["nres"])]
+            counter = int(math.ceil(atm_inf[ochn][-1]["nres"] / 50.0))
+            for k in range(counter):
+                start = k * 50 ; end = min((k + 1) * 50, atm_inf[ochn][-1]["nres"])
+                print(f"{str(start+1).ljust(5)}{''.join(mark[start:end])}\n")
+        print("-" * 80, "\n")
+
+    return inf
+
+def vctprd(r1, r2):
+    return [r1[1] * r2[2] - r1[2] * r2[1], r1[2] * r2[0] - r1[0] * r2[2], r1[0] * r2[1] - r1[1] * r2[0]]
+
+def prepar(seq, inf):
+    pdb = [] ; tpl = {"ATOMS": [], "BONDS": [], "ANGLES": [], "TORSIONS": [], "IMPROPER-TORSIONS": []}
+    iatm = 0
+    if len(seq) != 1:
+        seq[0] += "N+" ; seq[-1] += "C-"
+    # Make renumber array
+    npre = [sum(1 for tmp in tpl_db["ATOMS"][res] if tmp["nres"] == 0) for res in seq]
+    natm = [sum(1 for tmp in tpl_db["ATOMS"][res] if tmp["nres"] == 1) for res in seq]
+    npost = [sum(1 for tmp in tpl_db["ATOMS"][res] if tmp["nres"] == 2) for res in seq]
+    Renum = []
+    for ires, res in enumerate(seq):
+        renum = [None]
+        for iatm, dat in enumerate(tpl_db["ATOMS"][res], start=1):
+            if dat["nres"] == 0:
+                i = 1
+                for dat2 in reversed(tpl_db["ATOMS"][seq[ires-1]]):
+                    if dat2["nres"] == 1:
+                        i -= 1
+                        if dat2["aname"] == dat["aname"]:
+                            renum.append(i + npre[ires]) ; break
+            elif dat["nres"] == 1:
+                renum.append(iatm)
+            elif dat["nres"] == 2:
+                i = 0
+                for dat2 in tpl_db["ATOMS"][seq[ires+1]]:
+                    if dat2["nres"] == 1:
+                        i += 1
+                        if dat2["aname"] == dat["aname"]:
+                            renum.append(i + natm[ires] + npre[ires]) ; break
+        Renum.append(renum)
+    # Make BONDS, ANGLES, TORSIONS, and IMPORPER-TORSIONS data
+    iatm = 0
+    for ires, res in enumerate(seq):
+        ip = iatm - npre[ires]
+        if res in tpl_db["BONDS"]:
+            for dat in tpl_db["BONDS"][res]:
+                i1, i2 = dat[0], dat[1]
+                if max(i1, i2) > npre[ires]:
+                    i1, i2 = [Renum[ires][i] + ip for i in [i1, i2]]
+                    tpl["BONDS"].append([i1, i2] + [dat[i] for i in range(2, 4)])
+        if res in tpl_db["ANGLES"]:
+            for dat in tpl_db["ANGLES"][res]:
+                i1, i2, i3 = dat[0], dat[1], dat[2]
+                if max(i1, i2, i3) > npre[ires]:
+                    i1, i2, i3 = [Renum[ires][i] + ip for i in [i1, i2, i3]]
+                    tpl["ANGLES"].append([i1, i2, i3] + [dat[i] for i in range(3, 5)])
+        if res in tpl_db["TORSIONS"]:
+            for dat in tpl_db["TORSIONS"][res]:
+                i1, i2, i3, i4 = dat[0], dat[1], dat[2], dat[3]
+                if max(i1, i2, i3, i4) > npre[ires]:
+                    i1, i2, i3, i4 = [Renum[ires][i] + ip for i in [i1, i2, i3, i4]]
+                    tpl["TORSIONS"].append([i1, i2, i3, i4] + [dat[i] for i in range(4, 9)])
+        if res in tpl_db["IMPROPER-TORSIONS"]:
+            for dat in tpl_db["IMPROPER-TORSIONS"][res]:
+                i1, i2, i3, i4 = dat[0], dat[1], dat[2], dat[3]
+                if max(i1, i2, i3, i4) > npre[ires]:
+                    i1, i2, i3, i4 = [Renum[ires][i] + ip for i in [i1, i2, i3, i4]]
+                    tpl["IMPROPER-TORSIONS"].append([i1, i2, i3, i4] + [dat[i] for i in range(4, 9)])
+        iatm += natm[ires]
+    # Make ATOMS data
+    post_iib = []
+    for ires, res in enumerate(seq):
+        Ttpl = [dat.copy() for dat in tpl_db["ATOMS"][res] if dat["nres"] == 1]
+        for iatm, dat in enumerate(Ttpl,start=1):
+            pdb.append({"aname": dat["aname"], "rname": dat["rname"], "nres": ires + 1, "rad": dat["rad"], "chg": dat["chg"], "mass": dat["mass"], "atype": dat["atype"]})
+            dat["nres"] = ires + 1 ; dat["nb"] = [0, 0, 0] ; dat["ib"] = []
+            ## For iib
+            self = iatm + npre[ires]
+            dat["iib"] = [Renum[ires][dat["iib"][i] + self] - self for i in range(3)] + [dat["iib"][3]]
+        for dic in post_iib:
+            for key in dic:
+                idx = next(i for i, dat in enumerate(Ttpl) if dat["aname"] == key)
+                Ttpl[idx]["iib"], Ttpl[idx]["blen"], Ttpl[idx]["angl"], Ttpl[idx]["phi"] = dic[key]
+        tpl["ATOMS"].extend(Ttpl)
+        post_iib = [{dat["aname"]: [dat["iib"], dat["blen"], dat["angl"], dat["phi"]]} for dat in tpl_db["ATOMS"][res] if dat["nres"] == 2]
+    ## For nb & ib
+    for idx, keyword in enumerate(["BONDS", "ANGLES", "TORSIONS"], start=1):
+        ib = [[] for _ in range(len(tpl["ATOMS"]))]
+        for dat in tpl[keyword]:
+            i1, i2 = sorted([dat[0] - 1, dat[idx] - 1]) ; dif = i2 - i1
+            if dif not in tpl["ATOMS"][i1]["ib"] and dif not in ib[i1]:
+                ib[i1].append(dif)
+        for i1, Tib in enumerate(ib):
+            tpl["ATOMS"][i1]["ib"].extend(sorted(Tib)) ; tpl["ATOMS"][i1]["nb"][idx-1] = len(Tib)
+    # Make PDB data
+    for dat in pdb:
+        cod = next((v["cod"] for v in inf if v["nres"] == dat["nres"] and v["aname"] == dat["aname"]), None)
+        if cod is not None:
+            dat["cod"] = cod
+    count = sum("cod" in dic for dic in pdb) ; rad = math.pi / 180.0
+    while True:
+        if count == len(pdb):
+            break
+        for iatm, (PDB, TPL) in enumerate(zip(pdb, tpl["ATOMS"])):
+            if "cod" not in PDB:
+                ib, ia, it = [TPL["iib"][i] + iatm for i in range(3)]
+                if "cod" in pdb[ib] and "cod" in pdb[ia] and "cod" in pdb[it]:
+                    PDB["cod"] = z_matrix_to_cartesian([pdb[it]["cod"], pdb[ia]["cod"], pdb[ib]["cod"]], TPL["blen"], TPL["angl"], TPL["phi"])
+        new_count = sum("cod" in dic for dic in pdb)
+        if new_count == count:
+            print(f'!! ERROR !!\nThe input PDB does NOT contain sufficient coordinate data.') ; sys.exit()
+        count = new_count
+    pdb_tpl["tpl_inf"].append(tpl) ; pdb_tpl["atm_inf"].append(pdb) ; pdb_tpl["seq"].append(seq)
+
+def make_order():
+    flag = [True] * len(pdb_tpl["seq"])
+    # solvent check
+    nmol_slv = 0
+    if islv is not None:
+        order_slv = [i for i, tmp in enumerate(pdb_tpl["seq"]) if tmp == pdb_tpl["seq"][islv]]
+        for i in order_slv:
+            flag[i] = False ; nmol_slv += int(len(pdb_tpl["atm_inf"][i]) / len(sd_type))
+    # ion check
+    order_ion = [] ; nmol_ion = []
+    if islv and len(pdb_tpl["seq"]) > islv + 1:
+        for i in range(islv + 1, len(pdb_tpl["seq"])):
+            order_ion.append([j for j, tmp in enumerate(pdb_tpl["seq"]) if tmp == pdb_tpl["seq"][i]])
+            try:
+                nmol_ion.append(int(sum(len(pdb_tpl["atm_inf"][j]) for j in order_ion[-1])))
+            except:
+                nmol_ion.append(0)
+            for j in order_ion[-1]:
+                flag[j] = False
+    # solute check
+    order = [] ; nmol = [] ; marker = []
+    for i in range(len(pdb_tpl["seq"])):
+        if flag[i]:
+            Torder = [i] ; imol = 1 ; tmp = pdb_tpl["seq"][i]
+            for j in range(i+1, len(pdb_tpl["tpl_inf"])):
+                if tmp == pdb_tpl["seq"][j]:
+                    Torder.append(j) ; imol += 1 ; flag[j] = False
+            order.append(Torder) ; nmol.append(imol) ; marker.append("solute")
+    if order_ion != []:
+        for i in range(len(order_ion)):
+            order.append(order_ion[i]) ; nmol.append(nmol_ion[i]) ; marker.append("ion")
+    if nmol_slv != 0:
+        order.append(order_slv) ; nmol.append(nmol_slv) ; marker.append("solvent")
+    pdb_tpl["order"] = order ; pdb_tpl["nmol"] = nmol ; pdb_tpl["marker"] = marker
+    # MOLECULES
+    i = 0 ; inf = []
+    for imol, lst in enumerate(pdb_tpl["order"]):
+        tmp = pdb_tpl["seq"][lst[0]]
+        if len(tmp) == 1:
+            inf.append(tmp[0])
+        else:
+            i += 1 ; inf.append(f"{output}_{i}")
+    pdb_tpl["MOLECULES"] = inf
+
+def overwrite_check(filename):
+    if os.path.isfile(filename):
+        print(f"!! CAUTION !!\n  Do you permit to OVERWRITE {filename}? (Y/N)")
+        while True:
+            flag = input()
+            if flag == "Y":
+                os.system(f"rm -r {filename} >& /dev/null") ; break
+            elif flag == "N":
+                sys.exit()
+            else :
+                print("Please input Y or N.")
+
+def output_pdb(filnam):
+    overwrite_check(filnam)
+    with open(filnam, "w") as ofile:
+        iatm = 0 ; ires = 0
+        for lst in pdb_tpl["order"]:
+            for i in lst:
+                ires_old = None
+                for j, dat in enumerate(pdb_tpl["atm_inf"][i]):
+                    iatm += 1
+                    if dat["nres"] != ires_old:
+                        ires += 1 ; ires_old = dat["nres"] ; ires_width = max(4, min(7, len(str(ires))))
+                    dat["natm"], dat["nres"] = iatm, ires ; x, y, z = dat["cod"]
+                    aname = dat["aname"] if len(dat["aname"]) == 4 else " " + dat["aname"][0:3]
+                    ofile.write("{:4}{:>7} {:4} {:4} {:>{ires_width}}{}{:8.3f}{:8.3f}{:8.3f}\n".format("ATOM", iatm, aname, dat["rname"], str(ires), " "*(8-ires_width), x, y, z, ires_width=ires_width))
+#                ofile.write("TER\n")
+
+def search_natm(lst):
+    iatm = 0 ; result = [None] * len(lst)
+    for olst in pdb_tpl["order"]:
+        for i in olst:
+            for info in pdb_tpl["atm_inf"][i]:
+                iatm += 1
+                for j, tlst in enumerate(lst):
+                    if info["cod"][0] == tlst[0] and info["cod"][1] == tlst[1] and info["cod"][2] == tlst[2]:
+                        result[j] = iatm
+                        if all(item is not None for item in result):
+                            return result
+    return result
+
+def write_section(out, title, data, molname):
+    out.write(f"\nTPL> {title}\n; NUMBER OF {title} : {len(data)}\n{molname}\n")
+    if title == "ATOMS":
+        for i, d in enumerate(data, start=1):
+            out.write(f'{d["aname"]:<8}{d["atype"]:<4}{d["itype"]:>5} {d["rname"]:<8}{d["nres"]:>5}{d["mass"]:12.6f}{d["rad"]:12.6f}{d["chg"]:12.6f}{d["nb"][0]:>3}{d["nb"][1]:>3}{d["nb"][2]:>3} -> ; {i:>4}\n')
+            if d["ib"] != []:
+                ib_list = d["ib"] ; ib_list += [''] * (10 - len(ib_list) % 10) if len(ib_list) % 10 != 0 else []
+                for i in range(0, len(ib_list), 10):
+                    segment = ib_list[i:i+10]
+                    if any(segment):
+                        out.write(''.join(f'{ib:>7}' for ib in segment)) ; out.write('       ->\n')
+            out.write(f'{d["iib"][0]:>7}{d["iib"][1]:>7}{d["iib"][2]:>7}{d["iib"][3]:>7}   {d["blen"]:10.4f}{d["angl"]:10.4f}{d["phi"]:10.4f}\n')
+    elif title == "BONDS":
+        for i, d in enumerate(data, start=1):
+            out.write(f'{d[0]:>10}{d[1]:>10}{d[2]:15.7f}{d[3]:15.7f} ; {i:>10}\n')
+    elif title == "ANGLES":
+        for i, d in enumerate(data, start=1):
+            out.write(f'{d[0]:>10}{d[1]:>10}{d[2]:>10}{d[3]:15.7f}{d[4]:15.7f} ; {i:>10}\n')
+    elif title == "TORSIONS":
+        for i, d in enumerate(data, start=1):
+            out.write(f'{d[0]:>8}{d[1]:>8}{d[2]:>8}{d[3]:>8}{d[4]:10.4f}{d[5]:>5}{d[6]:>5}{d[7]:10.4f}{d[8]:5} ; {i:>6}\n')
+    elif title == "IMPROPER-TORSIONS":
+        for i, d in enumerate(data, start=1):
+            out.write(f'{d[0]:>8}{d[1]:>8}{d[2]:>8}{d[3]:>8}{d[4]:10.4f}{d[5]:>5}{d[6]:>5}{d[7]:10.4f}{d[8]:5} ; {i:>6}\n')
+
+def output_tpl(filname):
+    overwrite_check(filname)
+    sections = ["ATOMS", "BONDS", "ANGLES", "TORSIONS", "IMPROPER-TORSIONS"]
+    section_count = [0, 0, 0, 0, 0]
+    tpl_inf = pdb_tpl["tpl_inf"]
+    with open(filname, "w") as out:
+        for i in range(len(pdb_tpl["order"])):
+            tmp = pdb_tpl["nmol"][i]
+            if tmp != 0:
+                tmp2 =  tpl_inf[pdb_tpl["order"][i][0]]
+                for j, section in enumerate(sections):
+                    if tmp2[section] != []:
+                        section_count[j] += tmp * len(tmp2[section])
+        maxatm, maxbnd, maxang, maxtor, maximp = section_count
+        out.write(f'\nTPL> TITLE\nMEMO\n\nTPL> MOLECULES\n; NUMBER OF MOLECULES : {len(pdb_tpl["order"])}\n')
+        for i in range(len(pdb_tpl["order"])):
+            name = pdb_tpl["MOLECULES"][i] ; width = 52 - len(name)
+            if pdb_tpl["nmol"][i] != 0:
+                out.write("{}{:>{width}}\n".format(name, pdb_tpl["nmol"][i], width=width))
+        for section in sections:
+            for i, lst in enumerate(pdb_tpl["order"]):
+                if pdb_tpl["nmol"][i] != 0 and tpl_inf[lst[0]][section] != []:
+                    write_section(out, section, tpl_inf[lst[0]][section], pdb_tpl["MOLECULES"][i])
+        out.write(f'\nTPL> FUNCTIONS\n')
+        for dat in tpl_db["FUNCTIONS"]:
+            out.write(f'{dat[0]:10}{dat[1]:10}          {dat[2]}\n')
+        out.write(f'\nTPL> NONBONDS\n; MAXIMUM TYPE NUMBER = {len(tpl_db["NONBONDS"]):>10}\n') ; maxtyp = len(tpl_db["NONBONDS"])
+        for dat in tpl_db["NONBONDS"]:
+            out.write(f'{dat[0]:>5}{dat[1]:>5}{dat[2]:>4}{dat[3]:15.7f}{dat[4]:15.7f}{dat[5]:15.7f}{dat[6]:15.7f} ; {dat[7]}\n')
+        # For SSBOND & LINK
+        if len(iaSS) > 0 or len(iaLINK) > 0:
+            print(f"\n+ Output SSBOND or LINK information\n")
+            ## Input topology database
+            with open(tpldb, "r") as fil:
+                lines = fil.readlines() ; istart = next(i for i, line in enumerate(lines) if line.startswith(";PRE> LINK"))
+            bd, bfc, blen, ag, afc, angl, tor, tfc, tdiv, tperi, tphase, tnbf, imp, ifc, idiv, iperi, iphase = [[] for _ in range(17)]
+            for line in lines[istart:]:
+                tmp = line.split() ; i = len(tmp)
+                if i == 5:
+                    bd.append([tmp[1], tmp[2]]) ; bfc.append(float(tmp[3])) ; blen.append(float(tmp[4]))
+                elif i == 6:
+                    ag.append([tmp[1], tmp[2], tmp[3]]) ; afc.append(float(tmp[4])) ; angl.append(float(tmp[5]))
+                elif i == 8:
+                    imp.append([tmp[1], tmp[2], tmp[3], tmp[4]]) ; ifc.append(float(tmp[5])) ; idiv.append(1)
+                    iperi.append(int(tmp[6])) ; iphase.append(float(tmp[7]))
+                elif i == 9:
+                    lst = [tmp[1], tmp[2], tmp[3], tmp[4]]
+                    idx = next((j for j, itor in enumerate(tor) if itor == lst), None)
+                    if idx is None:
+                        tor.append([tmp[1], tmp[2], tmp[3], tmp[4]]) ; tfc.append([float(tmp[5])]) ; tdiv.append([int(tmp[6])])
+                        tperi.append([int(tmp[7])]) ; tphase.append([float(tmp[8])]) ; tnbf.append([1])
+                    else:
+                        tfc[idx].append(float(tmp[5])) ; tdiv[idx].append(int(tmp[6]))
+                        tperi[idx].append(int(tmp[7])) ; tphase[idx].append(float(tmp[8])) ; tnbf[idx].append(0)
+            ## Make atom type & bond list
+            at_list = [0] + [info["atype"] for lst in pdb_tpl["order"] for chn in lst for info in pdb_tpl["atm_inf"][chn]]
+            bd_list = [[] for _ in range(len(at_list))] ; ixnatm = 0
+            for i, lst in enumerate(pdb_tpl["order"]):
+                nmol = pdb_tpl["nmol"][i] ; natm = int(pdb_tpl["tpl_inf"][lst[0]]["ATOMS"][1].split()[-1])
+                info = pdb_tpl["tpl_inf"][lst[0]]
+                if "BONDS" in info:
+                    for _ in range(nmol):
+                        for line in info["BONDS"][2:]:
+                            tmp = line.split() ; i1, i2 = int(tmp[0]), int(tmp[1])
+                            bd_list[i1+ixnatm].append(i2+ixnatm) ; bd_list[i2+ixnatm].append(i1+ixnatm)
+                        ixnatm += natm
+                else:
+                    ixnatm += natm * nmol
+
+            LINKlist = search_natm(iaSS) + search_natm(iaLINK)
+            LINKlist = [[LINKlist[i], LINKlist[i+1]] for i in range(0, len(LINKlist), 2)]
+            for lst in LINKlist:
+                bd_list[lst[0]].append(lst[1]) ; bd_list[lst[1]].append(lst[0])
+            for lst in bd_list:
+                lst.sort()
+            out.write(f"\nTPL> LINK\n")
+            ## BOND
+            for ilst, lst in enumerate(LINKlist):
+                at1, at2 = sorted([at_list[lst[0]], at_list[lst[1]]])
+                idx = next((i for i, (a1, a2) in enumerate(bd) if a1 == at1 and a2 == at2), None)
+                if idx is not None:
+                    out.write(f"B {lst[0]:>10}{lst[1]:>10}{bfc[idx]:15.7f}{blen[idx]:15.7f} ; {ilst+1:10}\n")
+                else:
+                    print(f"* The bond parameter for {at1}-{at2} could NOT be found.")
+                    out.write(f"B {lst[0]:>10}{lst[1]:>10}{0.0:15.7f}{0.0:15.7f} ; {ilst+1:10} (Parameter NOT found.)\n")
+                maxbnd += 1
+            ## ANGLE
+            save = []
+            for ilst, (iat1, iat2) in enumerate(LINKlist, start=1):
+                ### For iat3 - iat1 - iat2
+                for iat3 in bd_list[iat1]:
+                    if iat2 != iat3:
+                        at1, at2, at3 = at_list[iat1], at_list[iat2], at_list[iat3]
+                        if at3 < at2:
+                            at2, at3 = at3, at2
+                        idx = next((i for i, (a1, a2, a3) in enumerate(ag) if a1 == at2 and a2 == at1 and a3 == at3), None)
+                        if idx is not None:
+                            save.append([min(iat2,iat3), iat1, max(iat2,iat3), afc[idx], angl[idx], ilst])
+                        else:
+                            save.append([min(iat2,iat3), iat1, max(iat2,iat3), 0.0, 0.0, ilst, at2, at1, at3])
+                ### For iat1 - iat2 - iat3
+                for iat3 in bd_list[iat2]:
+                    if iat1 != iat3:
+                        at1, at2, at3 = at_list[iat1], at_list[iat2], at_list[iat3]
+                        if at3 < at1:
+                            at1, at3 = at3, at1
+                        idx = next((i for i, (a1, a2, a3) in enumerate(ag) if a1 == at1 and a2 == at2 and a3 == at3), None)
+                        if idx is not None:
+                            save.append([min(iat1,iat3), iat2, max(iat1,iat3), afc[idx], angl[idx], ilst])
+                        else:
+                            save.append([min(iat1,iat3), iat2, max(iat1,iat3), 0.0, 0.0, ilst, at1, at2, at3])
+            flag = [True] * len(save)
+            for i in range(0, len(save)-1):
+                for j in range(i+1, len(save)):
+                    if save[i][:5] == save[j][:5]:
+                        flag[j] = False
+            for check, info in zip(flag, save):
+                if check:
+                    out.write(f"A {info[0]:>10}{info[1]:>10}{info[2]:>10}{info[3]:15.7f}{info[4]:15.7f} ; {info[5]:>10}")
+                    maxang += 1
+                    if info[3] == 0.0:
+                        print(f"* The angle parameter for {info[6]}-{info[7]}-{info[8]} could NOT be found.")
+                        out.write(f" (Parameter NOT found.)")
+                    out.write("\n")
+            ## TORSION
+            save = []
+            for ilst, (iat1, iat2) in enumerate(LINKlist, start=1):
+                ### For iat3 - iat4 - iat1 - iat2
+                for iat4 in bd_list[iat1]:
+                    if iat4 != iat2:
+                        for iat3 in bd_list[iat4]:
+                            if iat3 != iat1 and iat3 != iat2:
+                                at1, at2, at3, at4 = at_list[iat1], at_list[iat2], at_list[iat3], at_list[iat4]
+                                if at1 < at4:
+                                    at1, at4 = at4, at1 ; at2, at3 = at3, at2
+                                elif at1 == at4 and at2 < at3:
+                                    at2, at3 = at3, at2
+                                idx = next((i for i, (a1, a2, a3, a4) in enumerate(tor) if a2 == at4 and a3 == at1 and (a1 == "X" or (at3 == a1 and at2 == a4))), None)
+                                if iat4 < iat1:
+                                    Tint = [iat3, iat4, iat1, iat2]
+                                else:
+                                    Tint = [iat2, iat1, iat4, iat3]
+                                if idx is not None:
+                                    save.append([Tint, tfc[idx], tdiv[idx], tperi[idx], tphase[idx], tnbf[idx], ilst])
+                                else:
+                                    save.append([Tint, [0.0], [0], [0], [0.0], [1], ilst, at1, at2, at3, at4])
+                ### For iat3 - iat1 - iat2 - iat4
+                for iat3 in bd_list[iat1]:
+                    if iat3 != iat2:
+                        for iat4 in bd_list[iat2]:
+                            if iat4 != iat1 and iat3 != iat4:
+                                at1, at2, at3, at4 = at_list[iat1], at_list[iat2], at_list[iat3], at_list[iat4]
+                                if at2 < at1:
+                                    at1, at2 = at2, at1 ; at3, at4 = at4, at3
+                                elif at1 == at2 and at4 < at3:
+                                    at3, at4 = at4, at3
+                                idx = next((i for i, (a1, a2, a3, a4) in enumerate(tor) if a2 == at1 and a3 == at2 and (a1 == "X" or (at3 == a1 and at4 == a4))), None)
+                                if iat2 < iat1:
+                                    Tint = [iat4, iat2, iat1, iat3]
+                                else:
+                                    Tint = [iat3, iat1, iat2, iat4]
+                                if idx is not None:
+                                    save.append([Tint, tfc[idx], tdiv[idx], tperi[idx], tphase[idx], tnbf[idx], ilst])
+                                else:
+                                    save.append([Tint, [0.0], [0], [0], [0.0], [1], ilst, at1, at2, at3, at4])
+                ### For iat1 - iat2 - iat3 - iat4
+                for iat3 in bd_list[iat2]:
+                    if iat3 != iat1:
+                        for iat4 in bd_list[iat3]:
+                            if iat4 != iat2 and iat4 != iat1:
+                                at1, at2, at3, at4 = at_list[iat1], at_list[iat2], at_list[iat3], at_list[iat4]
+                                if at3 < at2:
+                                    at2, at3 = at3, at2 ; at1, at4 = at4, at1
+                                elif at2 == at3 and at4 < at1:
+                                    at1, at4 = at4, at1
+                                idx = next((i for i, (a1, a2, a3, a4) in enumerate(tor) if a2 == at2 and a3 == at3 and (a1 == "X" or (at1 == a1 and at4 == a4))), None)
+                                if iat2 < iat3:
+                                    Tint = [iat1, iat2, iat3, iat4]
+                                else:
+                                    Tint = [iat4, iat3, iat2, iat1]
+                                if idx is not None:
+                                    save.append([Tint, tfc[idx], tdiv[idx], tperi[idx], tphase[idx], tnbf[idx], ilst])
+                                else:
+                                    save.append([Tint, [0.0], [0], [0], [0.0], [1], ilst, at1, at2, at3, at4])
+            flag = [True] * len(save)
+            for i in range(0, len(save)-1):
+                for j in range(i+1, len(save)):
+                    if save[i][0] == save[j][0]:
+                        flag[j] = False
+            for check, info in zip(flag, save):
+                if check:
+                    for i in range(len(info[1])):
+                        out.write(f"T {info[0][0]:>6}{info[0][1]:>6}{info[0][2]:>6}{info[0][3]:>6}{info[1][i]:10.4f}{info[2][i]:5}{info[3][i]:5} {info[4][i]:10.4f}{info[5][i]:5} ; {info[6]:>3}")
+                        maxtor += 1
+                    if info[1] == [0.0]:
+                        print(f"* The torsion parameter for {info[7]}-{info[8]}-{info[9]}-{info[10]} could NOT be found.")
+                        out.write(f" (Parameter NOT found.)")
+                    out.write("\n")
+            ## IMPROPER TORSION
+            save = [] ; Tiat = [0] * 4
+            for ilst, lst in enumerate(LINKlist, start=1):
+                for iat3 in lst:
+                    if len(bd_list[iat3]) >= 3:
+                        for iat1, iat4, iat2 in itertools.combinations(bd_list[iat3], 3):
+                            iat = [iat1, iat2, iat3, iat4]
+                            at = [at_list[iat1], at_list[iat2], at_list[iat3], at_list[iat4]]
+                            for idx, a in enumerate(imp):
+                                if at[2] == a[2]:
+                                    flag = [True, True, False, True] ; Tiat[2] = iat3
+                                    for i in range(3, 0, -1):
+                                        if flag[i] and at[i] == a[3]:
+                                            Tiat[3] = iat[i] ; flag[i] = False ; break
+                                    for i in range(3, 0, -1):
+                                        if flag[i] and (at[i] == a[1] or a[1] == "X"):
+                                            Tiat[1] = iat[i] ; flag[i] = False ; break
+                                    for i in range(3, 0, -1):
+                                        if flag[i] and (at[i] == a[0] or a[0] == "X"):
+                                            Tiat[0] = iat[i] ; flag[i] = False ; break
+                                    if not any(flag):
+                                        save.append([Tiat, ifc[idx], idiv[idx], iperi[idx], iphase[idx], ilst//2+1]) ; break
+                            else:
+                                save.append([False, at, iat])
+            flag = [True] * len(save)
+            for i in range(0, len(save)-1):
+                for j in range(i+1, len(save)):
+                    if save[i] == save[j]:
+                        flag[j] = False
+            for check, info in zip(flag, save):
+                if check:
+                    if info[0]:
+                        iat = info[0]
+                        out.write(f"I {iat[0]:>6}{iat[1]:>6}{iat[2]:>6}{iat[3]:>6}{info[1]:10.4f}{info[2]:5}{info[3]:5} {info[4]:10.4f}{0:5} ; {info[5]:>3}\n")
+                        maximp += 1
+                    else:
+                        at = info[1]
+                        print(f"* The improper torsion parameter for {at[0]}-{at[1]}-{at[2]}-{at[3]} could NOT be found.")
+    # max data addition
+    with open(filname, "r") as ifile:
+        content = ifile.readlines()
+    with open(filname, "w") as out:
+        out.write(f'; {maxatm} {maxbnd} {maxang} {maxtor} {maximp} {maxtyp}\n')
+        out.writelines(content)
+
+def find_center(marker):
+    nchn = len(pdb_tpl)
+    marker = nchn if marker == 0 else min(marker, nchn)
+    info = pdb_tpl["atm_inf"][:marker]
+    if h_flag:
+        x, y, z = (mean(v) for v in zip(*((atom["cod"]) for chn in info for atom in chn)))
+    else:
+        x_vals, y_vals, z_vals = [], [], []
+        for chn in info:
+            for atom in chn:
+                if not atom["atype"].startswith(("H", "h")):
+                    x_vals.append(atom["cod"][0]) ; y_vals.append(atom["cod"][1]) ; z_vals.append(atom["cod"][2])
+        x, y, z  = mean(x_vals), mean(y_vals), mean(z_vals)
+    return [x, y, z]
+
+def find_min_max(data, key, j):
+    min_index = min(range(len(data)), key=lambda i: data[i]["cod"][j]) ; min_info = data[min_index]
+    max_index = max(range(len(data)), key=lambda i: data[i]["cod"][j]) ; max_info = data[max_index]
+    return min_index, min_info, max_index, max_info
+
+def print_min_max(data, keys):
+    global slv_bound, slv_radius
+    box_flag = False ; ell_flag = False
+    if (slv_shape == "BOX" or slv_shape == "PBC") and slv_bound is None:
+        box_flag = True ; slv_bound = [] ; cell_size = []
+    if slv_shape == "ELL" and slv_radius is None:
+        ell_flag = True ; slv_radius = []
+    for i, key in enumerate(keys):
+        min_index, min_info, max_index, max_info = find_min_max(data, key, i)
+        minv = min_info["cod"][i] ; maxv = max_info["cod"][i]
+        print(f'+ Min {key.upper()} : {minv:>10.3f}  ({min_index+1:7d} {min_info["aname"]} {min_info["rname"]})')
+        print(f'+ Max {key.upper()} : {maxv:>10.3f}  ({max_index+1:7d} {max_info["aname"]} {max_info["rname"]})')
+        if box_flag:
+            if slv_shape == "BOX":
+                length = math.ceil(max(maxv - slv_center[i], slv_center[i] - minv) * 4.0) * 0.5 + 2.0 * slv_padding
+            elif slv_shape == "PBC":
+                length = math.ceil((maxv - minv) * 2.0) * 0.5 + 2.0 * slv_padding
+            slv_bound.extend([slv_center[i] - 0.5 * length, slv_center[i] + 0.5 * length])
+            cell_size.append(length)
+        if ell_flag:
+            length = math.ceil(max(maxv - slv_center[i], slv_center[i] - minv) * 2.0) * 0.5 + slv_padding
+            slv_radius.append(length)
+    if box_flag:
+        print(f'\n* Solvent boundary is automatically set to {slv_bound}')
+        print(f'* Solvent CELL size : {cell_size}\n')
+    if ell_flag:
+        print(f'\n* Solvent radius is automatically set to {slv_radius} (Å)\n')
+
+def add_solvent():
+    global slv_center, slv_radius, slv_bound, sd_type, islv
+    print(f'\n+++ Solvent shape information +++\n')
+
+    # Determine slv_center if chain number is given
+    if isinstance(slv_center, int):
+        old_slv_center = slv_center
+        slv_center = find_center(slv_center)
+        print(f'* Solvent center was set to {[f"{cod:.3f}" for cod in slv_center]}')
+        print(f'    as the center of mass of ', end="")
+        if old_slv_center == 0 or len(pdb_tpl) == 1:
+             print(f'the entire system.')
+        else:
+             print(f'the chain 1-{old_slv_center}.')
+             for i, tmp in enumerate(pdb_tpl["seq"][:old_slv_center]):
+                 print(f'  Chain {i+1} : ')
+                 for j in range(0, len(tmp), 15):
+                     chunk = tmp[j:j+15] ; print(" " * 6 + " ".join(chunk))
+
+    # Move the center to zero
+    if move_center:
+        def move_coordinates(objects, center):
+            for obj in objects:
+                obj["cod"] = [round(cod - cen, 3) for cod, cen in zip(obj["cod"], center)]
+        for atm_info in pdb_tpl["atm_inf"]:
+            move_coordinates(atm_info, slv_center)
+        move_coordinates(iaSS, slv_center)
+        move_coordinates(iaLINK, slv_center)
+        print(f'* The center was shifted parallel to [0.000, 0.000, 0.000]')
+        if slv_bound:
+            slv_bound = [bound - slv_center[i // 2] for i, bound in enumerate(slv_bound)]
+            print(f'* The solvent CELL boundary is shifted parallel to {slv_bound}')
+        slv_center = [0.0] * 3
+
+    # Determine slv_radius and slv_bound when slv_padding is given
+    dmax = -1.0 ; maxinfo = None ; max_index = None ; iatm = 0
+    atm_inf = [info for chn in pdb_tpl["atm_inf"] for info in chn]
+    for atm_info in atm_inf:
+        d = sum((atm_info["cod"][i] - slv_center[i]) ** 2 for i in range(3))
+        if d > dmax:
+            dmax = d ; maxinfo = atm_info ; max_index = iatm
+        iatm += 1
+    dmax = math.sqrt(dmax)
+    print(f'\n+ The farthest atom from the center : {max_index+1} {maxinfo["aname"]} {maxinfo["rname"]}')
+    print(f'+ The distance from the center (+ the vdW radius) = {dmax:.3f} ({dmax + maxinfo["rad"]:.3f})\n')
+    if slv_shape == "CAP" and slv_radius is None:
+        slv_radius = math.ceil(dmax * 2.0) * 0.5 + slv_padding
+        print(f'* The CAP solvent radius is automatically set to {slv_radius} (Å)') 
+        print(f'* The distance from the CAP surface to the clothest atom center = {slv_radius - dmax:.3f}\n')
+    print_min_max(atm_inf, ["x", "y", "z"])
+
+    # Input solvent position databese file (*.slv)
+    with open(slv_db, "r") as fil:
+        lines = fil.readlines()
+        sd_bound = [float(v) for v in lines[0].strip().split()]
+        sd_name = lines[1].strip().split() ; sd_type = lines[2].strip().split() ; sd_cod = []
+        for line in lines[3:]:
+            sd_cod.append([float(v) for v in line.strip().split()])
+
+    # Execute prepar for a solvent molecule.
+    print(f'\n+++ Adding solvent molecules +++\n')
+    print(f'+ Making solvent topology')
+    inf = {"atm_inf": [], "seq": [solvent]}
+    for i, (name, cod) in enumerate(zip(sd_name, sd_cod)):
+        inf["atm_inf"].append({"aname": name, "rname": solvent, "nres": 1, "cod": cod})
+    prepar(inf["seq"], inf["atm_inf"])
+    rad = [dat["rad"] for dat in pdb_tpl["atm_inf"][-1]] ; chg = [dat["chg"] for dat in pdb_tpl["atm_inf"][-1]]
+    mass = [dat["mass"] for dat in pdb_tpl["atm_inf"][-1]]
+
+    # For classic
+    if classic:
+        rad = [0.0] * len(rad) ## For water rad
+        rdist = {"FE": 1.3, "C0": 1.7131, "N": 1.824, "C": 1.908, "O": 1.6612, "S": 2.0, "P": 2.1, "Other": 1.0} 
+        watrad = 1.7682 ; rtmp = 1.0 / 6.0
+        for key in rdist.keys():
+            rdist[key] = (((rdist[key] + watrad)**6) * 0.5)**rtmp
+        ## For solute rad
+        keep_rad = []
+        for chn in pdb_tpl["atm_inf"][:-1]:
+            for info in chn:
+                if h_flag or not info["atype"].startswith(("H","h")):
+                    keep_rad.append(info["rad"])
+                    for key in rdist.keys():
+                        if info["atype"].startswith(key):
+                            info["rad"] = rdist[key] ; break
+                    else:
+                        info["rad"] = rdist["Other"]
+
+    # Copy unit box
+    if slv_shape == "CAP":
+        bounds = [val for i in range(3) for val in (slv_center[i] - slv_radius, slv_center[i] + slv_radius)]
+    elif slv_shape == "BOX" or slv_shape == "PBC":
+        bounds = slv_bound
+    elif slv_shape == "ELL":
+        bounds = [val for i in range(3) for val in (slv_center[i] - slv_radius[i], slv_center[i] + slv_radius[i])]
+
+    # Put solvent
+    def contact_check(Tcod, cod, rad, sinfo):
+        for iatm, tcod in enumerate(Tcod):
+            ix, iy, iz = [math.floor((v - bounds[i*2]) / cell_size) for i, v in enumerate(tcod)]
+            info = [v for z in range(max(iz-1, 0), min(iz+1, icell[2])+1) for y in range(max(iy-1, 0), min(iy+1, icell[1])+1)
+                      for x in range(max(ix-1, 0), min(ix+1, icell[0])+1) for v in cell[x][y][z]]
+            for v in info:
+                vec = [v["cod"][i] for i in range(3)]
+                if math.dist(vec, tcod) < v["rad"] + rad[iatm]:
+                    #for iatm, tcod, in enumerate(cod):
+                    #    sinfo.append({"cod": tcod, "rad": rad[iatm]})
+                    return sinfo
+        for iatm, tcod, in enumerate(cod):
+            sinfo.append({"cod": tcod, "rad": rad[iatm]})
+        return sinfo
+
+    def contact_check_PBC(Tcod, cod, rad, sinfo):
+        for iatm, tcod in enumerate(Tcod):
+            ix, iy, iz = [math.floor((v - bounds[i*2]) / cell_size) for i, v in enumerate(tcod)]
+            info = [v for z in range(max(iz-1, 0), min(iz+1, icell[2])+1) for y in range(max(iy-1, 0), min(iy+1, icell[1])+1)
+                      for x in range(max(ix-1, 0), min(ix+1, icell[0])+1) for v in cell[x][y][z]]
+            for v in info:
+                vec = [v[i] - bound_size[i] * math.floor((v[i] - bounds[i*2]) / bound_size[i]) for i in range(3)]
+                if math.dist(vec, tcod) < v["rad"] + rad[iatm]:
+                    #for iatm, tcod, in enumerate(cod):
+                    #    sinfo.append({"cod": tcod, "rad": rad[iatm]})
+                    return sinfo
+        for iatm, tcod, in enumerate(cod):
+            sinfo.append({"cod": tcod, "rad": rad[iatm]})
+        return sinfo
+
+    # Prepare grid cell
+    max_rad = max(max(v["rad"] for chn in pdb_tpl["atm_inf"] for v in chn), max(rad))
+    cell_size = 2.0 * max_rad
+    icell = [ math.ceil((bounds[i+1] - bounds[i]) / cell_size) + 1 for i in range(0, 6, 2) ]
+    cell = [[[[] for _ in range(icell[2])] for _ in range(icell[1])] for _ in range(icell[0])]
+    if slv_shape != "PBC":
+        for chn in pdb_tpl["atm_inf"]:
+            for info in chn:
+                if h_flag or not info["atype"].startswith(("H", "h")):
+                    ix, iy, iz = [math.floor((info["cod"][i] - bounds[i*2]) / cell_size) for i in range(3)]
+                    cell[ix][iy][iz].append(info)
+    else:
+        bound_size = [bounds[i+1] - bounds[i] for i in range(0, 6, 2)]
+        for chn in pdb_tpl["atm_inf"]:
+            for info in chn:
+                if h_flag or not info["atype"].startswith(("H", "h")):
+                    cod = [info["cod"][i] - bound_size[i] * round(info["cod"][i] / bound_size[i]) for i in range(3)]
+                    ix, iy, iz = [math.floor((cod[i] - bounds[i*2]) / cell_size) for i in range(3)]
+                    cell[ix][iy][iz].append(info)
+
+    natm = len(sd_name) ; nmol = int(len(sd_cod)/natm) ; slv_atm_inf = [] ; iunit = []
+    for i, v in enumerate(bounds):
+        if i % 2 == 0:
+            iunit.append(math.floor(v/sd_bound[int(i / 2)]+0.5))
+        else:
+            iunit.append(math.ceil(v/sd_bound[int(i / 2)]-0.5) + 1)
+
+    # Make temporary cod list
+    if h_flag:
+        Tsd_cod = sd_cod ; Tnatm = natm
+    else:
+        Tsd_cod = [lst for i, lst in enumerate(sd_cod) if not sd_type[i % natm].startswith(("H", "h"))]
+        Tnatm = sum(1 for v in sd_type if not v.startswith(("H", "h")))
+
+    if slv_shape == "CAP":
+        for iz in range(iunit[4], iunit[5]):
+            dz = float(iz) * sd_bound[2]
+            for iy in range(iunit[2], iunit[3]):
+                dy = float(iy) * sd_bound[1]
+                for ix in range(iunit[0], iunit[1]):
+                    dx = float(ix) * sd_bound[0]
+                    for imol in range(0, nmol):
+                        Tcod = [[x + dx, y + dy, z + dz] for x, y, z in Tsd_cod[imol * Tnatm : (imol + 1) * Tnatm] ]
+                        for tcod in Tcod:
+                            if math.dist(tcod, slv_center) > slv_radius:
+                                break
+                        else:
+                            cod = [[x + dx, y + dy, z + dz] for x, y, z in sd_cod[imol * natm : (imol + 1) * natm] ]
+                            slv_atm_inf = contact_check(Tcod, cod, rad, slv_atm_inf)
+                                
+    elif slv_shape == "BOX":
+        for iz in range(iunit[4], iunit[5]):
+            dz = float(iz) * sd_bound[2]
+            for iy in range(iunit[2], iunit[3]):
+                dy = float(iy) * sd_bound[1]
+                for ix in range(iunit[0], iunit[1]):
+                    dx = float(ix) * sd_bound[0]
+                    for imol in range(0, nmol):
+                        Tcod = [[x + dx, y + dy, z + dz] for x, y, z in Tsd_cod[imol * Tnatm : (imol + 1) * Tnatm] ]
+                        x, y, z = zip(*Tcod)
+                        if bounds[0] < min(x) and max(x) < bounds[1] and bounds[2] < min(y) and \
+                           max(y) < bounds[3] and bounds[4] < min(z) and max(z) < bounds[5]:
+                            cod = [[x + dx, y + dy, z + dz] for x, y, z in sd_cod[imol * natm : (imol + 1) * natm] ]
+                            slv_atm_inf = contact_check(Tcod, cod, rad, slv_atm_inf)
+
+    elif slv_shape == "PBC":
+        for iz in range(iunit[4], iunit[5]):
+            dz = float(iz) * sd_bound[2]
+            for iy in range(iunit[2], iunit[3]):
+                dy = float(iy) * sd_bound[1]
+                for ix in range(iunit[0], iunit[1]):
+                    dx = float(ix) * sd_bound[0]
+                    for imol in range(0, nmol):
+                        Tcod = [[x + dx, y + dy, z + dz] for x, y, z in Tsd_cod[imol * Tnatm : (imol + 1) * Tnatm] ]
+                        x, y, z = zip(*Tcod)
+                        if bounds[0] < min(x) and max(x) < bounds[1] and bounds[2] < min(y) and \
+                           max(y) < bounds[3] and bounds[4] < min(z) and max(z) < bounds[5]:
+                            cod = [[x + dx, y + dy, z + dz] for x, y, z in sd_cod[imol * natm : (imol + 1) * natm] ]
+                            slv_atm_inf = contact_check_PBC(Tcod, cod, rad, slv_atm_inf)
+
+    elif slv_shape == "ELL":
+        ellrad = [1.0 / v**2 for v in slv_radius]
+        for iz in range(iunit[4], iunit[5]):
+            dz = float(iz) * sd_bound[2]
+            for iy in range(iunit[2], iunit[3]):
+                dy = float(iy) * sd_bound[1]
+                for ix in range(iunit[0], iunit[1]):
+                    dx = float(ix) * sd_bound[0]
+                    for imol in range(0, nmol):
+                        Tcod = [[x + dx, y + dy, z + dz] for x, y, z in Tsd_cod[imol * Tnatm : (imol + 1) * Tnatm] ]
+                        for tcod in Tcod:
+                            d = (tcod[0] - slv_center[0])**2 * ellrad[0] + \
+                                (tcod[1] - slv_center[1])**2 * ellrad[1] + \
+                                (tcod[2] - slv_center[2])**2 * ellrad[2]
+                            if d > 1.0:
+                                break
+                        else:
+                            cod = [[x + dx, y + dy, z + dz] for x, y, z in sd_cod[imol * natm : (imol + 1) * natm] ]
+                            slv_atm_inf = contact_check(Tcod, cod, rad, slv_atm_inf)
+
+    # For classic
+    if classic:
+        i = 0
+        for chn in pdb_tpl["atm_inf"][:-1]:
+            for info in chn:
+                if h_flag or not info["atype"].startswith(("H","h")):
+                    info["rad"] = keep_rad[i] ; i += 1
+
+    for i, info in enumerate(slv_atm_inf):
+        iatm = i % natm ; ires = math.ceil((i + 1) / natm)
+        info["nres"] = ires ; info["rname"] = solvent ; info["aname"] = sd_name[iatm]
+        info["chg"] = chg[iatm] ; info["mass"] = mass[iatm] ; info["atype"] = sd_type[iatm]
+    pdb_tpl["atm_inf"][-1] = slv_atm_inf
+    nslv_mol = int(len(slv_atm_inf)/natm) ; islv = len(pdb_tpl["atm_inf"]) - 1
+    make_order()
+    print(f'\n* {nslv_mol} solvent molecules are added.')
+    print(f'* The total number of solvent atoms is {len(slv_atm_inf)}.\n')
+
+def add_ion():
+    print(f'\n+++ Adding ions +++\n')
+    # Check total charge of the solvent
+    atm_inf = pdb_tpl["atm_inf"][islv] ; sum_e = round( sum(info["chg"] for info in atm_inf[0:len(sd_type)]) )
+    if sum_e != 0:
+        print('!! ERROR !!\nThe total charge of the solvent is NOT zero. ({sum_e})') ; sys.exit()
+    check = []
+    for i, tmp in enumerate(sd_type):
+        if not tmp.startswith(("H", "h")):
+            check.append(i)
+    if len(check) != 1:
+        print("!! ERROR !!\nThis program envisages adding ions by replacing single-particle ions with solvent molecules", end="")
+        print("having only one heavy atom (other than hydrogens).\n")
+        print(f"As the solvent ({solvent}) has more than two heavy atoms, it is NOT possible to add ions with this program")
+        sys.exit()
+    slv_cod = [atm_inf[i]["cod"][j] for i in range(check[0], len(atm_inf), len(sd_type)) for j in range(3)]
+    slt_cod = [info["cod"][j] for i, tmp in enumerate(pdb_tpl["atm_inf"]) if i != islv for info in tmp for j in range(3)]
+    slt_chg = [info["chg"] for i, tmp in enumerate(pdb_tpl["atm_inf"]) if i != islv for info in tmp]
+    if classic:
+        slt_chg = [round(v, 2) for v in slt_chg]
+    nslv = int(len(slv_cod) / 3) ; nslt = len(slt_chg)
+    pre_nslv = next((pdb_tpl["nmol"][i] - nslv for i, lst in enumerate(pdb_tpl["order"]) if islv in lst), None)
+
+    # Check total charge of the solute
+    total_chg = round(sum(slt_chg)) ; print(f'+ Total charge of the solute = {total_chg}')
+
+    # Check if ions exist in solute.
+    for tmp in ion_list:
+        ion_list[tmp]["preN"] = 0
+    for ion in (tmp[0].strip() for tmp in pdb_tpl["seq"] if tmp[0].strip() in ion_list):
+        ion_list[ion]["preN"] += 1
+
+    # Execute prepar for ions.
+    print(f'+ Making ion topology files')
+    for i, key in enumerate(ion_list):
+        if key not in tpl_db["ATOMS"].keys():
+            print(f'!! ERROR !!\nIon {key} was NOT found in the {mktpl} database file.') ; sys.exit()
+        if len(tpl_db["ATOMS"][key]) != 1:
+            print(f'!! ERROR !!\n-ia option can NOT add ions consisting of multiple particles.\n{tpl_db["ATOMS"][key]} ') ; sys.exit()
+        rname = key ; aname = tpl_db["ATOMS"][key][0]["aname"]
+        inf = {"atm_inf": [{"aname": aname, "rname": rname, "nres": 1, "cod": [0.0, 0.0, 0.0]}], "seq": [rname]}
+        prepar(inf["seq"], inf["atm_inf"])
+        t = pdb_tpl["tpl_inf"][-1]["ATOMS"][0]
+        ion_list[key].update({"atype": t["atype"], "rad": t["rad"], "chg": t["chg"], "mass": t["mass"], "rname": rname, "aname": aname})
+    make_order()
+
+    # Add ions
+    print("+ Calculating electric fields ...")
+    total_M = sum(ion["M"] for ion in ion_list.values() if "M" in ion)
+    mol_weight_slv = sum(tmp["mass"] for tmp in pdb_tpl["atm_inf"][islv][:len(sd_type)])
+    mol_per_l_slv = slv_den * 1000.0 / mol_weight_slv
+    tmp = (nslv + pre_nslv) / (mol_per_l_slv + total_M)
+    for ion in ion_list:
+        if "M" in ion_list[ion]:
+            ion_list[ion]["N"] = round(ion_list[ion]["M"] * tmp - ion_list[ion]["preN"])
+    total_chg += round(sum(ion["N"] * ion["chg"] for ion in ion_list.values() if "N" in ion))
+    # Search buffer ions to neutralize the system charge
+    if total_chg != 0:
+        buffer1 = [ion for ion in ion_list if ion_list[ion]["N"] == 0]
+        while buffer1 and total_chg != 0:
+            total_chg_old = total_chg
+            for ion in buffer1:
+                chg = ion_list[ion]["chg"]
+                if total_chg * chg < 0 and abs(total_chg + chg) <= abs(total_chg_old):
+                    total_chg += int(chg) ; ion_list[ion]["N"] += 1 ; break
+            else:
+                break
+        if total_chg != 0:
+            buffer2 = [ion for ion in ion_list if "M" in ion_list[ion]]
+            init_N = [ion_list[ion]["N"] for ion in buffer2] ; curr_N = init_N[:]
+            while buffer2 and total_chg != 0:
+                total_chg_old = total_chg ; next_N = [None] * len(init_N)
+                for i, ion in enumerate(buffer2):
+                    chg = ion_list[ion]["chg"]
+                    if abs(total_chg + chg) < abs(total_chg_old):
+                        next_N[i] = curr_N[i] + 1
+                    elif abs(total_chg - chg) < abs(total_chg_old) and curr_N[i] != 0:
+                        next_N[i] = curr_N[i] - 1
+                if all(x == None for x in next_N):
+                    break
+                diff_rate = [abs(tmp / init_N[i] - 1.0) if tmp is not None else None for i, tmp in enumerate(next_N)]
+                i = diff_rate.index(min(filter(lambda x: x is not None, diff_rate)))
+                total_chg += int((next_N[i] - curr_N[i]) * ion_list[buffer2[i]]["chg"]) ; curr_N[i] = next_N[i]
+            for i, ion in enumerate(buffer2):
+                ion_list[ion]["N"] = curr_N[i]
+    print(f'\n* The below ions are switched to the solvent molecules')
+    for ion in ion_list:
+        if ion_list[ion]["N"] != 0:
+            print(f'       {ion} : {ion_list[ion]["N"]:7} (charge = {int(ion_list[ion]["chg"]):3})')
+    print(f'  The total charges of the system = {total_chg}')
+
+    ion_name = [ion for ion in ion_list]
+    ion_chg = [int(ion_list[ion]["chg"]) for ion in ion_name]
+    ion_maxN = [ion_list[ion]["N"] for ion in ion_name] ; ion_currN = [0] * len(ion_name)
+    ion_total_chg = sum([c * N for c, N in zip(ion_chg, ion_maxN)])
+    ion_order = [] ; ion_charge = [] ; total_chg = - ion_total_chg
+    while True:
+        ion_nextN = [None] * len(ion_name) ; rate = [1.0] * len(ion_name)
+        if total_chg != 0:
+            for i, chg in enumerate(ion_chg):
+                if chg * total_chg < 0 and ion_currN[i] < ion_maxN[i]:
+                    ion_nextN[i] = ion_currN[i] + 1
+        else:
+            for i, chg in enumerate(ion_chg):
+                if ion_currN[i] < ion_maxN[i]:
+                    ion_nextN[i] = ion_currN[i] + 1
+        rate = [ n / m if n is not None else None for n, m in zip(ion_nextN, ion_maxN)]
+        if not classic:
+            i = rate.index(min(filter(lambda x: x is not None, rate)))
+        else:
+            i = next(i for i, x in enumerate(rate) if x is not None)
+        total_chg += ion_chg[i] ; ion_order.append(i+1) ; ion_charge.append(float(ion_chg[i])) ; ion_currN[i] = ion_nextN[i]
+        if ion_currN == ion_maxN:
+            break
+
+    ## Assighn ion coordinates
+    ion_switch = np.zeros(len(slv_cod)//3, dtype=np.int32)
+    calc_pot(slv_cod, slt_cod, slt_chg, ion_order, ion_charge, exclusion_dist, ion_switch)
+    ion_switch = ion_switch.tolist()
+    ion_inf = [[] for _ in range(len(ion_name)+1)] ; n = len(sd_type)
+    iatm = [0] * len(ion_inf) ; ires = [0] * len(ion_inf)
+    inf = pdb_tpl["atm_inf"][islv]
+    slv_cod = [slv_cod[i:i+n] for i in range(0, len(slv_cod), n)]
+    for i, ion in enumerate(ion_switch):
+        if ion == 0:
+            ires[0] += 1
+            for j in range(i*n, i*n+n):
+                tmp = inf[j].copy() ; iatm[0] += 1 ; tmp["natm"] = iatm[0] ; tmp["nres"] = ires[0]
+                ion_inf[0].append(tmp)
+        else:
+            ires[ion] += 1 ; iatm[ion] += 1 ; cod = slv_cod[i] ; info = ion_list[ion_name[ion-1]]
+            tmp = {"cod": cod, "natm": iatm[ion], "nres": ires[ion], "rname": info["rname"], "aname": info["aname"], "rad": info["rad"], "chg": info["chg"], "mass": info["mass"], "atype": info["atype"]}
+            ion_inf[ion].append(tmp)
+    for i in range(len(ion_inf)):
+        pdb_tpl["atm_inf"][islv+i] = ion_inf[i]
+    make_order()
+
+def display_concentration():
+    print(f'\n* Final concentration of each molecule')
+    nslv = next((pdb_tpl["nmol"][i] for i, lst in enumerate(pdb_tpl["order"]) if islv in lst), None)
+    mol_weight_slv = sum(tmp["mass"] for tmp in pdb_tpl["atm_inf"][islv][:len(sd_type)])
+    mol_per_l_slv = slv_den * 1000.0 / mol_weight_slv
+    for i, lst in enumerate(pdb_tpl["order"]):
+        if islv not in lst:
+            name = pdb_tpl["MOLECULES"][i].split()[0]
+            conc = pdb_tpl["nmol"][i] / nslv * mol_per_l_slv * 1000.0
+            print(f'{name:>12} : {conc:>12.3f} (mM)')
+
+def organize_tpl():
+    # Check atom type and the number used in the tpl file.
+    nnonb = len(tpl_db["NONBONDS"]) ; check_list = [[] for _ in range(nnonb + 1)]
+    for i, lst in enumerate(pdb_tpl["order"]):
+        if pdb_tpl["nmol"][i] != 0:
+            inf = pdb_tpl["tpl_inf"][lst[0]]["ATOMS"]
+            for dat in inf:
+                typ = dat["atype"] ; ityp = dat["itype"]
+                if not typ in check_list[ityp]:
+                    check_list[ityp].append(typ)
+    new_numb = [0] * (nnonb + 1) ; inum = 1
+    for i, tmp in enumerate(check_list):
+        if tmp:
+            new_numb[i] = inum ; inum += 1
+    # Update atom type and the number
+    for i, lst in enumerate(pdb_tpl["order"]):
+        if pdb_tpl["nmol"][i] != 0:
+            inf = pdb_tpl["tpl_inf"][lst[0]]["ATOMS"]
+            for dat in inf:
+                dat["itype"] = new_numb[dat["itype"]]
+    # Update NONBONDS
+    inf = [] ; count = 0
+    for i, dat in enumerate(tpl_db["NONBONDS"],start=1):
+        if check_list[i]:
+            count += 1
+            inf.append([count, dat[1], dat[2], dat[3], dat[4], dat[5], dat[6], " ".join(check_list[i])])
+    tpl_db["NONBONDS"] = inf
+
+def exe_shake():
+    print(f'\n+ Making SHAKE file\n')
+    if shake == "H":
+        i = 1
+    elif shake == "A":
+        i = 2
+    os.makedirs(".aho_tmp", exist_ok=True)
+    # Make a tpl file removed TPL> LINK information
+    if len(iaSS) != 0 or len(iaLINK) != 0:
+        ifil = ".aho_tmp/shk.tpl"
+#        with open(f".aho_tmp/{output}.tpl", "r") as fil:
+        with open(f"{output}.tpl", "r") as fil:
+            lines = fil.readlines()
+        with open(f".aho_tmp/shk.tpl", "w") as fil:
+            for line in lines:
+                if line.startswith("TPL> LINK"):
+                    break
+                fil.write(line.strip()+"\n")
+    else:
+#        ifil = f".aho_tmp/{output}.tpl"
+        ifil = f"{output}.tpl"
+
+    with open(f".aho_tmp/shake.inp", "w") as inp:
+#        inp.write(f"{i}\n{ifil}\n.aho_tmp/{output}.shk\n")
+        inp.write(f"{i}\n{ifil}\n{output}.shk\n")
+    try:
+        with open(f".aho_tmp/shake.inp", "r") as inp, open(f".aho_tmp/shake.out", "w") as out:
+            program_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "sp", "mkshkl")
+            process = subprocess.run([program_path], stdin=inp, stdout=out)
+    except subprocess.CalledProcessError as e:
+        print("!! ERROR in preparing SHAKE file !!\n") ; sys.exit()
+    with open(f".aho_tmp/shake.out", "r") as out:
+        output_text = out.read() ; print(output_text)
+        if "ERROR" in output_text:
+            print(output_text) ; print("!! ERROR in preparing SHAKE file !!") ; sys.exit()
+    if os.path.exists(".aho_tmp"):
+        shutil.rmtree(".aho_tmp")
+
+def display_credits():
+    program_name = "prep"
+    author = "Jinzen Ikebe"
+    version = "1.0.0"
+    first_release_date = "2024-11-11"
+    current_release_date = "2024-11-11"
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    print("*" * 50)
+    print("*")
+    print(f"*    {program_name} (Version {version})")
+    print("*")
+    print(f"*                         Author : {author}")
+    print(f"*             First Release Date : {first_release_date}")
+    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print("*")
+    print(f"*" * 50)
+    print()
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+#            print(license_content)
+    except:
+        print("Error: License file not found.")
+        sys.exit()
+
+if __name__ == "__main__":
+    stime = time.perf_counter()
+    parser = argparse.ArgumentParser(description="j_presto prep makes a pdb file and the corresponding topology file (*.tpl), and optionally input file for SHAKE (*.shk) for j_presto")
+    parser.add_argument("access_key")
+    parser.add_argument("-o", "--output", default="test", help='Output file name. The default is "test".')
+    parser.add_argument("-i", "--input", help="Input PDB file name")
+    parser.add_argument("-db", "--tpldb", help="Topology database file name (*.tpldb)")
+    parser.add_argument("-pH", "--pH_value", type=float, default=7., help="pH value. The default is 7.0. Based on the pH, the charged states of amino acids such as Glu and Lys are determined. ")
+    parser.add_argument("-nah", "--no_auto_hispro", action="store_true", default=False, help="If this option is set, histidine protonation states are NOT determined automatically.")
+    parser.add_argument("-dh", "--default_his", default="HIE", help="Default histidine (HIE or HID). If you NOT set this option, the default is set as HIE.")
+    parser.add_argument("-th", "--threshold_distance_hispro", type=float, default=3.0, help="Threshold distance for hydrogen bond formation in histidine protonation check. Typically ranges from 2.4 to 3.5 Å, with a default of 3.0 Å.")
+    parser.add_argument("-ts", "--trim_shape", default=None, choices=["CAP", "BOX", "ELL"], help="If you wish to trim parts of the system, use this option. You can choose from the following boundary shapes: 1. CAP (sphere), 2. BOX (rectangular body), or 3. ELL (ellipsoid body). During trimming, if all atoms of a residue lie outside the boundary, the residue is removed. Note that the residue will be preserved if at least one atom lies within the boundary.")
+    parser.add_argument("-tc", "--trim_center", nargs=3, type=float, metavar=("x", "y", "z"), help="Center coordinates for trimming the system using CAP or ELL.")
+    parser.add_argument("-tr", "--trim_radius", nargs='+', action=RadiusAction, metavar=("radius1", "radius2 radius3"), help='Radius for trimming the system. You have to input "-tr radius1" for "-ts CAP", or "-tr radius1 radius2 radius3" for "-ts ELL".')
+    parser.add_argument("-tb", "--trim_boundary", nargs=6, metavar=("x_min", "x_max", "y_min", "y_max", "z_min", "z_max"), type=float, help="Coordinates of the box boundary for trimming the system with BOX.")
+    parser.add_argument("-pair", "--DNA_duplex_pair", nargs='+', help='DNA duplex pairing. When trimming the system and it includes DNA duplex pairs, this option allows you to specify molecular pairs that form DNA duplexes and maintain the duplex structure after trimming. For example, if molecules 1 and 2, and 3 and 4 form duplex pairs, specify "-pair 1:2 3:4".')
+    parser.add_argument("-ACE", "--add_ACE", nargs='+', type=int, default=[], help='If you want to add an ACE group to the N-termini of peptide chains, specify the number of chains.')
+    parser.add_argument("-NME", "--add_NME", nargs='+', type=int, default=[], help='If you want to add an NME group to the C-termini of peptide chains, specify the number of chains.')
+    parser.add_argument('-s', '--solvent', default='TP3', help='Name of the solvent to use, sourced from the *.tpldb file. The default is "TP3" (TIP3P water).')
+    parser.add_argument('-sdb', '--solvent_coordinate_database', default="j_prestoBOX.slv", help='Solvent coordinate database (*.slv). This file is used for generating solvent coordinates.')
+    parser.add_argument("-ss", "--solvent_shape", default=None, choices=["CAP", "BOX", "ELL", "PBC"], help="If you want to add solvent to the system, use this option. You can select from the following boundary shapes 1: CAP (sphere), 2: BOX (rectangular body), 3: ELL (ellipsoid body), and 4: PBC (periodic boundary condition for a rectangular body)")
+    parser.add_argument("-sh", "--solvent_hydrogen", action="store_true", help='If this option is set when adding solvent to the system, hydrogen atoms are included in 1: Center of mass calculation, 2: Determining whether the solvent is within the boundary, and 3: Determining solute-solvent overlap. By default, hydrogens are excluded from these calculations.')
+    parser.add_argument("-sp", "--solvent_padding", default=None, type=float, help="Interference region size (padding) when adding solvent molecules to the system. This padding length is added to the distance from the system center to the farthest atom to automatically set the radius for CAP or ELL, and the box boundary for BOX and PBC. The default is 12.0 Å. This option is ignored when -sr or -sb are set.")
+    parser.add_argument('-sc', '--solvent_center', nargs='+', action=CenterAction, default=None, help='Center of solvent molecules for CAP and ELL. Specify either three float values with -sc x y z or a single integer chain number with -sc 1. Note that the chain number refers to the position after the system has been trimmed and the chains have been sorted—not the number in the input file. Setting the chain number to 0 places the geometric center of all chains at the center. The default value is 0.')
+    parser.add_argument("-sr", "--solvent_radius", nargs='+', action=RadiusAction, metavar=("radius1", "radius2 radius3"), help='Radius for solvent molecules. Use "-sr radius1" for "-ss CAP", or "-sr radius1 radius2 radius3" for "-ss ELL".')
+    parser.add_argument("-sb", "--solvent_boundary", nargs=6, metavar=("x_min", "x_max", "y_min", "y_max", "z_min", "z_max"), type=float, help="Coordinates of Box boundary for solvent molecules with BOX or PBC.")
+    parser.add_argument("-c", "--classic", action="store_true", help='Specifies the classical way to add water and ions. This option can be used only when the solvent is "WAT" and is provided for comparision with earlier versions of the program.')
+    parser.add_argument('-mc', '--move_center', action="store_true", help='If this option is set, the center specified by -sc is shifted parallel to [0, 0, 0].')
+    parser.add_argument("-ia", "--ion_add", nargs='+', metavar=("ion_name1 value1","ion_name2 value2"), help='Specify ions to add using this option, such as "-ia FE2 0 K+ 3 Na+ 0.153M Cl- 0.153M". Ions are indicated by their names followed by the number or concentration (M) to add. If the number is set to zero, only the minimum ions necessary to neutralize the system will be added.')
+    parser.add_argument("-sd", "--solvent_density", default=1.0, help="Solvent density (kg/l). This value is used to calculate the ion density when adding ions. The default is 1.0 kg/l for water. If a solvent other than water is used, adjust this value accordingly.")
+    parser.add_argument("-ie", "--ion_exclusion_distance", type=float, default=9.0, help='Exclusion distance for ion placement. Once an ion is placed, no other ions can be placed within the specified radius from that ion. The default radius is 9.0 Å.')
+    parser.add_argument("-rr","--residue_rename", nargs='+', help='If you want to rename residue names, specify pairs of old and new residue names using this option. For example, to change "HOH" to "WAT", use "-rr HOH:WAT".')
+    parser.add_argument("-shake", "--shake", nargs='?', const='H', default=False, choices=['H', 'A'], help='If you want to constrain covalent bonds using SHAKE, set this option. Use "-shake" or "-shake H" to constrain only covalent bonds involving hydrogens. Use "-shake A" to constrain all covalent bonds. (Note that this option does NOT constrain covalent bonds specified with SSBOND and LINK.)')
+
+    args = parser.parse_args()
+    access_key = args.access_key ; output = args.output ; tpldb = args.tpldb ; input_file = args.input ; pH = args.pH_value
+    auto_his = not args.no_auto_hispro ; def_his = args.default_his + " " ; dist_his = args.threshold_distance_hispro
+    trim_shape = args.trim_shape ; ACE = args.add_ACE ; NME = args.add_NME
+    trim_radius = args.trim_radius ; trim_center = args.trim_center ; trim_bound = args.trim_boundary
+    if trim_bound is not None:
+        trim_bound = [item for sublist in [sorted(trim_bound[i:i+2]) for i in range(0, len(trim_bound), 2)] for item in sublist]
+    if args.DNA_duplex_pair:
+        DNApair = [[int(tmp2) - 1 for tmp2 in tmp.split(":")] for tmp in args.DNA_duplex_pair]
+    else:
+        DNApair = []
+    solvent = args.solvent[:4] ; slv_db = args.solvent_coordinate_database ; h_flag = args.solvent_hydrogen
+    slv_shape = args.solvent_shape ; slv_center = args.solvent_center ; slv_radius = args.solvent_radius
+    slv_bound = args.solvent_boundary ; slv_padding = args.solvent_padding ; classic = args.classic
+    move_center = args.move_center
+    if slv_bound is not None:
+        slv_bound = [item for sublist in [sorted(slv_bound[i:i+2]) for i in range(0, len(slv_bound), 2)] for item in sublist]
+    slv_den = args.solvent_density ; shake = args.shake
+    if access_key != "j_presto":
+        sys.exit()
+
+    line_len = 41
+    display_credits()
+    print(f'{"Output name : ".rjust(line_len)} {output}')
+    tpldb = find_file(tpldb, "-t")
+    print(f'{"Input tpldb file : ".rjust(line_len)} {tpldb}')
+    input_file = find_file(input_file, "-i")
+    if input_file.endswith((".pdb", ".PDB")):
+        print(f'{"Input PDB : ".rjust(line_len)} {input_file}')
+    print(f'{"pH : ".rjust(line_len)} {str(pH)}')
+    if auto_his:
+        print(f'{"Automatic HIS protonation : ".rjust(line_len)} ON')
+        print(f'{"Distance for HIS protonation check : ".rjust(line_len)} {dist_his} (Å)')
+    else:
+        print(f'{"Automatic HIS protonation : ".rjust(line_len)} OFF')
+    print(f'{"Default HIS type : ".rjust(line_len)} {def_his}')
+    if trim_shape is not None:
+        if trim_shape == "CAP":
+            print(f'{"Trim shape : ".rjust(line_len)} CAP (sphere)')
+            if trim_radius is not None and trim_center is not None:
+                print(f'{"Trim center : ".rjust(line_len)} {trim_center}')
+                print(f'{"Trim radius : ".rjust(line_len)} {trim_radius} (Å)')
+            else:
+                print(f'\n!! ERROR !!\nWhen you set "-ts CAP", you also have to set both of "-tc" and "-tr" options.')
+                sys.exit()
+        elif trim_shape == "BOX":
+            print(f'{"Trim shape : ".rjust(line_len)} BOX (rectanglar solid)')
+            if trim_bound is None:
+                print(f'\n!! ERROR !!\nWhen you set "-ts BOX", you also have to set "-tb" option.') ; sys.exit()
+            print(f'{"Trim boundary : ".rjust(line_len)} {trim_bound}')
+        elif trim_shape == "ELL":
+            print(f'{"Trim shape : ".rjust(line_len)} ELL (ellipsoid body)')
+            if trim_radius is not None and trim_center is not None:
+                print(f'{"Trim center : ".rjust(line_len)} {trim_center}')
+                print(f'{"Trim radius : ".rjust(line_len)} {trim_radius} (Å)')
+            else:
+                print(f'\n!! ERROR !!\nWhen you set "-ts ELL", you also have to set both of "-tc" and "-tr" options.')
+                sys.exit()
+        if DNApair != []:
+            print(f'{"DNA duplex pairs : ".rjust(line_len)} ' + ' '.join([f'{tmp[0]+1}-{tmp[1]+1}' for tmp in DNApair]))
+    if ACE:
+        print(f'{"Chain IDs to add ACE group : ".rjust(line_len)} {", ".join(str(x) for x in ACE)}')
+    if NME:
+        print(f'{"Chain IDs to add NME group : ".rjust(line_len)} {", ".join(str(x) for x in NME)}')
+
+    if slv_shape is not None:
+        print(f'{"Solvent name : ".rjust(line_len)} {solvent}')
+        slv_db = find_file(slv_db, "-sd")
+        print(f'{"Solvent coordinate DB : ".rjust(line_len)} {slv_db}')
+        if slv_shape == "CAP":
+            print(f'{"Solvent boundary shape : ".rjust(line_len)} CAP (sphere)')
+            prepare_slv_center() ; prepare_slv_radius()
+
+        elif slv_shape == "BOX" or slv_shape == "PBC":
+            if slv_shape == "BOX":
+                print(f'{"Solvent boundary shape : ".rjust(line_len)} BOX (rectanglar solid)')
+            elif slv_shape == "PBC":
+                print(f'{"Solvent boundary shape : ".rjust(line_len)} PBC (rectanglar solid)')
+            if slv_bound is None and slv_padding is None and trim_bound and trim_shape == slv_shape:
+                slv_bound = trim_bound
+            if slv_bound:
+                print(f'{"Solvent boundary : ".rjust(line_len)} {slv_bound}')
+            else:
+                if slv_padding is not None:
+                    print(f'{"Solvent padding : ".rjust(line_len)} {slv_padding} (Å)')
+                else:
+                    slv_padding = default_sp
+                    print(f'{"Solvent padding : ".rjust(line_len)} {default_sp} (Å) (default value)')
+            prepare_slv_center()
+        elif slv_shape == "ELL":
+            print(f'{"Solvent boundary shape : ".rjust(line_len)} ELL (ellipsoid body)')
+            prepare_slv_center() ; prepare_slv_radius()
+        if solvent != "WAT":
+            classic = False
+        if classic:
+            print(f'{"Radius for overlap judgement : ".rjust(line_len)} Classic')
+        if move_center:
+            print(f'{"Move center : ".rjust(line_len)} YES')
+        if h_flag:
+            print(f'Include hydrogens when calculating center of mass and adding solvent.')
+        else:
+            print(f'Ignore hydrogens when calculating center of mass and adding solvent.')
+    if args.ion_add:
+        if slv_shape is None:
+            print(f'!! ERROR !!\nIf you want to add ions, you also have to add solvent.') ; sys.exit()
+        lst = validate_ions(args.ion_add)
+        for i in range(0, len(lst), 2):
+            ion_list[lst[i]] = {}
+            if lst[i+1].endswith("M"):
+                ion_list[lst[i]]["M"] = float(lst[i+1][:-1])
+            else:
+                ion_list[lst[i]]["N"] = int(lst[i+1])
+        print(f'{"Added ions : ".rjust(line_len)}', end="")
+        for i in range(len(ion_list)):
+            if i != 0:
+                print(f'{" " * line_len}', end="")
+            key = list(ion_list.keys())[i]
+            if "N" in ion_list[key]:
+                print(f' {key} {ion_list[key]["N"]}')
+            elif "M" in ion_list[key]:
+                print(f' {key} {ion_list[key]["M"]} (mol/l)')
+        print(f'{"Solvent density = ".rjust(line_len)} {slv_den} (kg/l)')
+        if slv_den == 1.0 and solvent != "WAT":
+            print("!! CAUTION !!\nThe density of the non-WAT solvent ({solvent}) set to 1.0 (kg/l). Are you sure? (Y/N)")
+            while True :
+                flag = input()
+                if flag == "Y":
+                    break
+                elif flag == "N":
+                    sys.exit()
+                else :
+                    print("Please input Y or N.")
+        exclusion_dist = args.ion_exclusion_distance
+        if exclusion_dist < 0:
+            print(f'!! ERROR !!\n-ie must be a positive real number.') ; sys.exit()
+        print(f'{"Exclusion distance for ion : ".rjust(line_len)} {exclusion_dist} (A)')
+        if classic:
+            print(f'{"Way to add ions : ".rjust(line_len)} Classic')
+    if args.residue_rename:
+        print(f'{"The below residue names are translated : ".rjust(line_len)}', end="") ; tmp_dic = {}
+        for i, tmp in enumerate(args.residue_rename):
+            key, val = [s.ljust(4) for s in tmp.split(":")]
+            if i == 0:
+                print(f' {key} -> {val}')
+            else:
+                print(f'{" ".rjust(line_len)}{key} -> {val}')
+            tmp_dic[key] = val
+        tmp_dic.update(residue_name_translator) ; residue_name_translator = tmp_dic
+    if shake == "H":
+        print(f'{"SHAKE : ".rjust(line_len)} Only covalent bonds involving hydrogens')
+    elif shake == "A":
+        print(f'{"SHAKE : ".rjust(line_len)} All covalent bonds')
+
+    print("\n") ; nchn = 0
+    input_tpldb() ; inf = prepare_pdb()
+    # For solute
+    for ichn in range(len(inf)):
+        prepar(inf[ichn]["seq"], inf[ichn]["atm_inf"])
+    make_order()
+    if slv_shape:
+        add_solvent()
+    if ion_list != {}:
+        add_ion()
+    if slv_shape:
+        display_concentration()
+    organize_tpl()
+    output_tpl(f"{output}.tpl") ; output_pdb(f"{output}.pdb")
+    if shake:
+        exe_shake()
+    etime = time.perf_counter() ; print(f"\nExecution time : {etime - stime} (S)")
+    print(f"\n+++ Program j_presto prep normally ended +++")

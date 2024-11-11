@@ -1,0 +1,242 @@
+#!/usr/bin/env python3
+  
+import argparse, os, sys, time, re
+
+namELM = {}
+namELM["INPUT"] = [
+        'TOPOLO','TPLFMT','COORDI','CRDFMT','SETSHK','SETVAR','SETBOU',
+        'REFCOO','POSITI','DISTAN','DIHEDR','SETORI','OUTMON','CELLPA',
+        'EXTCMM','REPULS']
+namELM["MD"] = [
+        'RESTAR','CPUTIM','LOOPLI','UPDATE','TIMEST','OUTLOG','LOGFOR',
+        'STOPCE','METHOD','SETTEM','RELAXA','INITIA','RANDOM','STARTT',
+        'BESTFI','NAMERI','NAMERO','NAMECO','NAMEVE','NAMEEN','MNTRCO',
+        'CAL15M','CUTLEN','DIEVAL','TEMPER','WETPSR','WETDSR','WETDHR',
+        'RADCAP','FORCAP','FUNCAP','SHAKEM','COVSHK','LIMSHK','LXCELL',
+        'LYCELL','LZCELL','BOUNDA','SETCEN','CENTRX','CENTRY','CENTRZ',
+        'OUTCOO','OUTVEL','OUTENE','ELLIPA','ELLIPB','ELLIPC','OUTTRJ',
+        'NAMEGE','NAMETR','RADIUS','MNTRVE','MNTREN','MNTRTR','NAMETO', 
+        'MNTRTO','HEATLO','DUMMYL','NAMECL','MNTRCL','OUTCLE','TEMPCO',
+        'FOACAP','RADPRO','CMMUPD','CAPSHP','XMINCL','XMAXCL','YMINCL',
+        'YMAXCL','ZMINCL','ZMAXCL','CELBUF','PSETMP','STAPST','HTPSLO',
+        'ELLBUF','LAMBDA','LMDSQU','OUTATM','PARALV','N_SIMD','NSTPCN']
+namELM["OUTPUT"] =[
+        'OTOPOL','OTPLFM','OCOORD','OCRDFM']
+namELM["GE"] =[
+        'PROJNM','SIMTYP','CODLST','MINVAL','MAXVAL','SIMTEM','FITDIM',
+        'NWINDO','NXMINV','NXMAXV','PREFIT','TMPSMP','NXTEMP','LMDSMP',
+        'LSMPSQ','MINLMD','MAXLMD','MINEAA','MAXEAA','MINEAB','MAXEAB',
+        'ACCELE','ACCRAT','ACCEL2','ACCRT2','ACCLAB','ACCRTL','ACCTHL',
+        'NEGLCT','FORCES','FORCEL','FORCEH','IGNDAT']
+namELM["filelist"] =[
+        'INPENE','NFIRST','NFINAL']
+
+replacements = {
+        "#CMD": None,
+        "#PMD": None,
+        "#RUN": None,
+        "#LAMBDA": None,
+        "#TEMPER": None,
+        "#RNDSED": None,
+        "#NRUN": None,
+        "#NMPI": None,}
+
+def check_file_existence(fil):
+    if not os.path.exists(fil):
+        print("!! ERROR !!\nThe above file does NOT exist.\n")
+        print("In order to generate input files for multiple MD simulations with batch_set, Prepare the following 3 files:\n")
+        print("    1 : batch_set.inp")
+        print("    2 : md_run.exe")
+        print("    3 : md_multi.exe")
+        print('These template files can be obtained using the command "j_presto get_tmpl".')
+        print('After retrieving the template files, you can modify them as needed for your use.') ; sys.exit()
+
+def replace_placeholders(text, replacements):
+    for placeholder, value in replacements.items():
+        text = text.replace(placeholder, value)
+    return text
+
+def read_batch_set(batch_set, md_run, md_multi, rseed):
+    print(f"+ The input file for the MD schedule : {batch_set}")
+    check_file_existence(batch_set)
+    print(f"+ The script file for running a single MD simulation : {md_run}")
+    check_file_existence(md_run)
+    nrun, ist, ien, nmpi, min_lambda, max_lambda, min_temper, max_temper = None, None, None, None, 1, 1, None, None
+
+    flg = False ; ELM = {}
+    with open(batch_set, 'r') as inp:
+        for line in inp:
+            if line.strip() == "":
+                flg = False
+            tmp = line.split(";")[0].strip()
+            if not tmp:
+                continue
+            if tmp.startswith("nrun"):
+                try:
+                    _, nrun = tmp.split()
+                    nrun = int(nrun)
+                    replacements.update({"#NRUN": str(nrun)})
+                except ValueError:
+                    print("Error: 'nrun' must be an integer.") ; sys.exit()
+            elif tmp.startswith("nmd"):
+                try:
+                    _, ist, ien = tmp.split()
+                    ist, ien = int(ist), int(ien)
+                except ValueError:
+                    print("Error: 'nmd' must have two integers.") ; sys.exit()
+            elif tmp.startswith("nmpi"):
+                try:
+                    _, nmpi = tmp.split()
+                    nmpi = int(nmpi)
+                    replacements.update({"#NMPI": str(nmpi)})
+                except ValueError:
+                    print("Error: 'nmpi' must be an integer.") ; sys.exit()
+            elif tmp.startswith("lambda"):
+                try:
+                    _, min_lambda, max_lambda = tmp.split()
+                    min_lambda, max_lambda = float(min_lambda), float(max_lambda)
+                except ValueError:
+                    print("Error: 'lambda' values must have two floating-point numbers (min and max values).") ; sys.exit()
+            elif tmp.startswith("temper"):
+                try:
+                    _, min_temper, max_temper = tmp.split()
+                    min_temper, max_temper = float(min_temper), float(max_temper)
+                except ValueError:
+                    print("Error: 'temper' values must have two floating-point numbers (min and max values).") ; sys.exit()
+            elif flg:
+                element_name, element_content = map(str.strip, tmp.split("="))
+                ELM[i][element_name] = element_content
+            else:
+                try:
+                    i = int(tmp) ; flg = True ; ELM[i] = {}
+                except ValueError:
+                    continue
+    flg = False
+    if nrun is None:
+        print(f"!! ERROR !!\n nrun is missing in the {batch_set} file.") ; flg = True
+    if ist is None or ien is None:
+        print(f"!! ERROR !!\n nmd is missing or incomplete in the {batch_set} file.") ; flg = True
+    if nmpi is None:
+        print(f"!! ERROR !!\n nmpi is missing in the {batch_set} file.") ; flg = True
+    if flg:
+        sys.exit()
+    if min_temper is None or max_temper is None:
+        min_temper, max_temper = 300.0, 300.0
+
+    with open(md_multi, 'r') as fil:
+        md_multi_txt = fil.read()
+
+    iist = min(min(ELM.keys()), ist)
+    ELEMNT = {element: False for values in namELM.values() for element in values}
+    for imd in range(iist, ien + 1):
+        cmd = str(imd) ; pmd = str(imd - 1) ; cdir = "md" + cmd
+        replacements.update({"#CMD": cmd, "#PMD": pmd})
+        if not os.path.exists(cdir):
+            os.makedirs(cdir)
+        if imd in ELM:
+            for key, value in ELM[imd].items():
+                value = False if value == "OFF" else value
+                for section in namELM.values():
+                    if key in section:
+                        ELEMNT[key] = value ; break
+
+            batch_set_txt = "" ; filelist_txt = ""
+            sections = {"INPUT": namELM["INPUT"],"MD": namELM["MD"],"OUTPUT": namELM["OUTPUT"]}
+            for section_name, keys in sections.items():
+                active = [key for key in keys if ELEMNT[key]]
+                if active:
+                    batch_set_txt += f"\nEXE> {section_name}\n"
+                    for key in active:
+                        batch_set_txt += f"{key}= {ELEMNT[key]}\n"
+                    batch_set_txt += "QUIT\n"
+
+        for irun in range(1, nrun + 1):
+            run = str(irun) ; cdir2 = os.path.join(cdir, f"n{run}")
+            if not os.path.exists(cdir2):
+                os.makedirs(cdir2)
+            l = min_lambda + (max_lambda - min_lambda) * (irun - 1) / (nrun - 1)
+            t = min_temper + (max_temper - min_temper) * (irun - 1) / (nrun - 1)
+
+            replacements.update({"#RUN": run, "#LAMBDA": str(l), "#TEMPER": str(t), "#RNDSED": str(irun + rseed)})
+            txt = replace_placeholders(batch_set_txt, replacements)
+            with open(os.path.join(cdir2, "md.inp"), 'w') as out:
+                out.write(txt)
+            if ELEMNT["INPENE"]:
+                txt = replace_placeholders(ELEMNT["INPENE"], replacements)
+                if ELEMNT["SIMTYP"] != "CANO":
+                    filelist_txt += f'{txt}\n{ELEMNT["NFIRST"]} {ELEMNT["NFINAL"]}\n'
+                elif ELEMNT["SIMTYP"]:
+                    filelist_txt += f'{txt}\n{ELEMNT["NFIRST"]} {ELEMNT["NFINAL"]} {t}\n'
+            destination = os.path.join(cdir2, md_run)
+            os.system(f"cp {md_run} {destination}")
+            os.chmod(destination, 0o755)
+            print(f"md{imd}/n{irun}")
+
+        filename, ext = os.path.splitext(md_multi)
+        filename = f"{filename}_{imd}{ext}"
+        txt = replace_placeholders(md_multi_txt, replacements)
+        with open(filename, 'w') as fil:
+            fil.write(txt)
+        os.chmod(filename, 0o755)
+
+        active = [key for key in namELM["GE"] if ELEMNT[key]]
+        if active:
+            txt = "\n".join(f"{key} = {ELEMNT[key]}" for key in active)
+            txt = replace_placeholders(txt, replacements)
+            with open(os.path.join(cdir, "GEprep.inp"), 'w') as fil:
+                fil.write(txt)
+        active = [key for key in namELM["filelist"] if ELEMNT[key]]
+        if active:
+            with open(os.path.join(cdir, "file.list"), 'w') as fil:
+                fil.write(filelist_txt)
+
+def display_credits():
+    program_name = "batch_set"
+    author = "Jinzen Ikebe"
+    version = "1.0.0"
+    first_release_date = "2024-11-11"
+    current_release_date = "2024-11-11"
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    print("*" * 50)
+    print("*")
+    print(f"*    {program_name} (Version {version})")
+    print("*")
+    print(f"*                         Author : {author}")
+    print(f"*             First Release Date : {first_release_date}")
+    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print("*")
+    print(f"*" * 50)
+    print()
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+    except FileNotFoundError:
+        print("Error: License file not found.")
+        sys.exit()
+
+def main():
+    stime = time.perf_counter()
+    parser = argparse.ArgumentParser(description='j_presto batch_set prepares input files for multiple MD simulations in bulk.')
+    parser.add_argument('access_key')
+    parser.add_argument('-b','--batch_set', default='batch_set.inp', help='Input file of MD setting schedule for multiple MD runs. (The default is "batch_set.inp")')
+    parser.add_argument('-r','--md_run', default='md_run.exe', help='Script file for running a single MD simulation.')
+    parser.add_argument('-m','--md_multi', default='md_multi.exe', help='Script file for running multiple MD simulations as a single MPI job.')
+    parser.add_argument('-rseed','--random_seed', default=0, type=int, help='If you want to increase or decrease the value set by #RNDSED, use this option to configure the increment or decrement value. The default is 0.')
+
+    args = parser.parse_args()
+    access_key = args.access_key
+    input_type = args.batch_set
+    if access_key != "j_presto":
+        sys.exit()
+    display_credits()
+    batch_set = args.batch_set ; md_run = args.md_run ; md_multi = args.md_multi ; rseed = args.random_seed
+
+    read_batch_set(batch_set, md_run, md_multi, rseed)
+
+    etime = time.perf_counter()
+    print(f"\nExecution time : {etime - stime} (S)")
+    print(f"\n+++ Program j_presto batch_set normally ended +++")
+
+if __name__ == "__main__":
+    main()
+

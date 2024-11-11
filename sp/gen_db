@@ -1,0 +1,1382 @@
+#!/usr/bin/env python3
+
+import argparse, os, sys, re, math, time
+import numpy as np
+
+#########################################################################################
+
+co = ";"  # sign of comment out 
+nin = 0 ; ndat = 0
+rpi = 180. / math.pi ; pir = math.pi / 180.
+input_files = [] ; def_atmtyp = {} ; solvent_box = [] ; solvent_box_dict = {}
+atom_name_translator = {
+    "O5* ":"O5' ", "C5* ":"C5' ", "C4* ":"C4' ", "O4* ":"O4' ", "C3* ":"C3' ",
+    "O3* ":"O3' ", "C2* ":"C2' ", "O2* ":"O2' ", "C1* ":"C1' ", "C5M ":"C7  ",
+    "H1* ":"H1' ", "H2*1":"H2' ", "'H2'":"H2''", "H2*2":"H2''", "H2'1":"H2' ",
+    "H2'2":"H2''", "H3* ":"H3' ", "H4* ":"H4' ", "H5*1":"H5' ", "H5*2":"H5''",
+    "H5'1":"H5' ", "H5'2":"H5''", "'H5'":"H5''", "HO'2":"HO2'", "H5T ":"HO5'",
+    "H3T ":"HO3 ", "O1' ":"O4' ", "OA  ":"OP1 ", "OB  ":"OP2 ", "O1P ":"OP1 ",
+    "O2P ":"OP2 ", "CH3 ":"CA  "}
+
+residue_name_translator = {
+    "AD  ":"ADE ", "AD5 ":"ADE5", "AD3 ":"ADE3", "GU  ":"GUA ", "GU5 ":"GUA5",
+    "GU3 ":"GUA3", "CY  ":"CYT ", "CY5 ":"CYT5", "CY3 ":"CYT3", "UR  ":"URA ",
+    "UR5 ":"URA5", "UR3 ":"URA3", "DA  ":"DAD ", "DA5 ":"DAD5", "DA3 ":"DAD3",
+    "DG  ":"DGU ", "DG5 ":"DGU5", "DG3 ":"DGU3", "DC  ":"DCY ", "DC5 ":"DCY5",
+    "DC3 ":"DCY3", "DT  ":"DTH ", "DT5 ":"DTH5", "DT3 ":"DTH3", "NHYP":"HYP ",
+    "CHYP":"HYP ", "NALA":"ALA ", "CALA":"ALA ", "NARG":"ARG ", "CARG":"ARG ",
+    "NASN":"ASN ", "CASN":"ASN ", "NASP":"ASP ", "CASP":"ASP ", "NCYS":"CYS ",
+    "CCYS":"CYS ", "NCYX":"CYX ", "CCYX":"CYX ", "NGLN":"GLN ", "CGLN":"GLN ",
+    "NGLU":"GLU ", "CGLU":"GLU ", "NGLY":"GLY ", "CGLY":"GLY ", "NHID":"HID ",
+    "CHID":"HID ", "NHIE":"HIE ", "CHIE":"HIE ", "NHIP":"HIP ", "CHIP":"HIP ",
+    "NILE":"ILE ", "CILE":"ILE ", "NLEU":"LEU ", "CLEU":"LEU ", "NLYS":"LYS ",
+    "CLYS":"LYS ", "NMET":"MET ", "CMET":"MET ", "NPHE":"PHE ", "CPHE":"PHE ",
+    "NPRO":"PRO ", "CPRO":"PRO ", "NSER":"SER ", "CSER":"SER ", "NTHR":"THR ",
+    "CTHR":"THR ", "NTRP":"TRP ", "CTRP":"TRP ", "NTYR":"TYR ", "CTYR":"TYR ",
+    "NVAL":"VAL ", "CVAL":"VAL ", "NHIS":"HIS ", "CHIS":"HIS ", "G   ":"GUA ",
+    "G5  ":"GUA5", "G3  ":"GUA3", "A   ":"ADE ", "A5  ":"ADE5", "A3  ":"ADE3",
+    "C   ":"CYT ", "C5  ":"CYT5", "C3  ":"CYT3", "U   ":"URA ", "U5  ":"URA5",
+    "U3  ":"URA3", "RA  ":"ADE ", "RA5 ":"ADE5", "RA3 ":"ADE3", "RC  ":"CYT ",
+    "RC5 ":"CYT5", "RC3 ":"CYT3", "RG  ":"GUA ", "RG5 ":"GUA5", "RG3 ":"GUA3",
+    "RU  ":"URA ", "RU5 ":"URA5", "RU3 ":"URA3"}
+
+# For dat & frcmod files
+global_variables = [
+    "ff_title", "atmty", "mass", "RvdW", "DvdW", "cmt_vdW", "cmt_at", "functyp",
+    "c14e", "c14v", "IFatm", "bd", "bfc", "blen", "cmt_bd", "IFbd", "ag", "afc",
+    "angl", "cmt_ag", "IFag", "tdiv", "tor", "tfc", "tphase", "tperi","cmt_tor", 
+    "IFtor", "idiv", "imp", "ifc", "iphase", "iperi", "cmt_imp", "IFimp","hyd",
+    "hyd_coe", "cmt_hyd", "IFhyd"]
+
+# For in & prep files
+global_variables = global_variables + [
+    "dbg", "typgen", "fftypcod", "nam_db", "res_titl", "outfilnm", "Rres_nam",
+    "IFRres_nam", "res_nam", "typcod", "out_fmt", "typintcod", "dumatm_omit", 
+    "sym_dumatm", "pos_delete_dumatm", "cut_dist", "atmnm", "atmtyp", "tree", 
+    "atmnum_bd", "atmnum_ag", "atmnum_tor", "blen_i", "angl_i", "phi_i", "chg",
+    "cmt_iopt", "iopt_chg", "iopt_imp", "iopt_loop", "Fter", "restyp"]
+for var_name in global_variables:
+    globals()[var_name] = []
+
+#########################################################################################
+
+def find_file_in_directory(directory, filename):
+    for root, dirs, files in os.walk(directory):
+        if filename in files:
+            return os.path.join(root, filename)
+
+def find_file(filename):
+    if os.path.isfile(filename):
+        return filename
+    for env_var in ["J_PRESTO_AMBER_DATABASE_PATH", "J_PRESTO_PATH"]:
+        paths = os.environ.get(env_var, "")
+        for directory in paths.split(os.pathsep):
+            if directory:
+                found_file = find_file_in_directory(directory, filename)
+                if found_file:
+                    return found_file
+    sys.exit(f"!! ERROR !!\n{filename} not found or could not be opened.")
+
+def maintenance_inputs(lst):
+    new_lst = [] ; keywords = ["loadamberparams", "loadoff"]
+    for tmp in lst:
+        filename = find_file(tmp)
+        if tmp.startswith("leaprc"):
+            with open(filename, "r") as fil:
+                lines = fil.readlines()
+                for line in lines:
+                    for keyword in keywords:
+                        if keyword in line.lower():
+                            parts = line.split()
+                            for i, part in enumerate(parts):
+                                if part.lower() == keyword and i + 1 < len(parts):
+                                    new_lst.append(find_file(parts[i + 1]))
+        else:
+            new_lst.append(filename)
+    return new_lst
+
+def read_datablock(file, multiline_flag, space_flag):
+    lines = []
+    while True:
+        line = file.readline()
+        if not line:
+            return lines
+        if line.startswith(co):
+            continue
+        line = line.split(co)[0].strip()
+        if space_flag:
+            if not line:
+                return lines
+        else:
+            if not line:
+                if lines == []:
+                    continue
+                else:
+                    return lines
+        lines.append(line)
+        if not multiline_flag:
+            return lines
+
+def read_atomtypes_and_masses(lines):
+    for line in lines:
+        tmp = line.split()
+        atmty.append(tmp[0]) ; mass.append(float(tmp[1]))
+        cmt_at.append(line[line.index(tmp[2]):] if len(tmp) >= 3 else "")
+
+def read_parameters(line):
+    tmp = line.split() ; name = tmp[0] ; idx = 0
+    for part in tmp[1:]:
+        if not part.startswith("-"):
+            break
+        name += part ; idx += 1
+    atom = re.split(r'(?<=-)-(?!-)|(?<!-)-(?!-)', name) ; other = tmp[idx+1:]
+    return atom, other
+
+def read_bond_parameters(lines, ifil):
+    for line in lines:
+        (bd1, bd2), tmp = read_parameters(line)
+        bd1, bd2 = sorted([bd1, bd2])
+        bd.append([bd1.strip(), bd2.strip()]) ; bfc.append(float(tmp[0])) ; blen.append(float(tmp[1]))
+        cmt_bd.append(line[line.index(tmp[2]):] if len(tmp) >= 3 else "")
+        IFbd.append(ifil)
+
+def read_angle_parameters(lines, ifil):
+    for line in lines:
+        (ag1, ag2, ag3), tmp = read_parameters(line)
+        if ag1 > ag3:
+            ag1, ag3 = ag3, ag1
+        ag.append([ag1.strip(), ag2.strip(), ag3.strip()]) ; afc.append(float(tmp[0])) ; angl.append(float(tmp[1]))
+        cmt_ag.append(line[line.index(tmp[2]):] if len(tmp) >= 3 else "")
+        IFag.append(ifil)
+
+def read_torsion_angle_parameters(lines, ifil):
+    pNtor = len(tor)
+    for line in lines:
+        Ttor, tmp = read_parameters(line)
+        if Ttor[1] > Ttor[2]:
+            Ttor[1], Ttor[2] = Ttor[2], Ttor[1] ; Ttor[0], Ttor[3] = Ttor[3], Ttor[0]
+        elif Ttor[1] == Ttor[2] and Ttor[0] > Ttor[3]:
+            Ttor[0], Ttor[3] = Ttor[3], Ttor[0]
+        Itor, Ftor = len(tor), False ; Ttor = [tmp.strip() for tmp in Ttor[:4]]
+        for j in range(pNtor, len(tor)):
+            if Ttor == tor[j][:4]:
+                Itor, Ftor = j, True
+                break
+        if not Ftor:
+            tor.append(Ttor[:4])
+            tdiv.append([]) ; tfc.append([]) ; tphase.append([]) ; tperi.append([])
+            cmt_tor.append([]) ; IFtor.append([])
+        tdiv[Itor].append(int(tmp[0])) ; tfc[Itor].append(float(tmp[1]))
+        tphase[Itor].append(float(tmp[2])) ; tperi[Itor].append(abs(float(tmp[3])))
+        cmt_tor[Itor].append(line[line.index(tmp[4]):] if len(tmp) >= 5 else "")
+        IFtor[Itor].append(ifil)
+
+def read_improper_torsion_angle_parameters(lines, ifil):
+    for line in lines:
+        Timp, tmp = read_parameters(line) ; imp.append([tmp.strip() for tmp in Timp[:4]])
+        ifc.append(float(tmp[0])) ; iphase.append(float(tmp[1])) ; iperi.append(float(tmp[2]))
+        cmt_imp.append(line[line.index(tmp[3]):] if len(tmp) >= 4 else "")
+        IFimp.append(ifil) ; idiv.append(1)
+
+def read_hydrogen_bond_parameters(lines, ifil):
+    for line in lines:
+        tmp = line.split()
+        hyd1, hyd2 = tmp[0].ljust(2)[:2], tmp[1].ljust(2)[:2]
+        if hyd1 > hyd2:
+            hyd1, hyd2 = hyd2, hyd1
+        hyd.append([hyd1.strip(), hyd2.strip()]) ; hyd_coe.append([float(tmp[2]), float(tmp[3])])
+        cmt_hyd.append(line[line.index(tmp[4]):] if len(tmp) >= 5 else "")
+        IFhyd.append(ifil)
+
+def read_vdW_parameters(lines, ifil, iNat, eqty):
+    vdW = [] ; tRvdW = [] ; tDvdW = [] ; Tcmt_vdW = []
+    for line in lines:
+        tmp = line.split()
+        vdW.append(tmp[0]) ; tRvdW.append(float(tmp[1])) ; tDvdW.append(float(tmp[2]))
+        Tcmt_vdW.append(line[line.index(tmp[3]):] if len(tmp) >= 4 else "")
+
+    r1 = 5.0 / 6.0 ; Nat = len(atmty)
+    functyp.extend([1] * (Nat - iNat)) ; c14e.extend([r1] * (Nat - iNat)) ; c14v.extend([0.5] * (Nat - iNat))
+    RvdW.extend([0.0] * (Nat - iNat)) ; DvdW.extend([0.0] * (Nat - iNat)) ; cmt_vdW.extend([""] * (Nat - iNat))
+    for i, Tatmty in enumerate(atmty[iNat:Nat]):
+        for j, v in enumerate(vdW):
+            if Tatmty == v:
+                RvdW[i+iNat] = tRvdW[j] ; DvdW[i+iNat] = tDvdW[j] ; cmt_vdW[i+iNat] = Tcmt_vdW[j]
+                break
+        else:
+            for j, ty in enumerate(eqty):
+                if Tatmty in ty[1:]:
+                    for k, v in enumerate(vdW):
+                        if v == ty[0]:
+                            RvdW[i+iNat] = tRvdW[k] ; DvdW[i+iNat] = tDvdW[k] ; cmt_vdW[i+iNat] = Tcmt_vdW[k]
+                            break
+                    else:
+                        continue
+                    break
+
+    IFatm[iNat:Nat] = [ifil] * (Nat - iNat)
+
+def input_dat(ifil, filename):
+
+    with open(filename, "r") as file:
+
+        ff_title.append(read_datablock(file, False, True)[0])
+        iNat = len(atmty)
+        read_atomtypes_and_masses(read_datablock(file, True, True))
+        file.readline()
+        read_bond_parameters(read_datablock(file, True, True), ifil)
+        read_angle_parameters(read_datablock(file, True, True), ifil)
+        read_torsion_angle_parameters(read_datablock(file, True, True), ifil)
+        read_improper_torsion_angle_parameters(read_datablock(file, True, True), ifil)
+        read_hydrogen_bond_parameters(read_datablock(file, True, True), ifil)
+
+        # Read equivalent atom list for vdW
+        eqty = []
+        lines = read_datablock(file, True, True)
+        for line in lines:
+            eqty.append([line[i:i+4].strip() for i in range(0, len(line), 4)])
+
+        # Read label for vdW potential parameters
+        lines = read_datablock(file, False, True)
+        tmp = lines[0].strip().split()
+        if tmp[0] != "MOD4" or tmp[1] != "RE":
+            print("** ERROR  for input *.dat file **")
+            print("This program supprots only 'RE' for the type of 6-12 potential parameter")
+            sys.exit()
+        read_vdW_parameters(read_datablock(file, True, True), ifil, iNat, eqty)
+
+def input_in(ifil, filename):
+
+    local_variables = ["Tatmnm", "Tatmtyp", "Ttree", "Tatmnum_bd", "Tatmnum_ag", "Tatmnum_tor", 
+                       "Tblen_i", "Tangl_i", "Tphi_i", "Tchg"]
+    with open(filename, "r") as file:
+
+        # Read file information
+        ires = len(res_nam)
+        line = read_datablock(file, False, False)[0].split()
+        dbg.append(int(line[0])) ; typgen.append(int(line[1])) ; fftypcod.append(int(line[2]))
+        nam_db.append(file.readline().strip())
+        if fftypcod[-1] not in [2, 200, 201]:
+            print("** ERROR for input *.in or *.prep file **")
+            print("This program supports fftypcod only to ")
+            print("    2: All atom model")
+            print("  200: All atom charged N-terminal AA. residues")
+            print("  201: All atom charged C-terminal AA. residues")
+            sys.exit()
+
+        while True:
+
+            # Read basic information
+            lines = read_datablock(file, False, False)
+            if not lines[0] or lines[0] == "STOP":
+                break
+            res_titl.append(lines[0])
+            outfilnm.append(file.readline().strip())
+
+            lines = read_datablock(file, True, False)
+            tmp = lines[0].split()
+            res_nam.append(tmp[0].ljust(4)[:4]) ; Rres_nam.append(tmp[0].ljust(4)[:4])
+            typcod.append(tmp[1].ljust(3)[:3]) ; out_fmt.append(int(tmp[2]))
+            if typcod[-1] != "INT":
+                print("** ERROR for input *.in or *.prep file **")
+                print('typcod was not "int".')
+                sys.exit()
+            tmp = lines[1].split()
+            typintcod.append(tmp[0].ljust(4)[:4]) ; dumatm_omit.append(tmp[1].ljust(5)[:5])
+            sym_dumatm.append(tmp[2].ljust(4)[:4]) ; pos_delete_dumatm.append(tmp[3].ljust(3)[:3])
+            if typintcod[-1][:4] != "CORR":
+                print("** ERROR for input *.in or *.prep file **")
+                print('typintcod was not "CORR"')
+                sys.exit()
+            cut_dist.append(float(lines[2]))
+
+            for var_name in local_variables:
+                globals()[var_name] = []
+            for line in lines[3:]:
+                data = line.split()
+                Tatmnm.append(data[1].ljust(4)[:4]) ; Tatmtyp.append(data[2]) ; Ttree.append(data[3])
+                Tatmnum_bd.append(int(data[4])) ; Tatmnum_ag.append(int(data[5])) ; Tatmnum_tor.append(int(data[6]))
+                Tblen_i.append(float(data[7])) ; Tangl_i.append(float(data[8])) ; Tphi_i.append(float(data[9]))
+                Tchg.append(float(data[10]) if len(data) >= 11 else 0.)
+            atmnm.append(Tatmnm) ; atmtyp.append(Tatmtyp) ; tree.append(Ttree)
+            atmnum_bd.append(Tatmnum_bd) ; atmnum_ag.append(Tatmnum_ag) ; atmnum_tor.append(Tatmnum_tor)
+            blen_i.append(Tblen_i) ; angl_i.append(Tangl_i) ; phi_i.append(Tphi_i) ; chg.append(Tchg)
+
+            # Read optional information            
+            Tcmt_iopt = [""] * 3 ; Tiopt_chg = [] ; Tiopt_imp = [] ; Tiopt_loop = []
+            while True:
+                lines = read_datablock(file, False, False)
+                data = lines[0].split()
+                keyword = data[0] ; value = (line[line.index(data[1]):] if len(data) >= 2 else "")
+                if keyword == "CHARGE":
+                    Tcmt_iopt[0] = value
+                    lines = read_datablock(file, True, True)
+                    for line in lines:
+                        data = line.split()
+                        for j in range(len(data)):
+                            Tiopt_chg.append(float(data[j]))
+                    for i in range(3, len(Tiopt_chg)+3):
+                        chg[-1][i] = Tiopt_chg[i - 3]
+                elif keyword == "IMPROPER":
+                    Tcmt_iopt[1] = value
+                    lines = read_datablock(file, True, True)
+                    for line in lines:
+                        data = line.split()
+                        if len(data) != 4:
+                            print("** ERROR for input *.in or *.prep file **")
+                            print("Each pair for IMPROPER should have 4 atoms")
+                            print("Residue name : ",res_nam[-1])
+                            sys.exit()
+                        Tiopt_imp.append([item.ljust(4)[:4] for item in data])
+                elif keyword == "LOOP":
+                    cmt_iopt[2]= value
+                    lines = read_datablock(file, True, True)
+                    for line in lines:
+                        data = line.split()
+                        if len(data) != 2:
+                            print("** ERROR for input *.in or *.prep file **")
+                            print("Each pair for LOOP should have 2 atoms")
+                            print("Residue name : ",res_nam[-1])
+                            sys.exit()
+                        Tiopt_loop.append([item.ljust(4)[:4] for item in data])
+                elif keyword == "DONE":
+                    break
+            iopt_chg.append(Tiopt_chg) ; iopt_imp.append(Tiopt_imp) ; iopt_loop.append(Tiopt_loop)
+            cmt_iopt.append(Tcmt_iopt)
+        nres = len(res_nam)
+        IFRres_nam[ires:nres] = [ifil] * (nres-ires)
+
+def make_libdatablock(file_content):
+    lines = file_content.split("\n")
+    title = [] ; block = [] ; flag = False
+    for line in lines:
+        line = line.split(co)[0]
+        if not line:
+            continue
+        if line.startswith("!"):
+            if flag:
+                block.append(Tblock)
+            title.append(line) ; Tblock = [] ; flag = True
+        else:
+            Tblock.append(line)
+    Tblock.append(line)
+    return title, block
+
+def calc_intcod(i1, i2, i3, i4, cod):
+    AB = [c2 - c1 for c2, c1 in zip(cod[i2], cod[i1])]
+    rAB = math.sqrt(sum(a ** 2 for a in AB))
+    AB = [a / rAB for a in AB]
+    blen = rAB
+
+    if i1 == i3:
+        angl = 0.0 ; tphase = 0.0
+        return blen, angl, tphase
+
+    BC = [c3 - c2 for c3, c2 in zip(cod[i3], cod[i2])]
+    rBC = math.sqrt(sum(b ** 2 for b in BC))
+    BC = [b / rBC for b in BC]
+    angl = 180.0 - math.acos(sum(a * b for a, b in zip(AB, BC))) * rpi
+
+    if i1 == i4 or i4 >= len(cod):
+        tphase = 0.0
+        return blen, angl, tphase
+
+    CD = [c4 - c3 for c4, c3 in zip(cod[i4], cod[i3])]
+    rCD = math.sqrt(sum(c ** 2 for c in CD))
+    CD = [c / rCD for c in CD]
+
+    ABC = [AB[1] * BC[2] - AB[2] * BC[1], AB[2] * BC[0] - AB[0] * BC[2], AB[0] * BC[1] - AB[1] * BC[0]]
+    r = math.sqrt(sum(a ** 2 for a in ABC))
+    ABC = [a / r for a in ABC]
+
+    BCD = [BC[1] * CD[2] - BC[2] * CD[1], BC[2] * CD[0] - BC[0] * CD[2], BC[0] * CD[1] - BC[1] * CD[0]]
+    r = math.sqrt(sum(b ** 2 for b in BCD))
+    BCD = [b / r for b in BCD]
+
+    dot_product_ABC_BCD = sum(a * b for a, b in zip(ABC, BCD))
+    r = math.acos(max(min(dot_product_ABC_BCD, 1.0), -1.0)) * rpi
+
+    test = [ABC[1] * BCD[2] - ABC[2] * BCD[1], ABC[2] * BCD[0] - ABC[0] * BCD[2], ABC[0] * BCD[1] - ABC[1] * BCD[0]]
+    dot_product_test_BC = sum(t * b for t, b in zip(test, BC))
+    if dot_product_test_BC < 0.0:
+        r = -r
+
+    if abs(r + 180.0) < 1.0e-6:
+        r = 180.0
+    elif abs(r) < 1.0e-6:
+        r = 0.0
+    tphase = r
+    return blen, angl, tphase
+
+def input_lib(ifil, filename):
+
+    # Read a lib file
+    ires = len(res_nam)
+    tc_mapping = {0: "E", 1: "S", 2: "B", 3: "3", 4: "4", 5: "5", 6: "6"}
+    with open(filename, "r") as file:
+        file_content = file.read()
+    titles, blocks = make_libdatablock(file_content)
+    check = {}
+
+    for title, block in zip(titles, blocks):
+
+        if title.startswith("!!index"):
+            for line in block:
+                tmp = line.replace('"','').strip()
+                if tmp.endswith("BOX"):
+                    continue
+                res_nam.append(tmp.ljust(4)[:4]) ; Rres_nam.append(tmp.ljust(4)[:4])
+                res_titl.append("") ; outfilnm.append("") ; typcod.append("") ; out_fmt.append("")
+                typintcod.append("") ; sym_dumatm.append("") ; pos_delete_dumatm.append("")
+                cut_dist.append("") ; cmt_iopt.append("") ; check[tmp] = []
+
+        elif title.startswith("!entry"):
+            elements = re.split(r"[ .]", title)
+            if elements[1].endswith("BOX"):
+                continue
+            element = elements[3]
+            if check[elements[1]] == []:
+                Tatmnum_bd = [0, 1, 2, 3] ; Tatmnum_ag = [1, 0, -1, 0] ; Tatmnum_tor = [2, 1, 0, 0]
+                Tiopt_loop = [] ; connect = [] ; Ttree = ["M"] * 4 ; tc = [0, 0, 0, 0]
+
+            if element == "atoms":
+                Tatmnm = ["DUMM"] * 3 ; Tatmtyp = ["DU"] * 3 ; Tchg = [0.0] * 3 ; check[elements[1]].append("atoms")
+                for line in block:
+                    tmp = line.replace('"','').split()
+                    Tatmnm.append(tmp[0].ljust(4))
+                    Tatmtyp.append(tmp[1])
+                    Tchg.append(float(tmp[7]))
+                atmnm.append(Tatmnm) ; atmtyp.append(Tatmtyp) ; chg.append(Tchg) ; iopt_chg.append(Tchg)
+
+            elif element == "connect":
+                dumatm_omit.append("NOMI " if block[0].strip() == "0" else "OMIT ") ; check[elements[1]].append("connect")
+
+            elif element == "connectivity":
+                Ttree = ["M"] * 3
+                for line in block:
+                    tmp = line.strip().split()
+                    i, j = int(tmp[0]) + 3, int(tmp[1]) + 3 # + 3 for dummy atoms
+                    if i > j:
+                        i, j = j, i
+                    connect.append([i, j])
+                Tatmnum_bd = [i for i in range(len(atmnm[-1]))]
+                for idx in connect:
+                    Tatmnum_bd[idx[1]-1] = min(idx[0], Tatmnum_bd[idx[1]-1])
+                if len(connect)-len(Tatmnm)-4 != 0:
+                    for idx in connect:
+                        if idx[0] != Tatmnum_bd[idx[1]-1]:
+                            Tiopt_loop.append([Tatmnm[idx[0]-1], Tatmnm[idx[1]-1]])
+                Tatmnum_ag = [1, 0, -1] + [0] * (len(Tatmnm) - 3)
+                for i in range(3, len(Tatmnm)):
+                    Tatmnum_ag[i] = Tatmnum_bd[Tatmnum_bd[i]-1]
+                Tatmnum_tor = [2,1,0] + [0] * (len(Tatmnm) - 3)
+                for i in range(3, len(Tatmnm)):
+                    Tatmnum_tor[i] = Tatmnum_bd[Tatmnum_ag[i]-1]
+                tc = [0] * len(Tatmnm)
+                for i in range(4, len(Tatmnm)):
+                    tc[Tatmnum_bd[i]-1] += 1
+                for i in range(3,len(Tatmnm)):
+                    Ttree.append(tc_mapping.get(tc[i]))
+                for i, idx in enumerate(connect):
+                    if idx[0] != Tatmnum_bd[idx[1]-1]:
+                        tc[idx[0]-1] += 1 ; tc[idx[1]-1] += 1
+
+            elif element == "positions":
+                check[elements[1]].append("positions")
+                cod = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]]
+                for i, line in enumerate(block):
+                    tmp = line.split()
+                    cod.append([float(tmp[0]), float(tmp[1]), float(tmp[2])])
+
+                Tblen_i = [0.0, 1.0, 1.0] ; Tangl_i = [0.0, 0.0, 90.0] ; Tphi_i = [0.0] * 3
+                for i in range(3, len(Tatmnm)):
+                    iatm1 = Tatmnum_bd[i]-1 ; iatm2 = Tatmnum_bd[iatm1]-1 ; iatm3 = Tatmnum_bd[iatm2]-1
+                    TTblen_i, TTangl_i, TTphi_i = calc_intcod(i, iatm1, iatm2, iatm3, cod)
+                    Tblen_i.append(TTblen_i) ; Tangl_i.append(TTangl_i) ; Tphi_i.append(TTphi_i)
+                blen_i.append(Tblen_i) ; angl_i.append(Tangl_i) ; phi_i.append(Tphi_i)
+                atmnum_bd.append(Tatmnum_bd) ; atmnum_ag.append(Tatmnum_ag) ; atmnum_tor.append(Tatmnum_tor)
+                iopt_loop.append(Tiopt_loop)
+                
+            elif element == "residueconnect":
+                tmp = block[0].split() ; check[elements[1]].append("residueconnect")
+                ist = int(tmp[0]) ; ien = int(tmp[1])
+                tc = [0] * len(Tatmnm) ; itc = [[] for _ in range(len(Tatmnm))]
+                if ist != 0:
+                    tc[3] += 1 ; itc[3].append(2)
+                for idx in connect:
+                    i = idx[0] - 1 ; j = idx[1] - 1
+                    tc[i] += 1 ; tc[j] += 1 ; itc[i].append(j) ; itc[j].append(i)
+                if ien != 0:
+                    ien += 2
+                    tc[ien] += 1 ; itc[ien].append(len(Tatmnm))
+                    while True:
+                        Ttree[ien] = "M"
+                        ien = Tatmnum_bd[ien] - 1
+                        if ien <= 2:
+                            break
+                else:
+                    ien = len(Tatmnm) - 1
+                    while True:
+                        if not Tatmtyp[ien].strip().startswith(("H", "h", "EP")):
+                            Ttree[ien] = "M"
+                        ien = Tatmnum_bd[ien] - 1
+                        if ien <= 2:
+                            break
+                Tiopt_imp = []
+                for i in range(3, len(Tatmnm)):
+                    if tc[i] != 3:
+                        continue
+                    Titc = sorted(itc[i])
+                    if Titc[0] <= 2:
+                        Tiopt_imp.append(["-M  ", Tatmnm[Titc[1]], Tatmnm[i], Tatmnm[Titc[2]]])
+                    elif Titc[2] >= len(Tatmnm):
+                        Tiopt_imp.append([Tatmnm[Titc[0]], "+M  ", Tatmnm[i], Tatmnm[Titc[1]]])
+                    else:
+                        Tiopt_imp.append([Tatmnm[Titc[0]], Tatmnm[Titc[1]], Tatmnm[i], Tatmnm[Titc[2]]])
+                tree.append(Ttree) ; iopt_imp.append(Tiopt_imp)
+
+    nres = len(res_nam)
+    IFRres_nam[ires:nres] = [ifil] * (nres-ires)
+    for key, value in check.items():
+        if len(value) != 4:
+            print(f"!! ERROR !!")
+            print(f"Not enough information is given about residue {key} in the {filename} file.")
+            sys.exit()
+
+    # For solvent box
+    if solvent_box != []:
+        for sol in solvent_box:
+            check = 0
+            for title, block in zip(titles, blocks):
+                if title.startswith(f"!entry.{sol}.unit.boundbox "):
+                    if float(block[0]) == 1.0:
+                        check += 1
+                        solvent_bound_angle = float(block[1]) ; solvent_bound = [float(tmp) for tmp in block[2:]]
+                elif title.startswith(f"!entry.{sol}.unit.positions "):
+                    check += 1
+                    solvent_positions = [[float(tmp) for tmp in line.split()] for line in block]
+                elif title.startswith(f"!entry.{sol}.unit.atoms "):
+                    check += 1 ; solvent_atmname = [] ; solvent_atmtype = []
+                    for line in block:
+                        tmp = line.replace('"','').strip().split() ; array = tmp[0:2]
+                        if array[0] in solvent_atmname:
+                            break
+                        solvent_atmname.append(array[0]) ; solvent_atmtype.append(array[1])
+            if check == 3:
+                Tdict = {} ; Tdict["bound"] = solvent_bound ; Tdict["atmname"] = solvent_atmname
+                Tdict["atmtype"] = solvent_atmtype ; Tdict["positions"] = solvent_positions
+                solvent_box_dict[sol] = Tdict
+
+def input_frcmod(ifil, filename):
+    with open(filename, "r") as file:
+
+        iNat = len(atmty)
+        ff_title.append(file.readline().strip())
+
+        while True:
+            lines = read_datablock(file, True, False)
+            if lines == []:
+                break
+
+            if lines[0].startswith("MASS"):
+                read_atomtypes_and_masses(lines[1:])
+            elif lines[0].startswith("BOND"):
+                read_bond_parameters(lines[1:], ifil)
+            elif lines[0].startswith("ANGL"):
+                read_angle_parameters(lines[1:], ifil)
+            elif lines[0].startswith("DIHE"):
+                read_torsion_angle_parameters(lines[1:], ifil)
+            elif lines[0].startswith("IMPR"):       
+                read_improper_torsion_angle_parameters(lines[1:], ifil)
+            elif lines[0].startswith("HBON"):       
+                read_hydrogen_bond_parameters(lines[1:])
+            elif lines[0].startswith("NONB"):       
+                read_vdW_parameters(lines[1:], ifil, iNat, [])
+
+def input_tpl():
+    global nin, ndat, input_files
+    input_files = maintenance_inputs(input_files)
+    for ifil, filename in enumerate(input_files):
+        print("+ Now input ", filename) ; extension = filename.split(".")[-1]
+        if extension == "dat":
+            ndat += 1
+            input_dat(ifil,filename)
+        elif extension in ["in", "prep"]:
+            nin += 1
+            input_in(ifil, filename)
+        elif extension == "lib":
+            nin += 1
+            input_lib(ifil, filename)
+        elif "frcmod" in filename:
+            ndat += 1
+            input_frcmod(ifil, filename)
+        else:
+            print("** ERROR **")
+            print("The above file is NOT appropriate for input files.")
+            print("Please check the file type.")
+    print()
+
+def check_list(name, namelist, comparelist, otherlist, IFlist):
+    global input_files
+
+    new_namelist, new_IFlist = [], []
+    new_comparelist, new_otherlist = [[] for _ in range(len(comparelist))], [[] for _ in range(len(otherlist))]
+    checked = {} ; index = 0
+    for item, compare_values, other_values, idx in zip(namelist, zip(*comparelist), zip(*otherlist), IFlist):
+        if str(item) in checked:
+            index_to_compare = checked[str(item)]
+            if any(value != comparelist[i][index_to_compare] for i, value in enumerate(compare_values)):
+                if name == "torsion angle":
+                    print("+", name, "information of", "-".join(item), "in",
+                          os.path.basename(input_files[IFlist[index_to_compare][0]]),"is overwritten by that in", 
+                          os.path.basename(input_files[idx[0]]))
+                elif name == "atom":
+                    print("+", name, "information of", item, "in", 
+                          os.path.basename(input_files[IFlist[index_to_compare]]),"is overwritten by that in", 
+                          os.path.basename(input_files[idx]))
+                else:
+                    print("+", name, "information of", "-".join(item), "in", 
+                          os.path.basename(input_files[IFlist[index_to_compare]]),"is overwritten by that in", 
+                          os.path.basename(input_files[idx]))
+                print("          " + " ".join(str(comparelist[i][index_to_compare]) for i in range(len(comparelist))))
+                print("    ->    " + " ".join(str(value) for value in compare_values))
+                new_namelist[index_to_compare] = item
+                new_IFlist[index_to_compare] = idx
+                for k in range(len(comparelist)):
+                    new_comparelist[k][index_to_compare] = compare_values[k]
+                for k in range(len(otherlist)):
+                    new_otherlist[k][index_to_compare] = other_values[k]
+        else:
+            checked[str(item)] = index
+            new_namelist.append(item)
+            new_IFlist.append(idx)
+            for k in range(len(comparelist)):
+                new_comparelist[k].append(compare_values[k])
+            for k in range(len(otherlist)):
+                new_otherlist[k].append(other_values[k])
+            index += 1
+
+    print(f"+ Number of input {name}s =", len(new_namelist), f"\n")
+    return new_namelist, new_comparelist, new_otherlist, new_IFlist
+
+def change_order_torsion(lst):
+    N = len(lst[0]) ; L = len(lst)
+    lst1 = [[] for _ in range(L)] ; lst2 = [[] for _ in range(L)] ; lst3 = [[] for _ in range(L)]
+    for i in range(N):
+        if lst[0][i][1] == "X":
+            for j in range(L):
+                lst2[j].append(lst[j][i])
+        elif lst[0][i][0] == "X":
+            for j in range(L):
+                lst1[j].append(lst[j][i])
+        else:
+            for j in range(L):
+                lst3[j].append(lst[j][i])
+    for j in range(L):
+        lst[j] = [lst3[j] + lst1[j] + lst2[j]]
+        lst[j] = [item for sublist in lst[j] if sublist for item in sublist]
+    return lst
+
+def name_translator(lst, dic):
+    return [dic.get(name, name) for name in lst]
+
+def check_consistency():
+    global input_files
+
+    # Check atom list
+    global atmty, mass, RvdW, DvdW, functyp, c14e, c14v, cmt_vdW, cmt_at, IFatm
+    atmty, [mass, RvdW, DvdW, functyp, c14e, c14v], [cmt_vdW, cmt_at], IFatm = \
+           check_list("atom", atmty, [mass, RvdW, DvdW, functyp, c14e, c14v], [cmt_vdW, cmt_at], IFatm)
+
+    # Check bond list
+    global bd, bfc, blen, cmt_bd, IFbd
+    bd, [bfc, blen], [cmt_bd], IFbd = check_list("bond", bd, [bfc, blen], [cmt_bd], IFbd)
+
+    # Check angle list
+    global ag, afc, angl, cmt_ag, IFag
+    ag, [afc, angl], [cmt_ag], IFag = check_list("angle", ag, [afc, angl], [cmt_ag], IFag)
+
+    # Check torsion angle list
+    global tor, tfc, tdiv, tperi, tphase, cmt_tor, IFtor
+    tor, [tfc, tdiv, tperi, tphase], [cmt_tor], IFtor = \
+         check_list("torsion angle", tor, [tfc, tdiv, tperi, tphase], [cmt_tor], IFtor)
+    [tor, tfc, tdiv, tperi, tphase, cmt_tor, IFtor] = change_order_torsion([tor, tfc, tdiv, tperi, tphase, cmt_tor, IFtor])
+
+    # Remove some torsion angle information
+    Ntor = len(tor)
+    for i in range(Ntor):
+        if len(tfc[i]) == 1:
+            continue
+        if max(tfc[i]) > 0.0:
+            n = 0
+            for j in range(0, len(tfc[i])):
+                if tfc[i][j] != 0.0:
+                    tfc[i][n] = tfc[i][j] ; tdiv[i][n] = tdiv[i][j] ; tperi[i][n] = tperi[i][j]
+                    tphase[i][n] = tphase[i][j] ; cmt_tor[i][n] = cmt_tor[i][j]
+                    n += 1
+            tfc[i] = tfc[i][:n] ; tdiv[i] = tdiv[i][:n] ; tperi[i] = tperi[i][:n]
+            tphase[i] = tphase[i][:n] ; cmt_tor[i] = cmt_tor[i][:n]
+
+    # Check improper torsion angle list
+    global imp, ifc, idiv, iperi, iphase, cmt_imp, IFimp
+    imp, [ifc, idiv, iperi, iphase], [cmt_imp], IFimp = \
+         check_list("improper torsion angle", imp, [ifc, idiv, iperi, iphase], [cmt_imp], IFimp)
+    [imp, ifc, idiv, iperi, iphase, cmt_imp, IFimp] = change_order_torsion([imp, ifc, idiv, iperi, iphase, cmt_imp, IFimp])
+
+    # Check hydrogen bond list
+    global hyd, hyd_coe, cmt_hyd, IFhyd
+    hyd, [hyd_coe], [cmt_hyd], IFhyd = check_list("hydrogen bond", hyd, [hyd_coe], [cmt_hyd], IFhyd)
+
+    # Chenge old type atom & residue names to the new ones
+    global res_titl, outfilnm, typcod, out_fmt, typintcod, dumatm_omit, sym_dumatm, pos_delete_dumatm, cut_dist, \
+           atmnm, atmtyp, tree, atmnum_bd, atmnum_ag, atmnum_tor, blen_i, angl_i, phi_i, chg, cmt_iopt, \
+           iopt_chg, iopt_imp, iopt_loop, res_nam, Rres_nam, IFRres_nam
+    atmnm = [name_translator(atom, atom_name_translator) for atom in atmnm]
+    iopt_loop = [[name_translator(atom, atom_name_translator) for atom in sublist] for sublist in iopt_loop]
+    iopt_imp = [[name_translator(atom, atom_name_translator) for atom in sublist] for sublist in iopt_imp]
+    res_nam = name_translator(res_nam, residue_name_translator)
+    Rres_nam = name_translator(Rres_nam, residue_name_translator)
+    Rres_nam = [name + "  " for name in Rres_nam]
+
+    # Residue type check
+    for j, Tatmnm in enumerate(atmnm):
+        for i, Tatm in enumerate(Tatmnm[3:], start=3):
+            if Tatm == "N   " and atmtyp[j][i] == "N":
+                restyp.append("p") ; break
+            elif Tatm == "C   " and atmtyp[j][i] == "C":
+                restyp.append("p") ; break
+            elif Tatm == "O5' " and (atmtyp[j][i] == "OH" or atmtyp[j][i] == "OS"):
+                restyp.append("n") ; break
+        else:
+            restyp.append("o")
+    for i, lst in enumerate(iopt_imp):
+        if all("M" not in string for sublist in lst for string in sublist):
+            restyp[i] = "o"
+
+    # Terminal check & Rres_nam change
+    for i, typ in enumerate(restyp):
+        tFter = [False, False]
+        if typ == "p":
+            if dumatm_omit[i][0:4] == "OMIT":
+                tFter[0] = True
+            if atmnm[i][-1] == "O   ":
+                tFter[1] = True
+            if not tFter[0]:
+                Rres_nam[i] = (Rres_nam[i].strip() + "N+").ljust(6)
+            if not tFter[1]:
+                Rres_nam[i] = (Rres_nam[i].strip() + "C-").ljust(6)
+        elif typ == "n":
+            if dumatm_omit[i][0:4] == "OMIT":
+                tFter[0] = True
+            if atmnm[i][-1] == "O3' ":
+                tFter[1] = True
+            if not all(tFter):
+                Rres_nam[i] = (Rres_nam[i].strip() + "*").ljust(6)
+                j = res_nam[i].find("3")
+                if i != -1:
+                    res_nam[i] = res_nam[i][:i].ljust(4)
+                j = res_nam[i].find("5")
+                if i != -1:
+                    res_nam[i] = res_nam[i][:i].ljust(4)
+        Fter.append(tFter)
+
+    # Check topology data in *.in, *.prep files whether residue names are duplicated.
+    n = -1 ; nres = len(res_nam) ; flag = [True] * nres
+    for j in range(nres):
+        if not flag[j]:
+            continue
+        n += 1
+        for i in range(j, nres):
+            if not flag[i]:
+                continue
+            if Rres_nam[j] == Rres_nam[i]:
+                if i != j:
+                    print("+ Residue information of", res_nam[j], "(" + Rres_nam[j], ") in", 
+                          os.path.basename(input_files[IFRres_nam[j]]), "is overwritten by that in", 
+                          os.path.basename(input_files[IFRres_nam[i]]))
+                flag[i] = False
+                res_titl[n] = res_titl[i] ; outfilnm[n] = outfilnm[i] ; typcod[n] = typcod[i] ; out_fmt[n] = out_fmt[i]
+                typintcod[n] = typintcod[i] ; dumatm_omit[n] = dumatm_omit[i] ; sym_dumatm[n] = sym_dumatm[i]
+                pos_delete_dumatm[n] = pos_delete_dumatm[i] ; cut_dist[n] = cut_dist[i] ; atmnm[n] = atmnm[i]
+                atmtyp[n] = atmtyp[i] ; tree[n] = tree[i] ; atmnum_bd[n] = atmnum_bd[i] ; atmnum_ag[n] = atmnum_ag[i]
+                atmnum_tor[n] = atmnum_tor[i] ; blen_i[n] = blen_i[i] ; angl_i[n] = angl_i[i] ; phi_i[n] = phi_i[i]
+                chg[n] = chg[i] ; cmt_iopt[n] = cmt_iopt[i] ; iopt_chg[n] = iopt_chg[i] ; iopt_imp[n] = iopt_imp[i]
+                iopt_loop[n] = iopt_loop[i] ; IFRres_nam[n] = IFRres_nam[i]
+    n = n + 1
+    res_titl = res_titl[:n] ; outfilnm = outfilnm[:n] ; typcod = typcod[:n] ; out_fmt = out_fmt[:n]
+    typintcod = typintcod[:n] ; dumatm_omit = dumatm_omit[:n] ; sym_dumatm = sym_dumatm[:n]
+    pos_delete_dumatm = pos_delete_dumatm[:n] ; cut_dist = cut_dist[:n] ; atmnm = atmnm[:n]
+    atmtyp = atmtyp[:n] ; tree = tree[:n] ; atmnum_bd = atmnum_bd[:n] ; atmnum_ag = atmnum_ag[:n]
+    atmnum_tor = atmnum_tor[:n] ; blen_i = blen_i[:n] ; angl_i = angl_i[:n] ; phi_i = phi_i[:n] ; chg = chg[:n]
+    cmt_iopt = cmt_iopt[:n] ; iopt_chg = iopt_chg[:n] ; iopt_imp = iopt_imp[:n] ; iopt_loop = iopt_loop[:n]
+    IFRres_nam = IFRres_nam[:n] ; res_nam = res_nam[:n] ; Rres_nam = Rres_nam[:n]
+
+    # For phi_i
+    phi_i = [[phi - 360 if phi > 180 else phi + 360 if phi < -180 else phi for phi in tmp] for tmp in phi_i]
+
+    # Remove some iopt_imp data for residues with Ftor[ires][0] = False
+    for ires, tmp in enumerate(dumatm_omit):
+        if tmp[:4] != "OMIT":
+            if iopt_imp[ires]:
+                iopt_imp[ires] = [at for at in iopt_imp[ires] if not any("-M  " in item or "+M  " in item for item in at)]
+
+    # default atom type
+    def defcheck(name, typ, rname):
+        if name not in def_atmtyp:
+            def_atmtyp[name] = typ
+        elif def_atmtyp[name] != typ:
+             print("!! CAUTION !!")
+             print(f"Multiple {name.strip()} types are included.")
+             print(f"  Default {name.strip()} type: {def_atmtyp[name]}" )
+             print(f"    Diff. {name.strip()} type: {typ} in {rname}")
+
+    for j in range(len(Rres_nam)):
+        if all(Fter[j]):
+            if restyp[j] == "p":
+                for i, tmp in enumerate(atmnm[j]):
+                    if tmp == "CA  " or tmp == "C   " or tmp == "O   " or tmp == "N   ":
+                        defcheck(tmp, atmtyp[j][i], Rres_nam[j])
+            elif restyp[j] == "n":
+                for i, tmp in enumerate(atmnm[j]):
+                    if tmp == "C3' " or tmp == "O3' " or tmp == "P   ":
+                        defcheck(tmp, atmtyp[j][i], Rres_nam[j])
+
+def search_eqty(string, eqty):
+    return next((i+1 for i, tmp in enumerate(eqty) for tmp2 in tmp if string == tmp2), None)
+
+def search_eqty2(string):
+    return next((i+1 for i, tmp in enumerate(atmty) if string == tmp), None)
+
+def output_atom_bonded_information(txt, count, tmp, iatm):
+    count += 1
+    if count == 19:
+        txt += f"\n<" ; count = 1
+    txt += f"{str(tmp - iatm).rjust(4)}"
+    return txt, count
+
+def i1_i2_i3(n, ires, iatm):
+    tary = []
+    for i, tmp in enumerate(tree[ires][iatm+1:], start=iatm+1):
+        if tmp == "M":
+            tary.append(i)
+            if len(tary) >= n:
+                return tary[0:n]
+    tary.extend([iatm] * (n - len(tary)))
+    return tary
+
+def itree_check(ires, iatm, i1, i2, i3, ib):
+    if tree[ires][iatm] == "M":
+        return 0
+    flag = 0 ; itree = 0
+    for tmp in ib[i1]:
+        if (tmp != i2 and tmp != i3) or tmp == iatm:
+            if tree[ires][tmp] == "M":
+                return tmp - iatm
+            elif flag < 2 and tree[ires][tmp] != "E":
+                itree = tmp - iatm ; flag = 2
+            elif flag < 1:
+                itree = tmp - iatm ; flag = 1
+    return itree
+
+def output_atom_information(cond, ires, iatm, ist, eqty, ib, ia, it, txt):
+    ist += 1 ; nb = len(ib) ; na = len(ia) ; nt = len(it)
+    nn = search_eqty2(atmtyp[ires][iatm]) - 1
+    if cond == "PRE":
+        Tres_nam = "PRE " ; resnum = "    0"
+    elif cond == "MAIN":
+        Tres_nam = res_nam[ires].strip().ljust(4) ; resnum = "    1"
+    elif cond == "POST":
+        Tres_nam = "POST" ; resnum = "    2"      
+
+    txt += f"{atmnm[ires][iatm].ljust(4)}     {atmtyp[ires][iatm].strip().ljust(4)}{search_eqty(atmtyp[ires][iatm], eqty):4d}"\
+           f" {Tres_nam:4}{resnum}{mass[nn]:12.6f}{RvdW[nn]:12.6f}{chg[ires][iatm]:12.6f}{nb:4}{na:4}{nt:4} ; {ist:3}\n"
+    if nb + na + nt > 0:
+        txt += "<" ; count = 0
+        for tmp in ib:
+            txt, count = output_atom_bonded_information(txt, count, tmp, iatm)
+        for tmp in ia:
+            txt, count = output_atom_bonded_information(txt, count, tmp, iatm)
+        for tmp in it:
+            txt, count = output_atom_bonded_information(txt, count, tmp, iatm)
+        txt += "\n"
+    return ist, txt    
+
+def dot_product(v1, v2):
+    return sum(v1[i] * v2[i] for i in range(3))
+
+def distance_and_normalized_vector(v1, v2):
+    v = [v1[i] - v2[i] for i in range(3)] ; dist = math.sqrt(dot_product(v, v))
+    return dist, [v[i] / dist for i in range(3)]
+
+def cross(t1, t2):
+    t = [t1[1]*t2[2] - t1[2]*t2[1], t1[2]*t2[0] - t1[0]*t2[2], t1[0]*t2[1] - t1[1]*t2[0]]
+    r = math.sqrt(dot_product(t, t))
+    return [t[i] / r for i in range(3)]
+
+def z_matrix_to_cartesian(cod, dist, angl, tors):
+    rad = math.pi / 180.0 ; angl = (180.0 - angl) * rad ; tors = tors * rad
+    tcod = [dist*math.cos(angl),dist*math.cos(tors)*math.sin(angl),dist*math.sin(tors)*math.sin(angl)]
+    _, M1 = distance_and_normalized_vector(cod[2], cod[1])
+    tM = [cod[1][i] - cod[0][i] for i in range(3)]
+    M3 = cross(tM, M1) ; M2 = cross(M3, M1) ; M = [M1, M2, M3]
+    return [sum(M[j][i] * tcod[j] for j in range(3)) + cod[2][i] for i in range(3)]
+
+def cartesian_to_z_matrix(cod):
+    rpi = 180.0 / math.pi
+    dist, AB = distance_and_normalized_vector(cod[2], cod[3])
+    if cod[1] == cod[3]:
+        return dist, 0.0, 0.0
+    _, BC = distance_and_normalized_vector(cod[1], cod[2])
+    angl = 180.0 - math.acos(dot_product(AB, BC)) * rpi
+    if cod[0] == cod[3]:
+        return dist, angl, 0.0
+    _, CD = distance_and_normalized_vector(cod[0], cod[1])
+    ABC = cross(AB, BC) ; BCD = cross(BC, CD)
+    tors = rpi * math.acos(max(min(dot_product(ABC, BCD), 1.0), -1.0))
+    check = [ABC[1]*BCD[2] - ABC[2]*BCD[1], ABC[2]*BCD[0] - ABC[0]*BCD[2], ABC[0]*BCD[1] - ABC[1]*BCD[0]]
+    if dot_product(check, BC) < 0.0:
+        tors = -tors
+    if abs(tors + 180.0) < 0.001:
+        tors = 180.0
+    elif abs(tors) < 0.001:
+        tors = 0.0
+    return dist, angl, tors
+
+def output_tpl(ofile):
+    # Prepara non-bond information
+    pir = math.pi / 180.0 ; natm = len(atmty) ; eqty = [] ; flag_nonbond = [True] * natm
+    for j, jtmp in enumerate(atmty):
+        if flag_nonbond[j]:
+            eqty.append([jtmp])
+            for i, itmp in enumerate(atmty[j+1:], start=j+1):
+                if flag_nonbond[i]:
+                    if (RvdW[i] == RvdW[j] and DvdW[i] == DvdW[j] and functyp[i] == functyp[j] and
+                        c14e[i] == c14e[j] and c14v[i] == c14v[j]):
+                        flag_nonbond[i] = False ; eqty[-1].append(itmp)
+
+    # Skip residues including atoms nondifined the atom type
+    skip_res = []
+    for ires in range(len(atmtyp)):
+        for tmp in atmtyp[ires]:
+            if tmp != "DU" and search_eqty2(tmp) == None:
+                print(f"+ Residue {res_nam[ires]} is removed from tpldb, because it includes undefined atom type {tmp}.")
+                skip_res.append(False) ; break
+        else:
+            skip_res.append(True)
+
+    txt = "; Input AMBER files\n" + "".join(f";     {os.path.basename(tmp)}\n" for tmp in input_files) + "\nPRE>MOLECULES\n"
+    for i, tmp in enumerate(Rres_nam):
+        if skip_res[i]:
+            txt += f"{tmp}          1\n"
+
+    for ires in range(len(atmtyp)):
+        if not skip_res[ires]:
+            continue
+        natm = len(atmnm[ires])
+        # Make information for dummy atoms
+        if Fter[ires][0]:
+            if restyp[ires] == "p":
+                ist = 0 ; tree[ires][0:3] = "M", "M", "E"
+                atmtyp[ires][0:3] = def_atmtyp["CA  "], def_atmtyp["C   "], def_atmtyp["O   "]
+                atmnm[ires][0:3] = "CA  ", "C   ", "O   "
+                chg[ires][0:3] = 0.0337, 0.5973, -0.5679
+            elif restyp[ires] == "n":
+                ist = 1 ; tree[ires][1:3] = "M", "M"
+                atmtyp[ires][1:3] = def_atmtyp["C3' "], def_atmtyp["O3' "]
+                atmnm[ires][1:3] = "C3' ", "O3' "
+                chg[ires][1:3] = 0.2022, -0.5246
+        else:
+            ist = 3
+
+        if Fter[ires][1]:
+            tree[ires].append("M")
+            if restyp[ires] == "p":
+                tmp = "N   " ; chg[ires].append(-0.4157)
+            elif restyp[ires] == "n":
+                tmp = "P   " ; chg[ires].append(1.1662)
+            atmnm[ires].append(tmp) ; atmtyp[ires].append(def_atmtyp[tmp])
+
+        # Make internal coordinates (Zcod)
+        Zcod = [] ; it, ia, ib = atmnum_tor[ires], atmnum_ag[ires], atmnum_bd[ires]
+        if min(it[3], ia[3], ib[3]) > 0:
+            tb, ta, tt = blen_i[ires], angl_i[ires], phi_i[ires]
+            Zcod = [[0.0, 0.0, 0.0]]
+            Zcod.append([tb[1], 0.0, 0.0])
+            Zcod.append([tb[1] + tb[2] * math.cos((180.0-ta[2]) * pir), tb[2] * math.sin((180.0-ta[2]) * pir), 0.0])
+            for i in range(3, natm):
+                cod = [Zcod[it[i]-1], Zcod[ia[i]-1], Zcod[ib[i]-1]]
+                Zcod.append(z_matrix_to_cartesian(cod, tb[i], ta[i], tt[i]))
+           
+        # When the first atom is a hydrogen such in ACE
+        if res_nam[ires] == "ACE " and atmtyp[ires][3][0:1] == "H":
+            ii = next((i for i in range(4, natm) if tree[ires][i] == "M"), None)
+            atmnm[ires][3], atmnm[ires][ii] = atmnm[ires][ii], atmnm[ires][3]
+            atmtyp[ires][3], atmtyp[ires][ii] = atmtyp[ires][ii], atmtyp[ires][3]
+            tree[ires][3], tree[ires][ii] = "M", "E"
+            chg[ires][3], chg[ires][ii] = chg[ires][ii], chg[ires][3]
+            Zcod[3], Zcod[ii] = Zcod[ii], Zcod[3]
+            for i in range(4, natm):
+                if atmnum_bd[ires][i] <= ii + 1:
+                    atmnum_bd[ires][i] = 4
+            Zcod.append(z_matrix_to_cartesian([Zcod[7], Zcod[3], Zcod[2]], 1.335, 116.6, 180.0))
+        if restyp[ires] == "p":
+            Zcod[0], Zcod[1] = Zcod[1], Zcod[2]
+                
+        # Make bond and bond_i information     
+        ib = [[] for _ in range(natm)] ; iib = [[] for _ in range(natm)] ; pbd = []
+        if Fter[ires][0]:
+            if restyp[ires] == "p":
+                atmnum_bd[ires][1:4] = [1, 2, 2]
+            elif restyp[ires] == "n":
+                atmnum_bd[ires][2:4] = [2, 3]
+        for i, k in enumerate(atmnum_bd[ires][ist+1:natm], start=ist+1):
+            ib[k-1].append(i) ; iib[i].append(k-1)
+        if Fter[ires][1]:
+            ib[next(i for i in range(natm-1, ist-1, -1) if tree[ires][i] == "M")].append(natm)
+        ## For loop
+        for pair in iopt_loop[ires]:
+            iatm1 = next(i for i in range(3, natm) if atmnm[ires][i] == pair[0])
+            iatm2 = next(i for i in range(3, natm) if atmnm[ires][i] == pair[1])
+            if iatm1 > iatm2:
+                iatm1, iatm2 = iatm2, iatm1
+            ib[iatm1].append(iatm2) ; iib[iatm2].append(iatm1)
+        ## Sort
+        for i in range(ist, natm):
+            ib[i].sort()
+        pbd = [[j, i] for j in range(ist, natm) for i in ib[j] if i < natm]
+
+        # Make angle information
+        pangl = [] ; ia = [[] for _ in range(natm)]
+        for j in range(ist, natm):
+            tary = []
+            for tmp in iib[j]:
+                if tmp >= 0:
+                    tary.append(tmp)
+            for tmp in ib[j]:
+                if tmp <= natm:
+                    tary.append(tmp)
+            tary.sort() ; k = len(tary)
+            for jj in range(k-1):
+                for ii in range(jj+1, k):
+                    if not [tary[jj],tary[ii]] in pbd:
+                        pangl.append([tary[jj],j,tary[ii]])
+        for tmp in pangl:
+            ia[tmp[0]].append(tmp[2])
+        for i in range(ist,natm):
+            ia[i].sort()
+
+        # Make torsion angle information
+        ptor = [] ; it = [[] for _ in range(natm)]
+        for ipair in pbd:
+            tary = []
+            for tmp in iib[ipair[0]]:
+                if tmp >= 0:
+                    tary.append(tmp)
+            for tmp in ib[ipair[0]]:
+                if tmp != ipair[1]:
+                    tary.append(tmp)
+            if len(tary) != 0:
+                tary2 = []
+                for tmp in iib[ipair[1]]:
+                    if tmp >= 0 and tmp != ipair[0]:
+                        tary2.append(tmp)
+                for tmp in ib[ipair[1]]:
+                    tary2.append(tmp)
+                if len(tary2) != 0:
+                    tary.sort() ; tary2.sort()
+                    for jtmp in tary:
+                        for itmp in tary2:
+                            if jtmp != itmp:
+                                ptor.append([jtmp, ipair[0], ipair[1], itmp])
+        for ipair in ptor:
+            iatm1, iatm2 = min(ipair[0], ipair[3]), max(ipair[0], ipair[3])
+            if not iatm2 in ib[iatm1] and not iatm2 in ia[iatm1] and not iatm2 in it[iatm1]:
+                it[iatm1].append(iatm2)
+        for i in range(ist,natm):
+            it[i].sort()
+
+        # For PRE
+        txt += f"\nPRE>ATOMS\n{Rres_nam[ires]}\n"
+        ist = 0 ; iist = 0
+        if Fter[ires][0]:
+            if restyp[ires] == "p":
+                iist = 3
+            elif restyp[ires] == "n":
+                iist = 2
+        for iatm in range(3-iist,3):
+            ist, txt = output_atom_information("PRE", ires, iatm, ist, eqty, ib[iatm], ia[iatm], it[iatm], txt)
+            txt += "<   0   0   0   0       0.000       0.000       0.000\n"
+        # For Main
+        for iatm in range(3, natm):
+            ist, txt = output_atom_information("MAIN", ires, iatm, ist, eqty, ib[iatm], ia[iatm], it[iatm], txt)
+            if iatm == 3:
+                if restyp[ires] == "n" and Fter[ires][0]:
+                    txt += "<  -1   0   0   0       0.000       0.000       0.000\n"
+                else:
+                    txt += "<   0   0   0   0       0.000       0.000       0.000\n"
+            else:
+                i1 = iib[iatm][0] if iib[iatm] and iib[iatm][0] is not None else 0
+                i2 = iib[i1][0] if iib[i1] and iib[i1][0] is not None else 0
+                i3 = iib[i2][0] if iib[i2] and iib[i2][0] is not None else 0
+                if not Fter[ires][0]:
+                    if tree[ires][iatm] == "M" and atmnm[ires][iatm][0:1] != "H":
+                        if i1 < 3:
+                            i1, i2, i3 = iatm, iatm, iatm
+                        elif i2 < 3:
+                            i2, i3 = iatm, iatm
+                        elif i3 < 3:
+                            i3 = iatm
+                    else:
+                        if i1 < 3:
+                            i1, i2, i3 = i1_i2_i3(3, ires, iatm)
+                        elif i2 < 3:
+                            i2, i3 = i1_i2_i3(2, ires, iatm)
+                        elif i3 < 3:
+                            i3 = i1_i2_i3(1, ires, iatm)[0]
+                itree = itree_check(ires, iatm, i1, i2, i3, ib)
+                if Zcod != []:
+                    cod = [Zcod[i3], Zcod[i2], Zcod[i1], Zcod[iatm]]
+                    blen_i[ires][iatm], angl_i[ires][iatm], phi_i[ires][iatm] = cartesian_to_z_matrix(cod)
+                if i1 - iatm == 0:
+                    blen_i[ires][iatm] = 0.0
+                if i2 - iatm == 0:
+                    angl_i[ires][iatm] = 0.0
+                if i3 - iatm == 0:
+                    phi_i[ires][iatm] = 0.0
+                txt += f"<{i1-iatm:4}{i2-iatm:4}{i3-iatm:4}{itree:4}{blen_i[ires][iatm]:12.3f}"\
+                       f"{angl_i[ires][iatm]:12.3f}{phi_i[ires][iatm]:12.3f}\n"
+        # For POST
+        if Fter[ires][1]:
+            ist, txt = output_atom_information("POST", ires, natm, ist, eqty, [], [], [], txt)
+            tary = [i - natm for i, x in enumerate(tree[ires][3:natm], start=3) if x == "M"]
+            tary = tary[::-1][0:min(3, len(tary))] ; tary.extend([0] * (3 - len(tary)))
+            if restyp[ires] == "p":
+                txt += "<{:4d}{:4d}{:4d}{:4d}{:12.3f}{:12.3f}{:12.3f}\n".format(*tary, 0, 1.335, 116.600, 180.000)
+            if restyp[ires] == "n":
+                txt += "<{:4d}{:4d}{:4d}{:4d}{:12.3f}{:12.3f}{:12.3f}\n".format(*tary, 0, 1.610, 120.500, 180.000)
+
+        ist = -2
+        if Fter[ires][0]:
+            if restyp[ires] == "p":
+                ist = 1
+            elif restyp[ires] == "n":
+                ist = 0
+        # Bond
+        if len(pbd) != 0:
+            txt += f"\nPRE>BONDS\n{Rres_nam[ires]}\n" ; count = 0
+            for iatm1, iatm2 in pbd:
+                if max(iatm1, iatm2) < natm:
+                    at1, at2 = sorted((atmtyp[ires][iatm1], atmtyp[ires][iatm2]))
+                    for i, (tbd1, tbd2) in enumerate(bd):
+                        if at1 == tbd1 and at2 == tbd2:
+                            count += 1
+                            txt += f"{iatm1+ist:6}{iatm2+ist:6}         {bfc[i]:15.7f} {blen[i]:15.7f} ; {count:6}\n"
+                            break
+                    else:
+                        count += 1
+                        txt += f"{iatm1+ist:6}{iatm2+ist:6}         {0.0:15.7f} {0.0:15.7f} ; {count:6} #parameter not found\n"
+                        print(f"+ The bond parameter for {at1}-{at2} could not be found.")
+        # Angle
+        if len(pangl) != 0:
+            txt += f"\nPRE>ANGLES\n{Rres_nam[ires]}\n" ; count = 0
+            for iatm1, iatm2, iatm3 in pangl:
+                if max(iatm1, iatm2, iatm3) < natm:
+                    at1, at2, at3 = atmtyp[ires][iatm1], atmtyp[ires][iatm2], atmtyp[ires][iatm3]
+                    if at1 > at3:
+                        at1, at3 = at3, at1
+                    if [iatm1, iatm3] in pbd:
+                        continue
+                    for i, (tag1, tag2, tag3) in enumerate(ag):
+                        if at1 == tag1 and at2 == tag2 and at3 == tag3:
+                            count += 1
+                            txt += f"{iatm1+ist:6}{iatm2+ist:6}{iatm3+ist:6}   {afc[i]:15.7f}" \
+                                   f" {angl[i]:15.7f} ; {count:6}\n"
+                            break
+                    else:
+                        count += 1
+                        txt += f"{iatm1+ist:6}{iatm2+ist:6}{iatm3+ist:6}   {0.0:15.7f}" \
+                               f" {0.0:15.7f} ; {count:6} #parameter not found\n"
+                        print(f"+ The angle parameter for {at1}-{at2}-{at3} could not be found.")
+
+        # Torsion angle
+        if len(ptor) != 0:
+            txt += f"\nPRE>TORSIONS\n{Rres_nam[ires]}\n" ; count = 0
+            tor_check = pbd + [[tmp[0], tmp[2]] for tmp in pangl]
+            for iatm1, iatm2, iatm3, iatm4 in ptor:
+                at1, at2, at3, at4 = atmtyp[ires][iatm1], atmtyp[ires][iatm2], atmtyp[ires][iatm3], atmtyp[ires][iatm4]
+                if at2 > at3:
+                    at2, at3 = at3, at2 ; at1, at4 = at4, at1
+                elif at2 == at3 and at1 > at4:
+                    at1, at4 = at4, at1
+                check_atoms = sorted([iatm1, iatm4]) ; n = 1
+                if check_atoms in tor_check:
+                    n = 0
+                for i, (ttor1, ttor2, ttor3, ttor4) in enumerate(tor):
+                    if at2 == ttor2 and at3 == ttor3:
+                        if ttor1 == "X" or (at1 == ttor1 and at4 == ttor4):
+                            for j in range(len(tfc[i])):
+                                count += 1
+                                txt += f"{iatm1+ist:6}{iatm2+ist:6}{iatm3+ist:6}{iatm4+ist:6} {tfc[i][j]:10.4f}" \
+                                       f"{tdiv[i][j]:5}{int(tperi[i][j]):5} {tphase[i][j]:10.4f}{n:5} ; {count:3}\n"
+                                n = 0
+                            break
+                else:
+                    count += 1
+                    txt += f"{iatm1+ist:6}{iatm2+ist:6}{iatm3+ist:6}{iatm4+ist:6} {0.0:10.4f}" \
+                           f"{1:5}{1:5} {0.0:10.4f}{n:5} ; {count:3} #parameter not found\n"
+                    print(f"+ The torsion angle parameter for {at1}-{at2}-{at3}-{at4} could not be found.")
+                tor_check.append([min(iatm1,iatm4), max(iatm1, iatm4)])
+
+        # Improper torsion angle
+        if len(iopt_imp[ires]) != 0:
+            ctxt = f"\nPRE>IMPROPER-TORSIONS\n{Rres_nam[ires]}\n" ; count = 0 ; Tiopt_imp = [] ; cctxt = ""
+            # Change order
+            if restyp[ires] == "p" and not Fter[ires][1]:
+                Tiopt_imp = [["CA  ", "+M  ", "C   ", "O   "]]
+            Tiopt_imp += [at for at in iopt_imp[ires] if "+M  " in at]
+            Tiopt_imp += [at for at in iopt_imp[ires] if "-M  " in at]
+            Tiopt_imp += [at for at in iopt_imp[ires] if "-M  " not in at and "+M  " not in at]
+            iopt_imp[ires] = Tiopt_imp
+            for at in iopt_imp[ires]:
+                iat = [] ; Mcheck = "-" if "-M  " in at else "+" if "+M  " in at else 0
+                if Mcheck == "-":
+                    for tmp in at:
+                        if tmp == "-M  ":
+                            iat.append(next(i for i in range(2, -1, -1) if tree[ires][i] == "M"))
+                        else:
+                            iat.append(next(i for i, aaa in enumerate(atmnm[ires][3:natm], start=3) if tmp == aaa))
+                elif Mcheck == "+":
+                    if restyp[ires] == "p" and not Fter[ires][0]:
+                        continue
+                    for tmp in at:
+                        if tmp == "+M  ":
+                            iat.append(next(i for i in range(3, len(tree[ires])) if tree[ires][i] == "M"))
+                        else:
+                            iat.append(next(i for i, aaa in enumerate(atmnm[ires][0:3]) if tmp == aaa))
+                else:
+                    for tmp in at:
+                        iat.append(next(i for i, aaa in enumerate(atmnm[ires][3:natm], start=3) if tmp == aaa))
+                aty = [atmtyp[ires][i] for i in iat]
+                if aty[0] == aty[1] and iat[0] > iat[1]:
+                    iat[0], iat[1] = iat[1], iat[0]
+                if aty[0] == aty[3] and iat[0] > iat[3]:
+                    iat[0], iat[3] = iat[3], iat[0]
+                if aty[1] == aty[3] and iat[1] > iat[3]:
+                    iat[1], iat[3] = iat[3], iat[1]
+                for n, timp in enumerate(imp):
+                    if aty[2] == timp[2]:
+                        Tiat = [None, None, iat[2], None] ; flag = [False, False, True, False]
+                        for i in range(3, -1, -1):
+                            if not flag[i] and aty[i] == timp[3]:
+                                   Tiat[3] = iat[i] ; flag[i] = True ; break
+                        for i in range(3, -1, -1):
+                            if not flag[i] and (aty[i] == timp[1] or timp[1] == "X"):
+                                   Tiat[1] = iat[i] ; flag[i] = True ; break
+                        for i in range(3, -1, -1):
+                            if not flag[i] and (aty[i] == timp[0] or timp[0] == "X"):
+                                   Tiat[0] = iat[i] ; flag[i] = True ; break
+                        if all(flag):
+                            iatm1, iatm2, iatm3, iatm4 = Tiat ; count += 1
+                            cctxt += f"{iatm1+ist:6}{iatm2+ist:6}{iatm3+ist:6}{iatm4+ist:6} {ifc[n]:10.4f}" \
+                                     f"{idiv[n]:5}{int(iperi[n]):5} {iphase[n]:10.4f}{0:5} ; {count:3}\n"
+                            break
+                else:
+                    print(f"+ The improper torsion parameter for {aty[0]}-{aty[1]}-{aty[2]}-{aty[3]} could not be found.")
+            if cctxt:
+                txt += (ctxt + cctxt)
+
+    txt += f"\nPRE>FUNCTIONS\n     1     4      LENNARD-JONES-AMBER\n\nPRE>NONBONDS\n" \
+           f";NUMBER OF TYPE= {len(eqty):5}\n"
+    count = 0
+    for i, flag in enumerate(flag_nonbond):
+        if flag:
+            count += 1
+            txt += f"{count:6}     0{functyp[i]:3} {RvdW[i]:15.7f} {DvdW[i]:15.7f} {c14e[i]:15.7f} {c14v[i]:15.7f} ; "
+            for tmp in eqty[count-1]:
+                txt += f"{tmp} "
+            txt += "\n"
+
+    # For LINK & SSBOND
+    txt += "\n;PRE>LINK\n"
+    for i, tmp in enumerate(bd):
+        txt += f"; {' '.join(tmp)} {bfc[i]} {blen[i]}\n"
+    for i, tmp in enumerate(ag):
+        txt += f"; {' '.join(tmp)} {afc[i]} {angl[i]}\n"
+    for i, tmp in enumerate(tor):
+        for j in range(len(tfc[i])):
+            txt += f"; {' '.join(tmp)} {tfc[i][j]} {tdiv[i][j]} {int(tperi[i][j])} {tphase[i][j]}\n"
+    for i, tmp in enumerate(imp):
+        txt += f"; {' '.join(tmp)} {ifc[i]} {int(iperi[i])} {iphase[i]}\n"
+
+    # Output a topology file
+    print(f"\n+ Topology database file for j_presto is output as {ofile}.tpldb")
+    with open(ofile+".tpldb", "w") as file:
+        file.write(txt)
+
+    for sol in solvent_box:
+        print(f"+ Solvent box database file for {sol} is output as {sol}.slv")
+        with open(f"{sol}.slv", "w") as fil:
+            fil.write(f'{" ".join(map(str, solvent_box_dict[sol]["bound"]))}\n')
+            fil.write(f'{" ".join(solvent_box_dict[sol]["atmname"])}\n')
+            fil.write(f'{" ".join(solvent_box_dict[sol]["atmtype"])}\n')
+            for tmp in solvent_box_dict[sol]["positions"]:
+                fil.write(f"{' '.join(map(str, tmp))}\n")
+
+def display_credits():
+    program_name = "gen_db"
+    author = "Jinzen Ikebe"
+    version = "1.0.0"
+    first_release_date = "2024-11-11"
+    current_release_date = "2024-11-11"
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    print("*" * 50)
+    print("*")
+    print(f"*    {program_name} (Version {version})")
+    print("*")
+    print(f"*                         Author : {author}")
+    print(f"*             First Release Date : {first_release_date}")
+    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print("*")
+    print(f"*" * 50)
+    print()
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+#            print(license_content)
+    except:
+        print("Error: License file not found.")
+        sys.exit()
+
+def main():
+    stime = time.perf_counter()
+    global input_files, solvent_box, residue_name_translator
+    parser = argparse.ArgumentParser(description='j_presto gen_db generates a *.tpldb file, which is a database used for creating j_presto topology files (*.tpl).')
+    parser.add_argument('access_key')
+    parser.add_argument('-i','--input', nargs='+', action="append", help='Input AMBER format files. This includes dat, in, prep, lib, frcmod, and leaprc files. If multiple sets of parameters for the same topology are provided in the input files, the parameters from the later inputs take precedence.')
+    parser.add_argument('-o','--output', default='test', help='Output file name. The default is "test"')
+    parser.add_argument("-rr","--residue_rename", nargs='+', help='If you need to rename residue names, specify pairs of old and new residue names using this option. For example, to change "TP3" to "WAT", use -rr TP3:WAT.')
+    parser.add_argument('-s','--solvent_box', nargs='+', action="append", help='If you want to create a solvent coordinate database from library files, input the solvent box name such as TIP3PBOX. The database will be output as *.slv.')
+    args = parser.parse_args()
+    access_key = args.access_key
+    if access_key != "j_presto":
+        sys.exit()
+    input_files = [file for sublist in args.input for file in sublist]
+    if args.solvent_box:
+        solvent_box = args.solvent_box[0]
+
+    display_credits()
+    if args.residue_rename:
+        print(f'* The below residue names are translated : ')
+        tmp_dic = {}
+        for tmp in args.residue_rename:
+            key, val = [s.ljust(4) for s in tmp.split(":")]
+            print(f'    {key} -> {val}') ; tmp_dic[key] = val
+            tmp_dic.update(residue_name_translator) ; residue_name_translator = tmp_dic
+    input_tpl()
+    check_consistency()
+    output_tpl(args.output)
+    etime = time.perf_counter() ; print(f"\nExecution time : {etime - stime} (S)")
+    print(f"\n+++ Program j_presto gen_db normally ended +++")
+
+if __name__ == "__main__":
+    main()

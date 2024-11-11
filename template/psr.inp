@@ -1,0 +1,12 @@
+PSR> LIST
+1  1  1  99999  CA   *   1.0  NOMA  NO
+1  1  1  99999  N    *   1.0  NOMA  NO
+1  1  1  99999  C    *   1.0  NOMA  NO
+1  1  1  99999  O    *   1.0  NOMA  NO
+END
+;PSR> RADIUS
+;1  5  CA  10.0 20.0  CA  1.0  NOMA  NO
+;1  5  CA  10.0 20.0  N   1.0  NOMA  NO
+;1  5  CA  10.0 20.0  C   1.0  NOMA  NO
+;1  5  CA  10.0 20.0  O   1.0  NOMA  NO
+;END

@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+from mpi4py import MPI
+import argparse, os, time, subprocess
+
+def positive_int(value):
+    ivalue = int(value)
+    if ivalue <= 0:
+        raise argparse.ArgumentTypeError(f"{value} is not a valid positive integer.")
+    return ivalue
+
+def main(md_number, N_MPI, N_run, exec_file):
+    comm = MPI.COMM_WORLD
+    myrank = comm.Get_rank()
+    nprocs = comm.Get_size()
+
+    # Only rank 0 reads input time
+    if myrank == 0:
+        start_time = time.time()
+
+    # Broadcast parameters to all processes
+    md_number = comm.bcast(md_number, root=0)
+    N_MPI = comm.bcast(N_MPI, root=0)
+    N_run = comm.bcast(N_run, root=0)
+    exec_file = comm.bcast(exec_file, root=0)
+
+    # Run the MD simulations in a loop
+    j = myrank + 1
+    while j <= N_run:
+        dir_path = os.path.join(f"md{md_number}", f"n{j}")
+        exec_path = os.path.join(dir_path, exec_file)
+        
+        if os.path.isdir(dir_path):
+            print(f"START {dir_path}")
+            if os.path.isfile(exec_path):
+                try:
+                    subprocess.run([f"./{exec_file}"], cwd=dir_path, check=True)
+                except subprocess.CalledProcessError as e:
+                    print(f"Error occurred while executing {exec_file} in {dir_path}: {e}")
+            else:
+                print(f"Executable {exec_file} not found in {dir_path}. Skipping...")
+        else:
+            print(f"Directory {dir_path} does not exist. Skipping...")
+        
+        j += N_MPI
+
+    # Barrier to synchronize all processes
+    comm.Barrier()
+
+    # Only rank 0 calculates and writes the execution time
+    if myrank == 0:
+        end_time = time.time()
+        exec_time = end_time - start_time
+        with open(f"md{md_number}.quit", "w") as f:
+            f.write(f"EXE TIME = {exec_time} (S)\n")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Execute multiple MD simulation runs as a single MPI job using an embarrassingly parallel approach. The input files, scripts, and directory structure for these multiple MD simulation runs are based on the assumption that they are prepared using "j_presto batch_set".')
+
+    # Required arguments
+    parser.add_argument('md_number', type=int, help='The MD simulation number (e.g., set "0" to execute md_run in the "md0" directory)')
+    parser.add_argument('N_MPI', type=positive_int, help='Number of MPI processes')
+    parser.add_argument('N_run', type=positive_int, help='Number of runs (e.g., set "60" for runs "n1" to "n60")')
+
+    # Optional arguments
+    parser.add_argument('--exec_file', type=str, default="md_run.exe", help='Executable file name for each single MD simulation run (default: md_run.exe).')
+
+    args = parser.parse_args()
+
+    print(f"md_number:{args.md_number} N_MPI:{args.N_MPI} N_run:{args.N_run} exec_file:{args.exec_file}")
+    main(args.md_number, args.N_MPI, args.N_run, args.exec_file)
+

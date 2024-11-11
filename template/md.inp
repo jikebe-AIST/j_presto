@@ -1,0 +1,68 @@
+;      MEMO : A semicolon ";" is used as a comment out character. Any text following it is ignored.
+;      For details on the options you can use, please refer to the "j_presto manual".
+
+;**********************************************************************************************
+
+EXE> INPUT
+
+      COORDI= test_min.pdb      ; Input PDB file
+      TOPOLO= test.tpl          ; Input topology file
+      SETSHK= test.shk          ; Input SHAKE file
+      SETBOU= CAPbound.inp      ; Input file for CAP boundary if you need
+      REFCOO= test.pdb          ; Reference coordinate file if you apply position restraints
+      POSITI= psr.inp           ; Input file to specify position restraints if you need
+
+; if you need... 
+;      DISTAN= dsr.inp           ; Input file to specify distance restraints if you need
+;       CELLPA= cluster.inp      ; Input file for CMM and/or ALSD simulation
+
+QUIT
+
+;**********************************************************************************************
+
+EXE> MD
+      METHOD= CANO              ; MD simulation method (CONS, MICR, CANO, or MULT. the default is CANO)
+      LOOPLI= 500000            ; Number of simulation steps. If the time step length is the default (2fs), 500,000 steps is 1ns.
+      RESTAR= NO                ; Whether simulation is started from a restart file or not (YES or NO)
+;      NAMERI=                   ; Input restart file if you start the simulation from a restart file
+      NAMERO= restart.dat       ; Output restart file
+      SETTEM= 300.0             ; Simulation temperature
+      STARTT= 100.0             ; Simulation temperature at step 0. Set this option for system heating
+      HEATLO= 10000             ; Simulation steps for system heating
+      STOPCE= BOTH              ; If you fix translation and/or rotational motion of the system (NO, TRAN, ROTA, and BOTH)
+;      NSTPCN= 1                 ; final Chain number for fixing motion when STOPCE= TRAN, ROTA, or BOTH
+;      OUTATM=                   ; Final atom number for output coordinates set in "NAMECO"
+      NAMECO= test.cod          ; Output coordinate file
+      OUTCOO= 2500              ; Frequency of output coordinates for "NAMECO" file
+      NAMETO= test.ene          ; Output total energy file
+      PARALV= DOUB              ; Parallelization level of simulation (REDU, HIGH or DOUB) if you prefer to choose on your own
+      N_SIMD= 256               ; Number of parallelization for SIMD if you prefer to choose on your own
+
+; if you need...
+;      CAL15M= ZD                ; Electrostatic interaction calculation method (ZD, CMM, ATOM, or RESI)
+;      CUTLEN= 12.0              ; Cut-off length
+;      RANDOM= 1                 ; Random seed for initial velocity generation
+;      BOUNDA= PBC               ; If you apply periodic boundary condition (PBC)
+;      XMINCL=                   ; Lower X coordinate of PBC, if you apply PBC
+;      XMAXCL=                   ; Upper X coordinate of PBC, if you apply PBC
+;      YMINCL=                   ; Lower Y coordinate of PBC, if you apply PBC
+;      YMAXCL=                   ; Upper Y coordinate of PBC, if you apply PBC
+;      ZMINCL=                   ; Lower Z coordinate of PBC, if you apply PBC
+;      ZMAXCL=                   ; Upper Z coordinate of PBC, if you apply PBC
+;      NAMEP1=                   ; Input parameter file for Generalized Ensemble method (McMD or ALSD)
+;      NAMETO=                   ; Total energy output file. You must output this file when you apply McMD or ALSD simualtions
+;      LAMBDA=                   ; Initial value of the scaling factor lambda for ALSD similation
+;      OUTLOG= 10000             ; Frequency of log output steps (at the same time, a temporary restart file is output)
+QUIT
+
+;**********************************************************************************************
+
+EXE> OUTPUT
+
+      OCOORD= test_md.pdb      ; Output PDB file after energy minimization
+
+QUIT
+
+;**********************************************************************************************
+
+EXE> END

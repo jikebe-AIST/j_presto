@@ -1,0 +1,39 @@
+nmd 0 2
+nrun 60
+nmpi 60
+
+0
+COORDI= ../../test_min.pdb
+TOPOLO= ../../test.tpl 
+SETSHK= ../../test.shk
+REFCOO= ../../test_min.pdb
+POSITI= ../../psr.inp
+;SETBOU= ../../CAPbound.inp
+;CELLPA= ../../cluster.inp
+METHOD= CANO
+LOOPLI= 500000
+RESTAR= NO
+NAMERO= restart.dat
+SETTEM= 300.0
+STARTT= 100.0
+HEATLO= 500000
+STOPCE= BOTH
+;NSTPCN= 1
+NAMECO= md.cod
+OUTCOO= 2500
+;OUTATM= 
+NAMETO= test.ene
+PARALV= DOUB
+N_SIMD= 256
+RANDOM= #RNDSED
+;OCOORD= test_md.pdb
+
+1
+RESTAR= YES
+POSITI= OFF
+LOOPLI= 5000000
+INITIA= OFF
+STARTT= OFF
+HEATLO= OFF
+RANDOM= OFF
+NAMERI= ../../md#PMD/n#RUN/restart.dat

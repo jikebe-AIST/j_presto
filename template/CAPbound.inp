@@ -1,0 +1,20 @@
+BOUND> SHAPE              ; CAP shape
+SPHERE                    ; SPHRE-shape CAP boundary
+BOUND> CENTER             ; Center of CAP boundary
+COORDINATE  0  0  0       ; Specification by x, y, z coordinates
+BOUND> INCLUDE            ; Molecules to which the CAP boundary for the solvent is applied.
+WAT   1   9999999   NO
+BOUND> RADIUS
+30.0                      ; Radius of sphere-shape CAP boundary for solvent
+BOUND> FORCE              ; CAP force for solvent
+100.0
+BOUND> LIST               ; Atom list to apply CAP boundary for solute
+1 1 1 99999 C* * NO
+1 1 1 99999 N* * NO
+1 1 1 99999 O* * NO
+1 1 1 99999 P* * NO
+1 1 1 99999 S* * NO
+BOUND> BUFFER             ; Buffer length between solvent and solute CAP boundaries
+4.0
+BOUND> FORPRO             ; CAP force for solute
+100.0

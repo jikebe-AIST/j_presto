@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+from mpi4py import MPI
+import argparse, os, subprocess
+
+def positive_int(value):
+    ivalue = int(value)
+    if ivalue <= 0:
+        raise argparse.ArgumentTypeError(f"{value} is not a valid positive integer.")
+    return ivalue
+
+def master(N_run, exec_file):
+    for i in range(1, N_run + 1):
+        status = MPI.Status()
+        comm.recv(source=MPI.ANY_SOURCE, tag=1, status=status)
+        IDEST = status.Get_source()
+        comm.send(i, dest=IDEST, tag=1)
+    for _ in range(1, size):
+        status = MPI.Status()
+        comm.recv(source=MPI.ANY_SOURCE, tag=1, status=status)
+        IDEST = status.Get_source()
+        comm.send(N_run + 1, dest=IDEST, tag=1)
+
+def slave(rank, exec_file):
+    while True:
+        comm.send(None, dest=0, tag=1)
+        task = comm.recv(source=0, tag=1)
+        
+        if task == N_run + 1:
+            break
+
+        dir_path = os.path.join(f"md{md_number}", f"n{task}")
+        exec_path = os.path.join(dir_path, exec_file)
+
+        if os.path.isdir(dir_path):
+            print(f"[Process {rank}] START {dir_path}", flush=True)
+            if os.path.isfile(exec_path):
+                try:
+                    subprocess.run([f"./{exec_file}"], cwd=dir_path, check=True)
+                except subprocess.CalledProcessError as e:
+                    print(f"[Process {rank}] Error occurred while executing {exec_file} in {dir_path}: {e}", flush=True)
+            else:
+                print(f"[Process {rank}] Executable {exec_file} not found in {dir_path}. Skipping...", flush=True)
+        else:
+            print(f"[Process {rank}] Directory {dir_path} does not exist. Skipping...", flush=True)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Execute multiple MD simulation runs in a master-slave manner.')
+
+    parser.add_argument('md_number', type=int, help='MD simulation number.')
+    parser.add_argument('N_MPI', type=positive_int, help='Number of MPI processes (should be more than 1).')
+    parser.add_argument('N_run', type=positive_int, help='Number of runs.')
+    parser.add_argument('--exec_file', type=str, default="md_run.exe", help='Executable file name.')
+
+    args = parser.parse_args()
+
+    md_number = args.md_number
+    N_MPI = args.N_MPI
+    N_run = args.N_run
+    exec_file = args.exec_file
+
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
+
+    if rank == 0:
+        master(N_run, exec_file)
+    else:
+        slave(rank, exec_file)
+

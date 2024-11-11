@@ -1,0 +1,51 @@
+;      MEMO : A semicolon ";" is used as a comment out character. Any text following it is ignored.
+;      For details on the options you can use, please refer to the "j_presto manual".
+
+;**********************************************************************************************
+
+EXE> INPUT
+
+      COORDI= test.pdb          ; Input PDB file
+      TOPOLO= test.tpl          ; Input topology file
+      SETBOU= CAPbound.inp      ; Input file for CAP boundary if you need
+      REFCOO= test.pdb          ; Reference coordinate file if you apply position restraints
+      POSITI= psr.inp           ; Input file to specify position restraints if you need
+
+; if you need... 
+;      DISTAN= dsr.inp           ; Input file to specify distance restraints if you need
+;       CELLPA= cluster.inp      ; Input file for CMM and/or ALSD simulation
+
+QUIT
+
+;**********************************************************************************************
+
+EXE> MIN
+      METHOD= CONJ              ; Minimization method (STEE or CONJ)
+      LOOPLI= 10000             ; Number of minimization steps
+      PARALV= DOUB              ; Parallelization level of simulation (REDU, HIGH or DOUB) if you prefer to choose on your own
+      N_SIMD= 256               ; Number of parallelization for SIMD if you prefer to choose on your own
+
+; if you need...
+;      CONVGR= 0.1               ; RMSF threshold for determining the convergence of energy minimization (the default is 0.1)
+;      ISTEPL= 0.01              ; Initial step length for changing the structure for energy minimization (the default is 0.01)
+;      BOUNDA= PBC               ; If you apply periodic boundary condition (PBC)
+;      XMINCL=                   ; Lower X coordinate of PBC, if you apply PBC
+;      XMAXCL=                   ; Upper X coordinate of PBC, if you apply PBC
+;      YMINCL=                   ; Lower Y coordinate of PBC, if you apply PBC
+;      YMAXCL=                   ; Upper Y coordinate of PBC, if you apply PBC
+;      ZMINCL=                   ; Lower Z coordinate of PBC, if you apply PBC
+;      ZMAXCL=                   ; Upper Z coordinate of PBC, if you apply PBC
+
+QUIT
+
+;**********************************************************************************************
+
+EXE> OUTPUT
+
+      OCOORD= test_min.pdb      ; Output PDB file after energy minimization
+
+QUIT
+
+;**********************************************************************************************
+
+EXE> END

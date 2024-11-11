@@ -1,0 +1,19 @@
+
+MASS
+
+BOND
+
+ANGLE
+
+DIHEDRAL
+C -N -CT-C    1    0.275       180.0            -2.         hybrid 955
+C -N -CT-C    1    0.6375        0.0             1.         hybrid 955
+N -CT-C -N    1    0.5625      180.0            -2.         hybrid 955
+N -CT-C -N    1    0.6375        0.0            -1.         hybrid 955
+N -CT-C -N    1    0.1         180.0            -4.         hybrid 955
+N -CT-C -N    1    0.1875      180.0             1.         hybrid 955
+
+IMPROPER
+
+NONBON
+

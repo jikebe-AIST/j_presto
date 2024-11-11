@@ -1,0 +1,2243 @@
+>
+
+   #####  What is the content you would like to ask about?  #####
+
+
+If you want to know about commands or options, please type the command or option name like:
+	j_presto
+
+If you want to search your interesting word, please type:
+	search
+
+If you want to check all the words you can ask about, please type:
+	show_list
+
+If you want to conduct a tutorial, please type:
+	tutorial
+
+If you want to check frequently asked questions, please type:
+	FAQ
+
+If you want to return to the top page of the manual (this page), please press Enter.
+
+If you want to exit the manual, please type:
+	q
+
+>j_presto
+"j_presto" is a program for performing molecular dynamics (MD) simulations.
+With j_presto, you can execute the following sub-programs using the command:
+	j_presto [sub_program_name]
+If you would like to know more about a specific sub-program, please enter its name.
+
+Sub-program name list:
+	gen_db     : Generation of a database file (*.tpldb) for creating j_presto topology files (*.tpl).
+	prep       : Preparation of input files (*.pdb, *.tpl, and *.shk files) for j_presto.
+	md_run     : Execution of MD simulation or energy minimization calculation.
+	get_tmpl   : Obtaining templates of input files and scripts for excuting j_presto.
+	batch_set  : Setting up all the necessary files and directories required to run multiple MD simulations efficiently
+	GEprep     : Preparation of a parameter file (*.nf) for Generalized Ensemble MD simulations such as McMD and ALSD.
+	Ens_Ana    : Performing analysis of conformational ensembles obtained from simulation results (Scheduled to be added in the next update)
+	manual     : Viewing the manual.
+The simulations performed by j_presto support parallelization using OpenMP, but currently do not support parallelization via MPI or GPU.
+However, you can use the programs j_presto_mpi and j_presto_master, which allow you to bundle multiple OpenMP-parallelized MD simulation runs and execute them as a single MPI job.
+	j_presto_mpi    : Execute multiple MD simulation runs as a single MPI job using an embarrassingly parallel approach.
+	j_presto_master : Execute multiple MD simulation runs as a single MPI job using a master-slave approach.
+>gen_db
+The command "j_presto gen_db" generates topology database file (*.tpldb) and water solvent coordinate file (*.slv) for j_presto.
+These files are created by specifying AMBER format file with the "j_presto gen_db -i" argument.
+If you would like to know how to use the arguments, please enter them such as "gen_db -i"
+
+Option list:
+	gen_db -i  : Specification of the input AMBER parameter files.
+	gen_db -o  : Specification of the output file name.
+	gen_db -rr : Rename option for residue names.
+	gen_db -s  : Specification of the output solvent coordinate files (*.slv).
+
+By executing "j_presto get_tmpl gen_db", you can obtain a template for the script file that runs gen_db.
+You can easily execute it by appropriately modifying this file according to your settings.
+>gen_db -i
+How to use: j_presto gen_db -i INPUT [INPUT ...]
+
+Argument for inputting AMBER parameter files. This argument allows multiple files to be specified at once.
+The supported file formats are dat, in, prep, lib, frcmod, and leaprc.
+Please note that if there are multiple different inputs for the same parameter among the input files, the later input will overwrite the previous ones.
+These files can be obtained by downloading AMBER Tools from the following link: https://ambermd.org/AmberTools.php.
+Please ensure that you obtain these files at your own risk.
+By setting the path to this database in the environment variable "J_PRESTO_AMBER_PATH", you will be able to use the files included in the database by specifying only their filenames without needing to provide relative paths.
+>gen_db -o
+How to use: j_presto gen_db -o OUTPUT
+
+Specification of the output file name.
+If this argument is not set, the default name "test" will be used.
+This means that the output files will be named test.tpldb.
+>gen_db -rr
+How to use: j_presto gen_db -rr RESIDUE_RENAME [RESIDUE_RENAME ...]
+
+If you want to change the residue names defined in AMBER, you can use this argument.
+For example, if you want to change the residue name of TIP3P water, which is named "TP3" in AMBER, to "WAT" in the tpldb file, you can specify it as follows:
+	j_presto gen_db -rr TP3:WAT
+connecting the old and new names with a colon.
+To change multiple residue names, you can set it up like this:
+	j_presto gen_db -rr aaa:AAA bbb:BBB ...
+>gen_db -s
+How to use: j_presto gen_db -s SOLVENT_BOX [SOLVENT_BOX ...]
+
+If you want to create solvent coordinate database files (*.slv) for j_presto from the solvent coordinates listed in *.lib file, you should provide the name of the solvent box (for example, TIP3PBOX) using this argument.
+Names of solvent boxes can be found within the contents of the *.lib file.
+By specifying multiple solvent box names at once, you can output multiple slv files simultaneously.
+
+Currently, j_presto does not have a method for controlling pressure, so it cannot adjust the solvent to an appropriate density with constant-pressure simulations.
+Therefore, it is recommended to use the j_prestoBOX.slv file, which has been equilibrated at 300K and 1atm, rather than using the *.slv file created from the *.lib file.
+If the 'j_presto prep -sdb' argument is not set, the j_prestoBOX.slv will be used automatically as the default setting.
+>prep
+The command "j_presto prep" prepares the simulation system based on the input pdb file, the topology database file (*.tpldb) generated by gen_db, and, if applicable, the *.slv file for adding solvent.
+Some typical tasks that can be performed with prep include:
+	Automatically changing the charge state of certain amino acids according to the specified pH conditions.
+	Trimming a portion of the system.
+	Adding ACE and NME groups to the N and C termini of the protein.
+	Adding solvent molecules.
+	Adding ions to achieve the specified concentration.
+	Translating the center of mass of the system.
+	Changing residue names.
+	Preparing input files for SHAKE.
+	etc...
+
+Option list:
+	prep -o     : output
+	prep -i     : input PDB
+	prep -db    : input topology database
+	prep -pH    : pH value
+	prep -nah   : no auto histidine protonation state determination
+	prep -dh    : default histidine
+	prep -th    : threshold distance of hydrogen bond formation for histidine protonation check
+	prep -ts    : trim shape
+	prep -tc    : trim center
+	prep -tr    : trim radius
+	prep -tb    : trim boundary
+	prep -pair  : DNA duplex pair
+	prep -ACE   : adding ACE group for N-termini of proteins
+	prep -NME   : adding NME group for C-termini of proteins
+	prep -s     : solvent
+	prep -sdb   : solvent coordinate database
+	prep -ss    : solvent shape
+	prep -sh    : solvent hydrogen option
+	prep -sp    : padding to add solvent molecules
+	prep -sc    : solvent center
+	prep -sr    : solvent radius
+	prep -sb    : solvent boundary
+	prep -c     : classic option
+	prep -mc    : move center
+	prep -ia    : ion names to add
+	prep -sd    : solvent density
+	prep -ie    : ion exclusion distance
+	prep -rr    : residue rename
+	prep -shake : for SHAKE input
+
+For detailed information about each argument, enter them such as "prep -i".
+By executing "j_presto get_tmpl prep", you can obtain a template for the script file that runs prep.
+You can easily execute it by appropriately modifying this file according to your settings.
+>prep -o
+How to use: j_presto prep -o OUTPUT
+
+Specification of the output file name.
+If this argument is not specified, the default name "test" will be used.
+This means that the output files will be named like test.pdb and test.tpl.
+>prep -i
+How to use: j_presto prep -i INPUT
+
+Specification of the input PDB file name.
+>prep -db
+How to use: j_presto prep -db TPLDB
+
+Specification of the topology database file (*.tpldb).
+>prep -pH
+How to use: j_presto prep -pH
+
+Specification of pH value for the system.
+If this argument is not set, the pH will be set to 7.0 by default.
+Based on this value, the charge states of amino acids such as Glu and Lys are determined.
+>prep -nah
+How to use: j_presto prep -nah
+
+Unless this option is set, the charge state of histidine residues specified as "HIS" in the pdb file will be automatically determined based on the system's pH and the hydrogen bonding state with other residues.
+If you want to set all HIS residues to the default histidine specified by the -dh argument (without automatically determining the charge state), you should enable this option.
+>prep -dh
+How to use: j_presto prep -dh DEFAULT_HIS
+
+Setting the default histidine name.
+If the -nah argument is set, or if the state of histidine cannot be determined through pH or hydrogen bonding pattern analyses, the residues designated as HIS in the pdb file will be to the histidine specified by this argument (HID or HIE).
+If this argument is not specified, the default histidine will be set to HIE.
+>prep -th
+How to use: j_presto prep -th THRESHOLD_DISTANCE_HISPRO
+
+The threshold distance used to determine hydrogen bond formation for checking the charge state of histidine.
+It is typically set between 2.4 Å and 3.5 Å.
+If this argument is not set, the default distance of 3.0 Å will be used.
+>prep -ts
+How to use: j_presto prep -ts {CAP,BOX,ELL}
+
+If you want to trim a part of the system, set this argument.
+You can specify one of the following three shapes:
+	CAP (spherical)
+	BOX (rectangular body)
+	ELL (ellipsoid body)
+During trimming, a residue is removed only if all its atoms are outside the boundary.
+If even one atom is inside the boundary, the residue will be preserved.
+When peptide chains are cleaved by this trimming, an ACE and an NME group are automatically added to the N-terminus and C-terminus, respectively.
+>prep -tc
+How to use: j_presto prep -tc x y z
+
+Argument for specifying the center coordinates of the boundary when using "j_presto prep -ts CAP" or "j_presto prep -ts ELL".
+Three real numbers for x, y, and z must be provided.
+>prep -tr
+How to use: j_presto prep -tr radius1 [radius2 radius3]
+
+Argument for specifying the radius when trimming the system with "j_presto prep -ts CAP" or "j_presto prep -ts ELL".
+In the case of CAP, a single positive real number for the radius is specified using "j_presto prep -tr radius1".
+For ELL, three positive real numbers for the radii along the x, y, and z axes are specified using "j_presto prep -r radius1 radius2 radius3".
+>prep -tb
+How to use: j_presto prep -tb x_min x_max y_min y_max z_min z_max
+
+When specifying "j_presto prep -tb BOX", six real numbers are used to define the lower and upper bounds of the box for trimming the system.
+The format is as follows:
+	j_presto prep -tb x_min x_max y_min y_max z_min z_max
+where x_min, y_min, and z_min are the coordinates for the lower bounds, and x_max, y_max, and z_max are the coordinates for the upper bounds of the box.
+>prep -pair
+How to use: j_presto prep -pair DNA_DUPLEX_PAIR [DNA_DUPLEX_PAIR ...]
+
+This argument specifies the base pair numbers that form a duplex pair in DNA.
+When trimming the system with j_presto prep -ts, this option ensures that both bases involved in a salt bridge are retained, preventing one of the pair from being removed during the trimming process and maintaining the base pairing.
+For instance, if DNA chains 1 and 2, and chains 3 and 4 are forming duplex pairs in the system, you would specify this as j_presto prep -pair 1:2 3:4, connecting the chain numbers forming the pairs with a colon.
+>prep -ACE
+How to use: j_presto prep -ACE ADD_ACE [ADD_ACE ...]
+
+When you want to add ACE groups to N-termini of peptides, specify the chain numbers of the peptides with this argument.
+>prep -NME
+How to use: j_presto prep -NME ADD_NME [ADD_NME ...]
+
+When you want to add NME groups to C-termini of peptides, specify the chain numbers of the peptides with this argument.
+>prep -s
+How to use: j_presto prep -s SOLVENT
+
+Specify the name of the solvent you want to use with this argument, when using the "j_presto prep -ss" argument to add solvent to the system.
+Note that the parameters for the solvent specified here must be provided in the *.tpldb file.
+If this argument is not set, the default solvent "TP3 (TIP3P water)" will be used.
+>prep -sdb
+How to use: j_presto prep -sdb SOLVENT_COORDINATE_DATABASE
+
+To specify the solvent coordinate database when adding solvent to the system using the "j_presto prep -ss" option, you can use this argument.
+The database can be created using the "j_presto gen_db -s" command, but if this argument is not specified, the default solvent database (j_prestoBOX.slv) will be used.
+Since the current version of j_presto does not implement pressure control methods, it is recommended to use the j_prestoBOX.slv, which is pre-equilibrated coordinates under a constant pressure at 300K.
+>prep -ss
+
+How to use: j_presto prep -ss {CAP,BOX,ELL,PBC}
+
+To add solvent molecules to the system, use this argument.
+You can specify the shape of the solvent to be added from the following options:
+	CAP (spherical)
+	BOX (rectangular body)
+	ELL (ellipsoid body)
+	PBC (periodic boundary condition for a rectangular body)
+>prep -sh
+How to use: j_presto prep -sh
+
+When adding solvent to the system using "j_presto prep -ss", the following calculations are typically performed using only heavy atoms (i.e., excluding hydrogen atoms):
+	1) calculation of the geometric center of the system
+	2) determination of whether the solvent exists within the boundary
+	3) evaluation of solute-solvent overlap
+If this argument is set, these calculations will also take hydrogen atoms into account.
+>prep -sp
+How to use: j_presto prep -sp SOLVENT_PADDING
+
+When adding solvent to the system using "j_presto prep -ss", this argument is used to set the interference region size (padding).
+When "j_presto prep -ss CAP" is specified, the radius is automatically set to the distance from the center of the system to the farthest atom, plus the padding length.
+For "j_presto prep -ss BOX or ELL or PBC", the boundaries in the x, y, and z directions, or the elliptical radii, are automatically set to the farthest coordinates from the center of the system, plus the padding length.
+This argument will be ignored if the radius or boundary values have already been set using -sr or -sb. If none of -sr, -sb, or -ss are explicitly specified, a default padding length of 12.0 Å will be used.
+>prep -sc
+How to use: j_presto prep -sc SOLVENT_CENTER [SOLVENT_CENTER ...]
+
+When setting "j_presto prep -ss CAP" or "j_presto prep -ss ELL", you can specify the center of the solvent using this argument.
+The specification methods are as follows:
+	1: Specify coordinates as three real numbers for x, y, and z like "j_presto prep -sc x y z".
+	2: Specify a chain number as a single integer like "j_presto prep -sc 3".
+In the second case, the geometric center of atoms from chain 1 to chain 3 will be calculated, and the center will be set as the solvent center.
+If you specify 0, the center will be calculated for all solute chains.
+If this argument is not specified, the default value of "j_presto prep -sc 0" will be used.
+Important Note: When trimming the system, the chain numbering may change if any molecular chains are severed, so be mindful to specify the chain number based on the configuration of the system after trimming.
+>prep -sr
+How to use: j_presto prep -sr radius1 [radius2 radius3]
+
+You can specify the radius of the solvent using this argument.
+When using "j_presto prep -ss CAP", set the radius with a single positive real number like "j_presto prep -sr 12.0".
+When using "j_presto prep -ss ELL", set the radii for the x, y, and z axes with three positive real numbers like "j_presto prep -sr 14.0 13.5 20.0"
+>prep -sb
+How to use: j_presto prep -sb x_min x_max y_min y_max z_min z_max
+
+When you set "j_presto prep -ss BOX" or "j_presto prep -ss PBC", you can specify the upper and lower limits for the x, y, and z axes using six real numbers with this argument.
+The syntax is as follows:
+	j_presto prep -sb x_min x_max y_min y_max z_min z_max
+Here, x_min, x_max, y_min, y_max, z_min, and z_max define the boundaries of the box or periodic boundary condition along each axis.
+>prep -c
+How to use: j_presto prep -c
+
+This option is an argument for using the solvent and ion addition methods from previous versions of the program.
+It has been introduced to compare with past computational results, so it is generally not necessary to use it.
+When this argument is set, the name of the solvent can only be "WAT" (for water) and not any other solvent name.
+Remember that using this option may limit your choices and is mainly intended for legacy compatibility.
+>prep -mc
+How to use: j_presto prep -mc
+
+This argument is used to translate the center coordinates of the system, which were set using "j_presto prep -tc" or "j_presto prep -sc", to the origin at [0, 0, 0].
+>prep -ia
+How to use: j_presto prep -ia ion_name1 value1 [ion_name2 value2 ...]
+
+When you want to add ions to the system, you can set the ion names along with either the desired quantities or the desired concentrations using this argument:
+	j_presto prep -ia FE2 0 K+ 3 Na+ 0.153M Cl- 0.153M
+Here, "M" represents the unit of concentration in mol/L.
+If the quantity of an ion is set to 0, the minimum number of ions required to neutralize the charge of the system will be added.
+>prep -sd
+How to use: j_presto prep -sd SOLVENT_DENSITY
+
+When adding ions using "j_presto prep -ia", you can set the density (in kg/L) of the solvent used to calculate the ion concentrations with this argument.
+If this argument is not specified, the default density of water (1.0 kg/L) will be used.
+If you are using a solvent other than water, be sure to set this value appropriately.
+>prep -ie
+How to use: j_presto prep -ie ION_EXCLUSION_DISTANCE
+
+When adding ions using "j_presto prep -ia", the electric field at the positions of the heavy atoms representing each solvent molecule (the oxygen atom for water molecules) is calculated.
+When a positive ion is added by replacing the solvent molecules located at the lowest electric field, while a negative ion replaces that at the highest electric field.
+In this case, the absolute value of the electric field of the solvent molecules nearby the replaced ions will increase, causing positive and negative ions to be arranged in alternating clumps.
+To prevent this situation, when one ion is placed, solvent molecules within a radius specified by this argument from the placed ions will not be replaced for ions during subsequent ion addition.
+This ensures that the ions are kept at a certain distance from each other, preventing a localized clumping of ions.
+If this argument is not set, the default value of 9.0 Å will be used.
+>prep -rr
+How to use: j_presto prep -rr RESIDUE_RENAME [RESIDUE_RENAME ...]
+
+You can change residue names with this argument.
+For example, if you want to replace water molecules represented by the residue name "HOH" with "WAT," you would specify it as "j_presto prep -rr HOH:WAT".
+You can also perform multiple residue name replacements simultaneously.
+>prep -shake
+How to use: j_presto prep -shake [{H,A}]
+
+To apply the SHAKE method for constraining covalent bonds, you specify it with this argument.
+If you only want to constrain covalent bonds involving hydrogen bonds, use j_presto prep -shake or j_presto prep -shake H.
+To constrain all covalent bonds, specify j_presto prep -shake A.
+(Note that this argument cannot constrain covalent bonds specified with SSBOND or LINK.)
+By setting this argument, a configuration file (*.shk) necessary for applying SHAKE during the simulation will be generated.
+>md_run
+The command "j_presto md_run" executes molecular dynamics simulations or energy minimization calculations.
+The usage is as follows:
+	j_presto md_run [INPUT_FILE]
+You need to specify the input file (INPUT_FILE) that contains the settings for the calculations you wish to perform.
+For details about the input file for molecular dynamics simulations and energy minimization calculations, please ask them this manual regarding "md.inp," and "min.inp", respectively.
+>md.inp
+The input file for molecular dynamics simulations consists of the following four EXECUTION blocks:
+	EXE> INPUT  (input block)
+	EXE> MD     (MD setting block)
+	EXE> OUTPUT (output block)
+	EXE> END    (end block)
+The INPUT, MD, and OUTPUT blocks begin with lines that start with EXE> and end with lines that contain QUIT as follows.
+	EXE> INPUT
+	    OPTION1
+	    OPTION2
+	    .
+	    .
+	QUIT
+EXE> END declares the end of the entire input file and does not need to be terminated with QUIT.
+When creating the md.inp file, it will be easier to first obtain the template using the command "j_presto get_tmpl md.inp" and then adjust it to fit your own settings.
+For options that can be configured within these blocks, please consult the manual by asking about the respective block names.
+>min.inp
+The input file for energy minimization calculations consists of the following four EXECUTION blocks:
+	EXE> INPUT  (input block)
+	EXE> MINI   (Mimimization calculation setting block)
+	EXE> OUTPUT (output block)
+	EXE> END    (end block)
+The INPUT, MINI, and OUTPUT blocks begin with lines that start with EXE> and end with lines that contain QUIT as follows.
+	EXE> INPUT
+	    OPTION1
+	    OPTION2
+	    .
+	    .
+	QUIT
+EXE> END declares the end of the entire input file and does not need to be terminated with QUIT.
+When creating the min.inp file, it will be easier to first obtain the template using the command "j_presto get_tmpl min.inp" and then adjust it to fit your own settings.
+For options that can be configured within these blocks, please consult the manual by asking about the respective block names.
+>EXE> INPUT
+This block in the input file for "j_presto md_run" is used to configure the necessary input files for the calculation.
+It is commonly utilized in both md.inp and min.inp files.
+Options are set as follows:
+	[OPTION name]= [setting content]
+Note that there should be no space between the option name and =, but there must be a space between = and the setting content.
+The main option list that can be configured is as follows:
+	TOPOLO : Input topology file
+	COORDI : Input PDB file
+	SETSHK : Input file for SHAKE settings
+	SETBOU : Configuration file for CAP boundary
+	REFCOO : PDB file for coordinate information used for positional restraints
+	POSITI : Positional restraint configuration file
+	DISTAN : Distance restraint configuration file
+	DIHEDR : Dihedral angle restraint configuration file
+	CELLPA : Cell multipole expansion, configuration file for ALSD
+For details about each option, please consult the manual.
+>CAPbound.inp
+Input file to perform calculations with CAP boundary.
+In simulations using CAP boundaries, the region where the solvent and solute can exist is defined, and when the molecules of the system move outside this region (beyond the CAP boundary), a force is applied to pull them back inside.
+Unlike the Periodic Boundary Condition (PBC), which assumes that the system's copies are infinitely repeated, a CAP-based simulation treats the system as if it is a droplet floating in a vacuum.
+Molecules near the boundary are influenced by the boundary, so it is necessary to set the distance between the solute and the boundary to be sufficiently large (at least 12 Å as a guideline).
+On the other hand, there is no interaction with its own copies, as in PBC.
+When simulating a system containing hydrophobic solute molecules, such as proteins, and polar solvent molecules, such as water, the solute molecules tend to adhere to the CAP boundary, avoiding the solvent.
+To prevent this issue, the solute is assigned a smaller boundary than the solvent.
+The length of the buffer region between the solute and solvent CAP boundaries can be specified in this file using "BOUND> BUFFER", and it is recommended to ensure a buffer of at least 4 Å.
+The options in this file can be set as follows:
+	BOUND> [option name]
+	[setting 1]
+	[setting 2]
+	.
+	.
+The main option name list that can be configured is as follows:
+	BOUND> SHAPE   : CAP boundary shape
+	BOUND> CENTER  : CAP boundary center
+	BOUND> INCLUDE : Specification molecules to which the CAP boundary for the solvent is applied
+	BOUND> RADIUS  : Radius of sphere-shape CAP boundary for solvent
+	BOUND> FORCE   : Force constant of CAP boundary for solvent
+	BOUND> LIST    : Specification atoms to which the CAP boundary for solute is applied
+	BOUND> BUFFER  : Length of the buffer region between the solute and solvent CAP boundaries
+	BOUND> FORPRO  : Force constant of CAP boundary for solute
+For details about each option, please consult the manual like "BOUND> SHAPE".
+>psr.inp
+This file is used to configure the settings for applying position restraints in simulations.
+You can specify this file in the input file (md.inp or min.inp) for running "j_presto md_run" by using "POSITI" option in the "EXE> INPUT" block.
+The specification is made through a PSR block, structured as:
+	PSR> [Option Name]
+	 .
+	 .
+	 .
+	END
+with two available options:
+	PSR> LIST
+	PSR> RADIUS
+For detailed information about these options, please refer to the manual like "PSR> LIST".
+Position restraints are useful for preventing structural collapse during the early stages of the simulation, such as maintaining the backbone structure of proteins.
+The template for the psr.inp file can be obtained via "j_presto get_tmpl psr.inp", which can be conveniently modified to suit your needs.
+> dsr.inp
+This file is used to configure the setting for applying distance restraints in simulations.
+You can specify this file in the input file (md.inp or min.inp) for running "j_presto md_run" by using "DISTAN" option in the "EXE> INPUT" block.
+The specification is made through a DSR block, structured as:
+        DSR> LIST
+         .
+         .
+         .
+        END
+For detailed information about "DSR> LIST" options, please refer to the manual.
+The template for the dsr.inp file can be obtained via "j_presto get_tmpl dsr.inp", which can be conveniently modified to suit your needs.
+> dhr.inp
+This file is used to configure the setting for applying dihedral angle restraints in simulations.
+You can specify this file in the input file (md.inp or min.inp) for running "j_presto md_run" by using "DIHEDR" option in the "EXE> INPUT" block.
+The specification is made through a DHR block, structured as:
+        DHR> [Option Name]
+         .
+         .
+         .
+        END
+with two available options:
+        DHR> NUMBER
+        DHR> LIST
+For detailed information about these options, please refer to the manual like "DHR> NUMBER".
+The template for the dhr.inp file can be obtained via "j_presto get_tmpl dhr.inp", which can be conveniently modified to suit your needs.
+>cluster.inp
+This file is used for specifying settings when using the Cell Multipole expansion Method (CMM) for the long-range electrostatic interaction calculation (i.e., when setting "CAL15M= CMM") or running ALSD simulations.
+If you are using CMM with the default settings, it is not necessary to prepare this file.
+In the "EXE> INPUT" block of the md.inp or min.inp input files for "j_presto md_run," set the file name with the "CELLPA" option.
+Options are specified with
+	INPCLS> [Option name]
+and continue until the next "INPCLS>" line appears or until the end of the file is reached.
+Below is a list of available options.
+	INPCLS> CELLVL              : The hierarchical level of cells for CMM
+	INPCLS> CELSIZ              : Cell size
+	INPCLS> RESLIST             : Selection of molecules where atoms' cell assignment in CMM is done by residue
+	INPCLS> CLSTLIST            : Selection of the region (Region A) to enhance conformational changes in ALSD simulations
+	INPCLS> CLSTMETHOD          : Settings for conducting ALSD simulations
+	INPCLS> SCALED_TERM         : Selection of energy terms to enhance in ALSD simulations
+	INPCLS> LAMBDA_WEIGHT       : Setting the mass of the scale factor, λ, in ALSD simulations
+	INPCLS> LAMBDA_TEMP_CONTROL : Setting the temperature control for the scale factor, λ, in ALSD simulations
+For details on how to use each option, search for relevant terms in the "j_presto manual" like "INPCLS> CELLVL".
+A template for this file can be obtained with "j_presto get_tmpl cluster.inp", and you can modify this file to suit your preferred settings.
+>EXE> MD
+This block in the input file for "j_presto md_run" is used to configure the necessary setting options for the MD simulations.
+It is utilized only in md.inp file.
+Options are set as follows:
+        [OPTION name]= [setting content]
+Note that there should be no space between the option name and =, but there must be a space between = and the setting content.
+The main option list that can be configured is as follows:
+	METHOD : Simulation method
+	LOOPLI : Number of simulation steps
+	TIMEST : Length of simulation time steps
+	UPDATE : Frequency of nearest neighbor list updates
+	CMMUPD : Frequency of parametr updates for CMM
+	RESTER : Specify restart for calculations
+	NAMERI : Input restart file
+	NAMERO : Output restart file
+	TEMPCO : Temperature control
+	SETTEM : Temperature of the system
+	STARTT : Temperature at time step 0
+	HEATLO : Simulation steps for heating
+	RELAXA : Relaxation time for Berendsen thermostat
+	CAL15M : Electrostatic interaction calculation method
+	CUTLEN : Cut-off length
+	INITIA : Initial velocity settings
+	RANDOM : Random seed for initial velocity generation
+	BOUNDA : Periodic boundary condition (PBC)
+	XMINCL : Lower bound of X coordinate for PBC Cell
+	XMAXCL : Upper bound of X coordinate for PBC Cell
+	YMINCL : Lower bound of Y coordinate for PBC Cell
+	YMAXCL : Upper bound of Y coordinate for PBC Cell
+	ZMINCL : Lower bound of Z coordinate for PBC Cell
+	ZMAXCL : Upper bound of Z coordinate for PBC Cell
+	STOPCE : Fix the center of mass of the system
+	NSTPCN : Chain number for fixing center of mass
+	DIEVAL : Dielectric constant
+	TEMPER : Temperature for constraint forces
+	WETPSR : Weighting factor for position restraints
+	WETDSR : Weighting factor for distance restraints
+	WETDHR : Weighting factor for dihedral restraints
+	COVSHK : Criterion of SHAKE convergence 
+	LIMSHK : Loop limit for SHAKE convergence
+	NAMEGE : Input parameter file for Generalized Ensemble method (McMD and ALSD)
+	NAMETO : Total energy and lambda for ALSD output file
+	MNTRTO : Total energy and lambda for ALSD output format
+        LAMBDA : initial Lambda value for ALSD
+	PARALV : Level of parallel computation
+	N_SIMD : Number of parallelization for SIMD
+	OUTATM : Final atom number for output coordinates
+	NAMECO : Coordinate output file
+	MNTRCO : Coordinate output format
+	OUTCOO : Coordinate output frequency
+	NAMEVE : Velocity output file
+	MNTRVE : Velocity output format
+	OUTVEL : Velocity output frequency
+	NAMEEN : Energy output file
+	MNTREN : Energy output format
+	OUTLOG : Frequency of output log (and temporary restart file) steps
+	LOGFOR : Level of log output
+	FDEBUG : Flag for debug of j_presto md_run
+
+For details about each option, please consult the manual like "METHOD".
+>EXE> MINI
+This block in the input file for "j_presto md_run" is used to configure the necessary setting options for the energy minimization calculations.
+It is utilized only in min.inp file.
+Options are set as follows:
+        [OPTION name]= [setting content]
+Note that there should be no space between the option name and =, but there must be a space between = and the setting content.
+The main option list that can be configured is as follows:
+	METHOD : Simulation method
+	LOOPLI : Number of simulation steps
+	UPDATE : Frequency of nearest neighbor list updates
+	CONVGR : Threshold of RMSF convergence
+	ISTEPL : Initial step length
+	UPRATE : Up rate for steepest descent
+	DOWNRA : Down rate for steepest descent
+	LINESE : Loop limit of line search for conjugate gradient
+	CONVLI : Conversion criterion of line search for conjugate gradient
+	CAL15M : Electrostatic interaction calculation method
+	CUTLEN : Cut-off length
+	BOUNDA : Periodic boundary condition
+	XMINCL : Lower bound of X coordinate for PBC Cell
+	XMAXCL : Upper bound of X coordinate for PBC Cell
+	YMINCL : Lower bound of Y coordinate for PBC Cell
+	YMAXCL : Upper bound of Y coordinate for PBC Cell
+	ZMINCL : Lower bound of Z coordinate for PBC Cell
+	ZMAXCL : Upper bound of Z coordinate for PBC Cell
+	DIEVAL : Dielectric constant
+	TEMPER : Temperature for constraint forces
+	WETPSR : Weighting factor for position restraints
+	WETDSR : Weighting factor for distance restraints
+	WETDHR : Weighting factor for dihedral restraints
+	COVSHK : Criterion of SHAKE convergence 
+	LIMSHK : Loop limit for SHAKE convergence
+        LAMBDA : Lambda value for energy scaling
+	PARALV : Level of parallel computation
+	N_SIMD : Number of parallelization for SIMD
+	MONITO : Frequency of monitoring log
+	LOGFOR : Level of log output
+
+For details about each option, please consult the manual like "METHOD".
+>EXE> OUTPUT
+This block in the input file for "j_presto md_run" is used to configure the output file for the calculation.
+It is commonly utilized in both md.inp and min.inp files.
+The following option can be set:
+	OCOORD: output PDB file
+For details about each option, please consult the manual.
+>EXE> END
+This block in the input file for "j_presto md_run" is used to declare the end of the input file.
+>TOPOLO
+This option sets the input topology file (*.tpl) and can be set in the "EXE> INPUT" block of md.inp and min.inp.
+This topology file can be created using "j_prest prep".
+>COORDI
+This option specifies the input PDB file (*.pdb) and can be set in the "EXE> INPUT" blocks of md.inp and min.inp.
+The PDB file formatted for j_presto can be created using "j_presto prep".
+>OCOORD
+This option can be set in the "EXE> OUTPUT" blocks of md.inp and min.inp.
+This option sets the output PDB file name for the final conformation of the simulation or the energy minimization calculation.
+>SETSHK
+This option sets the input SHAKE file (*.shk) and can be set in the "EXE> INPUT" block of md.inp and min.inp.
+The SHAKE file can be created using "j_presto prep".
+>SETBOU
+This is a configuration option for the input file used in calculations with CAP boundaries and can be set in the "EXE> INPUT" block in md.inp and min.inp.
+You can obtain a template for this file using "j_presto get_tmpl CAPbound.inp".
+For details on the settings that can be specified in this file, refer to "CAPbound.inp".
+>REFCOO
+This option specifies the PDB file containing the structure used as a reference for applying position restraints during the simulation.
+It is important to ensure that this PDB file is consistent with the initial structure PDB file specified in the "COORDI" option.
+When applying position constraints, it is essential to input not only this file but also the position constraint settings file (psr.inp) through the "POSITI" option.
+>POSITI
+This option specifies the input file related to position restraints (psr.inp).
+You can obtain the template for the psr.inp file using the command:
+	j_presto get_tmpl psr.inp
+making it convenient to modify this file appropriately for your use.
+For detailed settings of the psr.inp file, please refer to "j_presto manual" and inquire "psr.inp".
+>DISTAN
+This option specifies the input file related to distance restraints (dsr.inp).
+You can obtain the template for the dsr.inp file using the command:
+	j_presto get_tmpl dsr.inp
+making it convenient to modify this file appropriately for your use.
+For detailed settings of the dsr.inp file, please refer to "j_presto manual" and inquire "dsr.inp".
+>DIHEDR
+This option specifies the input file related to dihedral angle restraints (dhr.inp).
+You can obtain the template for the dhr.inp file using the command:
+        j_presto get_tmpl dhr.inp
+making it convenient to modify this file appropriately for your use.
+For detailed settings of the dhr.inp file, please refer to "j_presto manual" and inquire "dhr.inp".
+>CELLPA
+This option is specify the input file (cluster.inp) for settings when using the Cell Multipole expansion Method (CMM) for the long-range electrostatic interaction calculation (i.e., when setting "CAL15M= CMM") or when you want to change the default settings for CMM, as well as for running ALSD simulations.
+You can obtain the template for the cluster.inp file using the command:
+        j_presto get_tmpl cluster.inp
+making it convenient to modify this file appropriately for your use.
+For detailed settings of the cluster.inp file, please refer to "j_presto manual" and inquire "cluster.inp".
+>METHOD
+This option allows you to set the calculation method, with different parameters available for configuration in the "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+In EXE> MD in md.inp, the following options can be selected:
+	CONS : MD with constant temperature (Berendsen method)
+	MICR : Micro-canonical MD
+	CANO : Canonical MD (Hoover & Evans method)
+	  GE : Generalized Ensemble method such as McMD and ALSD
+The default setting is "CANO".
+In EXE> MINI in min.inp, the following options are available:
+	STEE : Steepest descent
+	CONJ : Conjugate gradient
+The default setting is "STEE".
+>LOOPLI
+This option sets loop limit number (number of steps) of MD simulation or energy minimization calculation and can be set in the "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+The default is 0.
+>TIMEST
+This option sets the length of one step in the MD simulation (in femtoseconds) and can be set in "EXE> MD" block of md.inp.
+The default is 2.0 (fs).
+>UPDATE
+This option sets the update frequency for the nearest neighbor list used to calculate interactions.
+It can be set in "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+The default is 10 (every ten steps).
+>CMMUPD
+This option specifies the update frequency for long-range electrostatic interactions when "CAL15M= CMM" (setting the electrostatic interaction calculation method to CMM) is configured.
+It can be set in "EXE> MD" block of md.inp.
+Since this parameter must be updated whenever the nearest neighbor list is updated, the value specified in "UPDATE" must be divisible by the value set in this option.
+The default is 5 (every five steps).
+Even when using CMM, this option cannot be set for energy minimization calculations; however, it is updated internally at every step, meaning it effectively is 1.
+>RESTER
+By setting this option to "RESTAR= YES," you can read the restart file specified by the "NAMERI" option and continue the calculation from the previous simulation.
+It can be set in "EXE> MD" block of md.inp.
+The default setting is "NO.
+>NAMERI
+When "RESTAR= YES" is set, this option is used to specify the input restart file.
+It can be set in "EXE> MD" block of md.inp.
+>NAMERO
+This option sets the name of the output restart file.
+It can be set in "EXE> MD" block of md.inp.
+By specifying the output file with the "NAMERI" option and setting "RESTAR= YES," you can restart the simulation from the final step of the current simulation.
+>TEMPCO
+This option allows you to choose the temperature control method when "METHOD= CANO or GE" is set.
+It can be set in "EXE> MD" block of md.inp.
+In the thermostat used for CANO and GE (Hoover & Evans method), differences in temperature (i.e., differences of average velocities of constituent atoms) may arise between the solute and solvent during the simulation.
+To suppress this effect, you can implement a temperature control method that operates on each molecular species rather than the entire system.
+If you choose to use this method, set "TEMPCO= YES" (default).
+If you prefer to control the temperature for the entire system, set "TEMPCO= NO."
+>SETTEM
+This option sets the temperature of the system.
+It can be set in "EXE> MD" block of md.inp.
+The default is 300K.
+Be careful not to confuse it with the similarly named option "TEMPER".
+>STARTT
+This option sets the temperature at simulation step 0.
+This option is used when you want to change the system's temperature during the simulation.
+It can be set in "EXE> MD" block of md.inp.
+From step 0 to the number of steps specified in the "HEATLO" option, the system's temperature will change linearly from the temperature set in "STARTT" to the temperature set in "SETTEM".
+After that, the simulation will be conducted at a constant temperature.
+The default value is 300 K.
+>HEATLO
+This option specifies the number of steps to change the system's temperature from the temperature set by "STARTT" to the temperature set by "SETTEM".
+This option is used when you want to vary the system's temperature during the simulation.
+The default value is 0.
+>RELAXA
+This option sets the relaxation time of the Berendsen thermostat when using the method "METHOD= CONS," which refers to MD with constant temperature (Berendsen method).
+It can be set in "EXE> MD" block of md.inp.
+The default value is 40.0.
+>CONVGR
+This option sets the RMSF (root mean square force) threshold for determining the convergence of an energy minimization calculation.
+It can be specified in the "EXE> MINI" block of min.inp file.
+The default value is 0.1.
+>ISTEPL
+This option sets the initial step size for changing the structure during an energy minimization calculation.
+It can be specified in the "EXE> MINI" block of min.inp file.
+The default value is 0.01.
+>UPRATE
+This option sets the scaling factor for adjusting the step size in the steepest descent energy minimization calculation when a decrease in energy is achieved by a structural change.
+It can be specified in the "EXE> MINI" block of min.inp file.
+The default value is 1.2.
+>DOWNRA
+This option sets the scaling factor for adjusting the step size in the steepest descent energy minimization calculation when a structural change does not result in an energy decrease.
+It can be specified in the "EXE> MINI" block of min.inp file.
+The default value is 0.6.
+>LINESE
+This option sets the loop limit for line searches in conjugate gradient (energy minimization calculation), and it can be configured in the "EXE> MINI" block of min.inp file.
+The default value is 10.
+>CONVLI
+This option sets the conversion criterion for determining the convergence of line searches in conjugate gradient (energy minimization calculation) and can be configured in the "EXE> MINI" block of min.inp file.
+The default value is 0.1.
+>CAL15M
+This option is used to specify the method for calculating electrostatic interactions and can be set in both "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+The available options are as follows:
+	CMM  : cell multipole expansion method
+	ATOM : atom-based cutoff
+	RESI : residue-based cutoff
+	ZD   : zero dipole summation method
+The default setting is "ZD".
+>CUTLEN
+This option is used to set the cutoff distance (Å) for calculating long-range interactions, and it can be specified in both "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+The default value is 12.0 Å.
+When the method for calculating electrostatic interactions is set to cell multipole expansion (CMM), this cutoff distance is applied only to the calculation of van der Waals (vdW) interactions.
+For other methods, this cutoff distance is used for both van der Waals and electrostatic interactions.
+>INITIA
+This option is used to set the initial velocities of atoms when performing a simulation without using a restart file.
+It can be specified in the "EXE> MD" block of md.inp file, with the following settings:
+	ZERO : Sets the initial velocities of the atoms to zero.
+	SET  : Sets the initial velocities based on the random number seed provided by the "RANDOM" option.
+The default is "SET".
+>RANDOM
+This option is used to set the random number seed for generating the initial velocities of atoms when performing a simulation without using a restart file.
+It can be specified in the "EXE> MD" block of md.inp file, and any integer value can be assigned.
+The default is "584287".
+>BOUNDA
+To use periodic boundary conditions (PBC), set this option to "BOUNDA= PBC".
+It can be configured in both "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+The default setting is "NO".
+When this option is set, you must specify the lower and upper bounds of the coordinates for the PBC cell using "XMINCL," "XMAXCL," "YMINCL," "YMAXCL," "ZMINCL," and "ZMAXCL."
+>XMINCL
+This option is used to set the lower boundary coordinate of the x-axis for the periodic boundary condition (PBC) cell and can be configured in both "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+Please note that to perform calculations with PBC, it is necessary to separately set "BOUNDA= PBC."
+>XMAXCL
+This option is used to set the upper boundary coordinate of the x-axis for the periodic boundary condition (PBC) cell and can be configured in both "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+Please note that to perform calculations with PBC, it is necessary to separately set "BOUNDA= PBC."
+>YMINCL
+This option is used to set the lower boundary coordinate of the y-axis for the periodic boundary condition (PBC) cell and can be configured in both "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+Please note that to perform calculations with PBC, it is necessary to separately set "BOUNDA= PBC."
+>YMAXCL
+This option is used to set the upper boundary coordinate of the y-axis for the periodic boundary condition (PBC) cell and can be configured in both "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+Please note that to perform calculations with PBC, it is necessary to separately set "BOUNDA= PBC."
+>ZMINCL
+This option is used to set the lower boundary coordinate of the z-axis for the periodic boundary condition (PBC) cell and can be configured in both "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+Please note that to perform calculations with PBC, it is necessary to separately set "BOUNDA= PBC."
+>ZMAXCL
+This option is used to set the upper boundary coordinate of the z-axis for the periodic boundary condition (PBC) cell and can be configured in both "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+Please note that to perform calculations with PBC, it is necessary to separately set "BOUNDA= PBC."
+>STOPCE
+This option is used to fix the translational and/or rotational motion of the system's center of mass during MD simulations and can be set in "EXE> MD" block of md.inp.
+By default, the atoms used to calculate the center of mass are from the first chain, but this can be extended to atoms from the first chain to a specified chain using the NSTPCN option.
+The STOPCE option allows you to choose from four settings:
+	TRAN : fix translational motion
+	ROTA : fix rotational motion
+	BOTH : fix both translational and rotational motion
+	NO   : do not fix
+The default is "NO".
+>NSTPCN
+This option specifies the last chain number used to calculate the center of mass when fixing the translational or rotational motion of the system using the STOPCE option.
+It can be set in the "EXE> MD" block of md.inp file.
+For example, if "NSTPCN= 3" is specified, atoms from the first chain to the third chain are used for the center of mass calculation.
+The default value is 1.
+>DIEVAL
+This option sets the dielectric constant and can be configured in both "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+Any positive real number can be specified, with the default value being 1.
+>TEMPER
+This option sets the temperature used when calculating restraint forces for position restraints, distance restraints, and dihedral angle restraints.
+It can be configured in both "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+Any positive real number can be specified, with the default value being 300 K.
+>WETPSR
+This option sets a scaling factor for position restraints, which can be configured in both "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+Any positive real number can be specified, with the default value being 1.
+The force constants for each restraint are input in the psr.inp file, but this option is used to temporarily scale them uniformly.
+>WETDSR
+This option sets a scaling factor for distance restraints, which can be configured in both "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+Any positive real number can be specified, with the default value being 1.
+The force constants for each restraint are input in the dsr.inp file, but this option is used to temporarily scale them uniformly.
+>WETDHR
+This option sets a scaling factor for dihedral angle restraints, which can be configured in both "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+Any positive real number can be specified, with the default value being 1.
+The force constants for each restraint are input in the dhr.inp file, but this option is used to temporarily scale them uniformly.
+>COVSHK
+This option is to set criterion of SHAKE convergence and can be set in both "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+The default is 0.000001
+>LIMSHK
+This option sets the loop limit value for converging the SHAKE algorithm and can be set in "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+Any positive integer can be specified, with the default value being 1000.
+>NAMEGE
+This option specifies an input parameter file name for Generalized Ensemble method (GE) such as McMD and ALSD and can be set in the "EXE> MD" block of md.inp.
+This parameter file (*.nf) is generated by "j_presto GEprep".
+>NAMETO
+This option specifies the output file name for total energy and lambda for ALSD and can be set in the "EXE> MD" block of md.inp.
+This file is required to make parameter files for GE (*.nf) set with "NAMEGE", the parameter file can be created by "j_presto GEprep".
+>MNTRTO
+This option specifies the format of the output file for total energy and lambda for ALSD required when running McMD or ALSD simulations, and can be set in the "EXE> MD" block of md.inp.
+You can choose from the following four options:
+        NO   : no output
+        ASCI : ASCII
+        SING : single-precision binary
+        DOUB : double-precision binary
+The default is ASCI.
+To input this output file into the program that creates parameter files (*.nf, set with "NAMEGE" option) for running McMD or ALSD simulations, please select the "ASCI" format.
+>LAMBDA
+This option is for setting the variable "lambda," which scales interatomic interactions in the ALSD simulation, a proprietary method implemented in the j_presto program.
+It can be used in both "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+When the value of lambda is set to 1, the interactions are equivalent to those in a conventional simulation.
+When lambda is less than 1, the interactions weaken, promoting structural changes.
+You can set any positive real number, but be cautious that as the value approaches 0 (generally below 0.3), atom collisions and other issues may occur, potentially leading to unstable calculations.
+At the start of the simulation, the value of λ for ALSD is forcibly set to the value specified by this option.
+If you are using a restart file to continue the simulation from the last calculation, you can carry over the λ value from the final step of the previous simulation if this option is not set.
+However, be aware that specifying this option will forcibly change the λ value.
+>PARALV
+The option to set a method for OpenMP parallel calculations, which can be set in both "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+With this option, you can choose one of the following three methods:
+	REDU (reduction): Parallelization using OpenMP's reduction. Generally slower and not recommended.
+	HIGH            : The fastest option for systems with around tens of thousands of atoms or for moderate levels of parallelization.
+	DOUB (double)   : Typically faster than HIGH for large-scale systems with over a hundred thousand atoms or for highly parallelized calculations.
+While the guidelines for choosing the appropriate method are provided, it is recommended to perform test calculations and compare the computation speed to determine the most effective parallelization method for your specific system.
+>N_SIMD
+The option to set the number of SIMD parallel calculations, which can be set in both "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+The optimal parallel number for the fastest computation depends on the system and environment, so it is necessary to test various values to find the best conditions.
+If this option is not set, md_run will sequentially change the SIMD count (1, 2, 4, 8, etc.) while measuring computation time to automatically determine the most efficient SIMD parallel number.
+The selected parallel number will be output in the log file as "SIMD PARALLELAZATION was set to ...".
+While this mechanism generally works well, there are rare occasions when it fails to determine the optimal parallel number, resulting in slower computations.
+It is advisable to first conduct test calculations without setting this option and, once the optimal SIMD parallel number is found, to explicitly provide this option in the actual computations.
+>OUTATM
+An option to specify the last atomic number to output in the coordinate output file, which can be set in "EXE> MD" block of md.inp.
+When outputting coordinates for large systems, the data volume can become very large.
+This option can be used to save disk space.
+For example, if only the solute's coordinate information is needed for analysis and there's no need to output information about ions or solvent, setting "OUTATM= 300" (for a solute with 300 atoms) will output the coordinate information for atoms numbered 1 to 300 only in the output coordinate file set in "NAMECO" option.
+>NAMECO
+The option to set the coordinate output file name, which can be set in "EXE> MD" block of md.inp.
+>MNTRCO
+The option to set the format for the coordinate output file set by "NAMECO", which can be set in "EXE> MD" block of md.inp.
+You can choose from the following four options:
+	NO   : no output
+	ASCI : ASCII
+	SING : single-precision binary
+	DOUB : double-precision binary
+The default is SING.
+>OUTCOO
+The option to set the frequency of outputting values to the coordinate output file set by "NAMECO", which can be set in "EXE> MD" block of md.inp.
+For example, if OUTCOO=10, values will be output every 10 steps.
+If this option is not set, coordinate data will not be output.
+>NAMEVE
+The option to set the velocity output file name, which can be set in "EXE> MD" block of md.inp.
+>MNTRVE
+The option to set the format for the velocity output file set by "NAMEVE", which can be set in "EXE> MD" block of md.inp.
+You can choose from the following four options:
+	NO   : no output
+	ASCI : ASCII
+	SING : single-precision binary
+	DOUB : double-precision binary
+The default is NO.
+>OUTVEL
+The option to set the frequency of outputting values to the velocity output file set by "NAMEVE", which can be set in "EXE> MD" block of md.inp.
+For example, if OUTVEL=10, values will be output every 10 steps.
+If this option is not set, velocity data will not be output.
+>NAMEEN
+The option to set the energy output file name, which can be set in "EXE> MD" block of md.inp.
+>MNTREN
+The option to set the format for the energy output file set by "NAMEEN", which can be set in "EXE> MD" block of md.inp.
+You can choose from the following four options:
+	NO   : no output
+	ASCI : ASCII
+	SING : single-precision binary
+	DOUB : double-precision binary
+The default is NO.
+>OUTENE
+The option to set the frequency of outputting values to the energy output file set by "NAMEEN", which can be set in "EXE> MD" block of md.inp.
+For example, if OUTENE=10, values will be output every 10 steps.
+If this option is not set, energy values will not be output.
+>OUTLOG
+The setting option for log output frequency that can be used in "EXE> MD" block of md.inp.
+At the same time, temporary restart file is output.
+For example, if "OUTLOG= 10", the log will be output every 10 steps.
+If this option is not set, logs during the calculation will not be output.
+>MONITO
+The setting option for log output frequency that can be used in "EXE> MINI" block of min.inp.
+For example, if "MONITO= 10", the log will be output every 10 steps.
+If this option is not set, the default is 10.
+>LOGFOR
+The setting option for log output levels that can be used in both "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
+You can specify either SHOR (short log) or DETA (detailed log).
+The default value is SHOR.
+>FDEBUG
+An option for debugging j_presto md_run and can be set in "EXE> MD" block of md.inp.
+The default is "FDEBUG= NO".
+When specified as "FDEBUG= MAKE" during the simulation, a binary file (1stp_force.bin) containing the energy and forces after one step is generated.
+This file should be created before any modifications to the program.
+After making changes to the program, if you run the simulation with "FDEBUG= YES" while this file is present in the current directory, it calculates the energy and forces after one step and computes the error against the values output in 1stp_force.bin.
+This option allows checking for bugs in the modified program by comparing the energy and force values.
+>BOUND> SHAPE
+In the input file for using CAP boundaries (CAPbound.inp), you can specify the shape of the CAP boundary by this option.
+To set a spherical CAP boundary, configure it as follows:
+	BOUND> SHAPE
+	SPHERE
+>BOUND> CENTER
+In the input file for using CAP boundaries (CAPbound.inp), you can specify the CAP boundary center by this option.
+To set the center, you can specify by the following three ways:
+	COORDINATE
+	ATOM
+	CHAIN
+When you specify the center by "COORDINATE", please give x, y, z coordinates like:
+	BOUND> CENTER
+	COORDINATE  0.0 0.0 0.0
+If you have prepared the PDB file for the simulation using "j_presto prep", the coordinates of the system's center was displayed in the execution log, and you can specify that value here.
+When you specify the center by "ATOM", please give an atom number in the PDB file as follows:
+	BOUND> CENTER
+	ATOM  346
+When you specify the center by "CHAIN", the center of mass of the selected chain is set as the CAP center.
+Please give a molecular number in the PDB file as follows:
+	BOUND> CENTER
+	CHAIN  1
+When "ATOM" or "CHAIN" is used, the center coordinates are determined by referring to the structural data of the PDB file specified in the 'COORDI' option of the input file for "j_presto md_run" (min.inp or md.inp).
+>BOUND> INCLUDE
+This option specify the molecules for which the CAP boundary for solvent is applied.
+The format consists of the following four components:
+	BOUND> INCLUDE
+	WAT 1  999999  NO
+The first component (WAT) represents the name of the molecular species to which the CAP boundary is applied. The molecular species name is described under "TPL> MOLECULES" in the topology file (*.tpl) as follows:
+	.
+	.
+	TPL> MOLECULES
+	; NUMBER OF MOLECULES : 4
+	test_1                       1
+	Na+                         34
+	Cl-                         35
+	WAT                      12187
+	.
+	.
+In the example above, system contains four types of molecular species (test_1, Na+, Cl-, and WAT).
+The CAP boundary is applied to WAT (i.e., water molecules).
+The second and third components (1 and 999999) specify the minimum and maximum molecular number ID of the "WAT" to which the CAP boundary is applied (i.e., from 1 to 999999).
+In this case, since there are only 12,187 WAT molecules, the CAP boundary is applied to all of them.
+In this case, the ions (Na+ and Cl−) do not have the CAP boundary applied; however, since these charged particles are energetically unstable when they drift into the vacuum region outside the CAP boundary, they are naturally pulled back into the boundary by the solvent molecules.
+The fourth component (NO) is an option to specify whether to log the information of the molecules to which the CAP boundary is applied.
+If set to YES, the information is output.
+>BOUND> RADIUS
+This option specifies the radius from the center of the CAP boundary for solvents when using a sphere-shaped CAP boundary.
+>BOUND> FORCE
+This option specifies the force constant of CAP boundary for solvents.
+The default is 150.0 (Kcal/mol).
+>BOUND> LIST
+This option specifies atoms to apply CAP boundary for solute.
+The format consists of the following seven components:
+	BOUND> LIST
+	1 1 1 99999 C* * NO
+	1 1 1 99999 N* * NO
+	1 1 1 99999 O* * NO
+	1 1 1 99999 P* * NO
+	1 1 1 99999 S* * NO
+The 1st and 2nd components specify the first and last chain number IDs to which the CAP boundary is applied.
+Note that the behavior of the settings changes depending on whether the 1st value is set to 0 or not.
+	When the 1st value is NOT 0,
+		In the above case, from the first chain (1) to the last (1), i.e. only the first chain is selected.
+		The 3rd and 4th components specify the first and last residue number IDs "in the selected chain" (i.e., from 1 to 99999).
+		If this chain has fewer than 99999 residues, the CAP boundary is applied up to the last residue available.
+	When the 1st value is 0,
+		The 3rd and 4th components specify the first and last residue number IDs based on "the sequential numbering of residues written in the PDB".
+The 5th component specifies the atom names to which the CAP boundary is applied.
+In addition to specifying exact atom names, wildcards using the asterisk (*) can also be employed.
+For example, "*" represents all atoms, and "C*" refers to all atoms whose first character is C.
+However, note that wildcards can only be used at the end of the name; therefore, specifications like "*A" or "*C*" are not allowed.
+There are special designations as follows:
+	HEAV : heavy atoms (atoms other than hydrogen)
+	SIDE : atoms other than the backbone of proteins or nucleic acids
+The 6th component is the residue name.
+Similar to the atom names, wildcard specifications can also be used.
+The 7th component is an option to output information about the atoms to which the CAP boundary has been applied when executing "j_presto md_run".
+Setting this option to "YES" enable the output.
+>BOUND> BUFFER
+When simulating a system containing hydrophobic solute molecules, such as proteins, and polar solvent molecules, such as water, the solute molecules tend to adhere to the CAP boundary, avoiding the solvent.
+To prevent this issue, the solute is assigned a smaller boundary than the solvent.
+This option specifies the length of the buffer region between the solute and solvent CAP boundaries.
+it is recommended to ensure a buffer of at least 4 Å.
+For example, with a sphere-shaped CAP boundary where the solvent CAP radius is 30.0 Å and the buffer distance is 4.0 Å, the solute CAP radius is 30.0 - 4.0 = 26.0 Å.
+>BOUND> FORPRO
+This option specifies the force constant of CAP boundary for solutes.
+The default is 150.0 (Kcal/mol).
+>PSR> LIST
+This option is for specifying the atoms to be applied position restraints in the input file (psr.inp).
+The usage is:
+	PSR> LIST
+	1  1  1  99999  CA   *   1.0  NOMA  NO
+	1  1  1  99999  N    *   1.0  NOMA  NO
+	1  1  1  99999  C    *   1.0  NOMA  NO
+	1  1  1  99999  O    *   1.0  NOMA  NO
+	END
+The PSR block starts with the line "PSR>" and ends with the line "END".
+The meaning of each line is as follows.
+The 1st and 2nd components specify the first and last chain number IDs to which the position restraints are applied.
+Note that the behavior of the settings changes depending on whether the 1st value is set to 0 or not.
+        When the 1st value is NOT 0,
+                In the above case, from the first chain (1) to the last (1), i.e. only the first chain is selected.
+                The 3rd and 4th components specify the first and last residue number IDs "in the selected chain" (i.e., from 1 to 99999).
+                If this chain has fewer than 99999 residues, the CAP boundary is applied up to the last residue available.
+        When the 1st value is 0,
+                The 3rd and 4th components specify the first and last residue number IDs based on "the sequential numbering of residues written in the PDB".
+The 5th component specifies the atom names to which the position restraints are applied.
+In addition to specifying exact atom names, wildcards using the asterisk (*) can also be employed.
+For example, "*" represents all atoms, and "C*" refers to all atoms whose first character is C.
+However, note that wildcards can only be used at the end of the name; therefore, specifications like "*A" or "*C*" are not allowed.
+There are special designations as follows:
+        HEAV : heavy atoms (atoms other than hydrogen)
+        SIDE : atoms other than the backbone of proteins or nucleic acids
+The 6th component is the residue name.
+Similar to the atom names, wildcard specifications can also be used.
+The 7th component is force constant (Kcal/mol) for the position restraints.
+If you want to make the positional restraint force proportional to the mass of the atom, i.e., the value of the seventh component multiplied by the mass, set the 8th component to "MASS".
+In the above example, it is set to "NOMA" (NOMASS), meaning this option is not used.
+The 9th component is an option to output information about the atoms to which the position restraints has been applied when executing "j_presto md_run".
+Setting this option to "YES" enable the output.
+>PSR> RADIUS
+This option is for specifying the atoms to be applied position restraints in the input file (psr.inp).
+The usage is:
+	GROUP> RADIUS
+	1  5  CA  10.0 20.0  CA  1.0  NOMA  NO
+	1  5  CA  10.0 20.0  N   1.0  NOMA  NO
+	1  5  CA  10.0 20.0  C   1.0  NOMA  NO
+	1  5  CA  10.0 20.0  O   1.0  NOMA  NO
+	END
+The PSR block starts with the line "PSR>" and ends with the line "END".
+"PSR> LIST" directly specifies the atoms to which positional restraints are applied, while "PSR> RADIUS" selects one atom (the center atom) and applies positional restraints to atoms with the specified atom name that are located within a distance between rmin and rmax from the center atom.
+The meaning of each line is as follows.
+The 1st, 2nd, and 3rd components specify the chain number ID, residue number ID, and atom name of the center atom, respectively.
+The 4th and 5th components are rmin and rmax, respectively, and the 6th component specifies the atom name to which the positional restraints are applied.
+For the 6th component, in addition to specifying exact atom names, wildcards using the asterisk (*) can also be employed.
+For example, "*" represents all atoms, and "C*" refers to all atoms whose first character is C.
+However, note that wildcards can only be used at the end of the name; therefore, specifications like "*A" or "*C*" are not allowed.
+The 7th component is force constant (Kcal/mol) for the position restraints.
+If you want to make the positional restraint force proportional to the mass of the atom, i.e., the value of the seventh component multiplied by the mass, set the 8th component to "MASS".
+In the above example, it is set to "NOMA" (NOMASS), meaning this option is not used.
+The 9th component is an option to output information about the atoms to which the position restraints has been applied when executing "j_presto md_run".
+Setting this option to "YES" enable the output.
+>DSR> LIST
+This option is for specifying the atoms to be applied distance restraints in the input file (dsr.inp).
+The usage is:
+	DSR> LIST
+	1   1  ASN  CA   1   2  LEU  CA  1.0  10.0  2.0  17.0  NO
+	1   3  TYR  N    1   4  ILE  N   1.0  10.0  2.0  17.0  NO
+	END
+The DSR block starts with the line "DSR>" and ends with the line "END".
+The meaning of each line is as follows.
+In the specification of distance restraints, two atoms are designated, and when the distance between them becomes less than rmin or greater than rmax, harmonic spring forces with force constants, fmin or fmax (Kcal/mol), are applied to keep the distance within the specified range.
+The 1st to 4th components are the chain number, residue number (within the chain), residue name, and atom name for the first atom.
+The 5th to 8th components are the same for the second atom.
+The 9th to 12th components represent fmin, fmax, rmin, and rmax, respectively.
+The 13th component is an option to output information about the atoms to which the distance restraints has been applied when executing "j_presto md_run".
+Setting this option to "YES" enable the output.
+>DHR> NUMBER
+This option is for specifying the atoms to be applied dihedral angle restraints in the input file (dhr.inp).
+The usage is:
+	DHR> NUMB
+	1  2  3  4  10.0  10.0  40.0  80.0  NO
+	5  6  7  8  10.0  10.0  40.0  80.0  NO
+	END
+The DHR block starts with the line "DHR>" and ends with the line "END".
+The meaning of each line is as follows.
+In the specification of dihedral angle restraints, four atoms are designated, and when the dihedral angle bewtween them becames less than rmin or greater than rmax (degree), harmonic spring forces with force constants, fmin or fmax (Kcal/mol), are applied to keep the dihedral angle within the specified range.
+The 1st to 4th components are atomic numbers listed in the input PDB file of the 1st to 4th atoms to specify to which are applied the dihedral angle restraints, respectively.
+The 5th to 8th components represent fmin, fmax, rmin, and rmax, respectively.
+The 9th component is an option to output information about the atoms to which the dihedral angle restraints has been applied when executing "j_presto md_run".
+Setting this option to "YES" enable the output.
+>DHR> LIST
+This option is for specifying the atoms to be applied dihedral angle restraints in the input file (dhr.inp).
+The usage is:
+	DHR> LIST
+	1  1  N  1  CA  1  C  2  N  10.0  10.0  40.0  80.0  NO
+	1  2  N  2  CA  2  C  3  N  10.0  10.0  40.0  80.0  NO
+	END
+The DHR block starts with the line "DHR>" and ends with the line "END".
+The meaning of each line is as follows.
+In the specification of dihedral angle restraints, four atoms are designated, and when the dihedral angle bewtween them becames less than rmin or grea
+ter than rmax (degree), harmonic spring forces with force constants, fmin or fmax (Kcal/mol), are applied to keep the dihedral angle within the speci
+fied range.
+The chain number is specified in the 1st component.
+Then, from the 2nd to the 9th components, the residue number IDs within the specified chain and atom names for the 1st to the 4th atoms are specified in order.
+The 10th to 13th components represent fmin, fmax, rmin, and rmax, respectively.
+The 14th component is an option to output information about the atoms to which the dihedral angle restraints has been applied when executing "j_presto md_run".
+Setting this option to "YES" enable the output.
+>INPCLS> CELLVL
+This option can be configured in the input file for CMM (cluster.inp).
+In CMM, space is divided into a grid structure.
+The smallest grid (level 1 grid) consists of 2x2x2 = 8 cells, which are then grouped into a level 2 grid.
+Similarly, a level 3 grid is formed by grouping eight level 2 grids, and so on, creating a hierarchical structure.
+
+When calculating the electrostatic interactions acting on a specific atom, the interactions from atoms belonging to nearby grids are computed precisely.
+For atoms in slightly farther grids, the interactions are approximated using contributions from level 1 grids.
+Even more distant interactions are approximated based on contributions from level 2 grids.
+This hierarchical approach allows for both high accuracy and computational efficiency.
+
+In this option, you can set the number of grid levels as follows:
+	INPCLS> CELLVL
+	3
+The maximum level which j_presto can be set is 5.
+The default setting is 3.
+If you wish to configure a cell level other than the default, you can do so using this option.
+Please note that even if you set this value, j_presto may internally adjust it to an appropriate level.
+>INPCLS> CELSIZ
+This option can be configured in the input file for CMM (cluster.inp).
+In CMM, space is divided into a grid structure.
+The smallest grid (level 1 grid) consists of 2x2x2 = 8 cells, which are then grouped into a level 2 grid.
+Similarly, a level 3 grid is formed by grouping eight level 2 grids, and so on, creating a hierarchical structure.
+
+When calculating the electrostatic interactions acting on a specific atom, the interactions from atoms belonging to nearby grids are computed precisely.
+For atoms in slightly farther grids, the interactions are approximated using contributions from level 1 grids.
+Even more distant interactions are approximated based on contributions from level 2 grids.
+This hierarchical approach allows for both high accuracy and computational efficiency.
+
+In this option, you can set the smallest grid size.
+	INPCLS> CELSIZ
+	6.0
+The default setting is 6.0 Å.
+If you wish to configure a cell level other than the default, you can do so using this option.
+Please note that even if you set this value, j_presto may internally adjust it to an appropriate level.
+>INPCLS> RESLIST
+This option can be configured in the input file for CMM (cluster.inp).
+In CMM, space is divided into a grid structure.
+The smallest grid (level 1 grid) consists of 2x2x2 = 8 cells, which are then grouped into a level 2 grid.
+Similarly, a level 3 grid is formed by grouping eight level 2 grids, and so on, creating a hierarchical structure.
+
+When calculating the electrostatic interactions acting on a specific atom, the interactions from atoms belonging to nearby grids are computed precisely.
+For atoms in slightly farther grids, the interactions are approximated using contributions from level 1 grids.
+Even more distant interactions are approximated based on contributions from level 2 grids.
+This hierarchical approach allows for both high accuracy and computational efficiency.
+
+In this calculation, it is necessary to determine which grid each atom belongs to.
+Instead of using the individual positions of each atom, you can determine the grid for a molecule by using the position of its center of mass.
+This allows you to assign the same grid to all atoms of a molecule such as water molecule.
+
+With this option, you can specify the residues for which you want to determine the grid assignment not based on the default method of using each atom's position, but rather by residue.
+The specification method is as follows:
+	INPCLS> RESLIST
+	1 999999   1   999999  *  WAT  NO
+The 1st and 2nd components are the first and last chain IDs you want to select.
+In the above example, since the actual number of existing chains is less than the specified final chain number (999999), all chains are selected.
+The 3rd and 4th components specify the first and last residue IDs in the selected chains.
+Similar to the case of chains, if the actual number of existing residues in the selected chain is less than the specified final residue number (999999), all residues are selected.
+The 5th and 6th components specify atom and residue names, respectively.
+For these component, in addition to specifying exact names, wildcards using the asterisk (*) can also be employed.
+For example, "*" represents all atoms or residues, and "C*" refers to all atoms or residues whose first character is C.
+However, note that wildcards can only be used at the end of the name; therefore, specifications like "*A" or "*C*" are not allowed.
+Since "INPCLS> RESLIST" is an option for specifying residues, there is no need to specify the fifth component.
+However, all residues that include at least one of the specified atoms are applied for the residue-wise grid assignment.
+The 7th component is an option to output information about the residues to which the residue-wise grid assignment has been applied when executing "j_presto md_run".
+>INPCLS> CLSTLIST
+If you want to conduct ALSD simulations, you need to select the region where you wish to enhance confirmational changes using this option.
+The method for setting this up is as follows:
+	INPCLS> CLSTLIST
+	1  1   1   20   *    *  NO
+	2  2   1    1   *  LIG  NO
+The 1st and 2nd components are the first and last chain IDs you want to select.
+The 3rd and 4th components specify the first and last residue IDs in the selected chains.
+The 5th and 6th components specify atom and residue names, respectively.
+For these component, in addition to specifying exact names, wildcards using the asterisk (*) can also be employed.
+For example, "*" represents all atoms or residues, and "C*" refers to all atoms or residues whose first character is C.
+However, note that wildcards can only be used at the end of the name; therefore, specifications like "*A" or "*C*" are not allowed.
+There are special designations as follows:
+        HEAV : heavy atoms (atoms other than hydrogen)
+        SIDE : atoms other than the backbone of proteins or nucleic acids
+In the above example, all atoms from residues 1 to 20 of the first chain and all atoms of the residue named "LIG" of residue 1 of the second chain are selected as the region to enhance the conformational change.
+>INPCLS> CLSTMETHOD
+When you want to perform ALSD simulations, please set this option as follows:
+	INPCLS> CLSTMETHOD
+	LMD
+>INPCLS> SCALED_TERM
+This option allows you to select which energy terms to enhance when performing ALSD simulations.
+The selection is made using a four-digit number as follows:
+	INPCLS> SCALED_TERM
+	0010
+It is known that ALSD simulations that do not scale both the electrostatic interaction energy and van der Waals energy, or at least one of these two energy terms, have low structural exploration efficiency.
+Therefore, in j_presto, these two energy terms are always scaled.
+The four-digit number provided in this option specifies the scaling for the bond, angle, torsion, and improper torsion terms, respectively.
+0 means "not scaled" and 1 means "scaled".
+Only for the torsion term, you can also select options 2 (scale all except peptide bonds) or 3 (scale all except peptide bonds, but scale the XXX-PRO peptide bond).
+The default setting is "0030".
+>INPCLS> LAMBDA_WEIGHT
+In ALSD simulations, just like the atoms consisting the system, the scaling factor λ also moves according to the Hamiltonian.
+This option specifies the mass of the λ particle.
+If this option is not specified, the mass is set to the total mass of the atoms in the region where conformation changes are enhanced (i.e. the atoms selected by "INPCLS> CLSTLIST").
+However, if you want to change this value, you can use this option as follows:
+	INPCLS> LAMBDA_WEIGHT
+	1000.0
+>INPCLS> LAMBDA_TEMP_CONTROL
+In ALSD simulations, just like the atoms consisting the system, the scaling factor λ also moves according to the Hamiltonian.
+This option sets the temperature control method for the λ particle as follows:
+	>INPCLS> LAMBDA_TEMP_CONTROL
+	YES
+In the above example, the temperature control of λ is coupled with the atoms of the system.
+The default setting is "NO," which means that temperature control is not applied directly, but is controlled indirectly through the Hamiltonian.
+>batch_set
+The "j_presto batch_set" automatically generates input files and execution scripts necessary for running multiple MD simulation runs.
+When you execute a single MD simulation run, you prepare an input file (md.inp) describing the desired settings, and then execute the calculation with "j_presto md_run md.inp".
+However, in practical operations, you may need to run multiple MD simulations simultaneously with different initial velocities, or in McMD or ALSD simulations, repeatedly execute numerous MD runs for conformational sampling.
+Preparing input files and executing for each of these runs is a very labor-intensive task.
+In j_presto, bundle programs, j_presto_mpi or j_presto_master, is provided to execute multiple MD runs collectively as a single MPI job, and the batch_set is responsible for automatically preparing the input files and execution scripts necessary for these runs.
+Before using the command, you must to prepare the following 3 files:
+	1 : An input file for MD schedule (batch_set.inp or batch_set_ALSD.inp)
+	2 : An template file for md_run execusion script (md_run.exe)
+	3 : An template file for md_multi execusion script (md_multi.exe)
+The names in parentheses are the default names of each file.
+
+If the files named "batch_set.inp", "md_run.exe", and "md_multi.exe" exist in the directory where you execute "j_presto batch_set", "j_presto batch_set" will automatically use these three files as input.
+If you want to use different input file names, you can specify them with -b, -r, and -m options, respectively. For more details, check the help with "j_presto batch_set -h".
+
+"j_presto batch_set" automatically prepares the necessary files and directories (md*/n*) for multiple MD runs according to the MD simulation schedule file (batch_set.inp), instead of requiring you to manually prepare input file (md.inp) and the executable file (md_run.exe) for each run.
+For details on how to prepare each file, please refer to the manual, where these file names are mentioned, such as "batch_set.inp".
+
+The batch_set program automatically creates multiple directories named md*, where * is arbitrary positive integer.
+Within each of these directories, it creates subdirectories named n1 to n[NRUN], for a total of [NRUN] specified runs in this example.
+Each directory contains an input file (md.inp) created based on batch_set.inp, and a single-run execution script (md_run.exe) is copied into each directory.
+Additionally, in the current directory, an executable file (e.g., md_multi_*.exe) is generated based on md_multi.exe.
+By running this file, all [NRUN] MD runs in md* can be executed together as a single MPI job.
+>batch_set.inp
+The batch_set.inp is an input file that specifies the schedule for executing MD simulations.
+Based on this input file, the necessary input files (md.inp) and directory structures are prepared.
+We provide two template files for batch_set.inp: one for regular MD simulation (batch_set.inp) and one for ALSD simulation (batch_set_ALSD.inp).
+If you would like to know about the input files for ALSD, please refer to "batch_set_ALSD.inp".
+You can obtain the required template by running "j_presto get_tmpl batch_set.inp" and modify it according to your settings.
+
+Below, I will explain the contents of the batch_set.inp template:
+*****************************************************************
+nmd 0 2
+nrun 60
+nmpi 60
+
+0
+COORDI= ../../test_min.pdb
+TOPOLO= ../../test.tpl
+SETSHK= ../../test.shk
+REFCOO= ../../test_min.pdb
+POSITI= ../../psr.inp
+;SETBOU= ../../CAPbound.inp
+;CELLPA= ../../cluster.inp
+METHOD= CANO
+LOOPLI= 500000
+RESTAR= NO
+NAMERO= restart.dat
+SETTEM= 300.0
+STARTT= 100.0
+HEATLO= 500000
+STOPCE= BOTH
+;NSTPCN= 1
+NAMECO= md.cod
+OUTCOO= 2500
+;OUTATM=
+NAMETO= test.ene
+PARALV= DOUB
+N_SIMD= 256
+RANDOM= #RNDSED
+;OCOORD= test_md.pdb
+
+1
+RESTAR= YES
+POSITI= OFF
+LOOPLI= 5000000
+INITIA= OFF
+STARTT= OFF
+HEATLO= OFF
+RANDOM= OFF
+NAMERI= ../../md#PMD/n#RUN/restart.dat
+*****************************************************************
+In the initial part of this file, several variables necessary for executing multiple MD runs are defined.
+The available options are the following five:
+	1 : nmd i j
+		nmd specifies the first and last IDs of the MD runs you wish to execute.
+		The integers i and j must satisfy the condition i <= j.
+		For example, if you set it as "nmd 0 2," three directories md0, md1, and md2 will be created.
+		The calculations will be executed in the order of md0 → md1 → md2.
+	2 : nrun i
+		nrun specifies the number of MD runs you want to execute simultaneously (where i is any natural number).
+		For example, if you set it as "nrun 60," subdirectories named n1 through n60 will be created within each of the md* directories.
+		Each of these subdirectories will contain the corresponding input file (md.inp) and executable file (md_run.exe).
+		When executing the MD simulations using j_presto_mpi or j_presto_master, the 60 MD runs within the md* directories will be executed simultaneously as a single MPI job.
+	3 : nmpi i
+		nmpi specifies the number of MPI processes to be used, where i is any natural number.
+		When executing calculations with j_presto_mpi, the number of processes specified in nmpi must match the number of MD runs indicated by nrun to allow for simultaneous execution.
+		If you do not have enough computational resources to run all the specified MD runs concurrently, you can use j_presto_master for a master-slave parallel computation setup.
+		In this case, you can set nmpi to a smaller value than what is specified in nrun.
+	4 : temper r s
+		temper is a variable used when you want to set different temperatures for each MD run.
+		In the example above, it is not utilized.
+		The variables r and s should be any positive real numbers.
+		By setting this variable, the placeholder "#TEMPER" in the file will be replaced with evenly distributed temperatures ranging from r to s for each run specified by nrun.
+	5 : lambda r s
+		lambda is a variable used when you execute ALSD simulations and want to set different lambda values for each MD run.
+		In the example above, it is not utilized.
+		The variables r and s should be any positive real numbers.
+		By setting this variable, the placeholder "#LAMBDA" in the file will be replaced with evenly distributed lambda values ranging from r to s for each run specified by nrun.
+The three variables, nmd, nrun, and nmpi, are required in batch_set.inp.
+
+
+After these variables, there will be blocks that start with an integer and ends with a blank line.
+In the "0" block, you can specify the options you want to use for calculations from md0 onwards.
+For available options, refer to "EXE> INPUT", "EXE> MD", and "EXE> OUTPUT".
+The semicolon (;) is a comment character, meaning that any text following it on the same line will be ignored.
+The placeholder "#RNDSED" specifies the random seed for each MD run.
+By default, each run receives a unique seed value, with md0/n1 assigned a seed of 1, md0/n2 a seed of 2, and so on, up to md0/n60, which receives a seed of 60.
+If you wish to adjust these seed values, you can use the -r option followed by an integer.
+For instance, executing the command "j_presto batch_set -r 4" will add 4 to each default seed.
+Therefore, the seeds for this example would change from their original values (1 to 60) to new values ranging from 5 (1 + 4) to 64 (60 + 4).
+
+In the "1" block, you will specify the options that you want to set for runs starting from md1.
+The options set in md0 will be inherited as they are, but if you want to change an option set in md0 or set an option that was not specified in md0, you will write it here.
+By specifying [option name]= OFF, you can revert any previously set options to an unset state.
+For instance, in the "1" block, the application of position restraints is removed (POSITI= OFF), and settings related to temperature increase (INITIA, STARTT, HEATLO) as well as the random seed for initial velocities (RANDOM) are also disabled.
+Additionally, you modify the length of the simulation (LOOPLI) and set the configuration to resume the simulation from a previous calculation using the restart file specified in NAMERI (RESTAR= YES).
+Here, the NAMERI variable includes placeholders (#PMD, #RUN).
+The placeholder #PMD is automatically assigned the ID of the previous MD run (0 for md1), while #RUN is assigned the ID of the current MD run (4 for md1/n4), and these placeholders will be replaced accordingly.
+
+In this example, nmd is set to 2, but since the "2" block is not specified, md2 will inherit the same settings as md1.
+If you want to change the settings for md2, please specify them accordingly in this block.
+
+In batch_set.inp, you can use the following placeholders:
+	   #CMD : Current MD ID (2 for md2/n5)
+	   #PMD : Previous MD ID (1 for md2/n5)
+	   #RUN : Current run ID (5 for md2/n5)
+	#LAMBDA : Lambda value (refer to the explanation in the text above)
+	#TEMPER : Temperature (refer to the explanation in the text above)
+	#RNDSED : Random seed (refer to the explanation in the text above)
+	  #NRUN : Number of runs in an MD set by "nrun"
+	  #NMPI : Numper of MPI parallelization set by "nmpi"
+>batch_set_ALSD.inp
+The batch_set.inp is an input file that specifies the schedule for executing MD simulations.
+Based on this input file, the necessary input files (md.inp) and directory structures are prepared.
+For ALSD simulation, you can obtain the required template by running "j_presto get_tmpl batch_set_ALSD.inp" and modify it according to your settings.
+If you use the batch_set_ALSD.inp template, note that "j_presto batch_set" will try to use "batch_set.inp" as the default input file name.
+You should either rename the file accordingly or specify the file name using the "j_presto batch_set -b" option.
+Below, I will explain the contents of the batch_set_ALSD.inp template:
+*****************************************************************
+nmd 0 26
+nrun 60
+nmpi 60
+lambda 0.6 0.85
+
+0
+COORDI= ../../test_min.pdb
+TOPOLO= ../../test.tpl
+SETSHK= ../../test.shk
+REFCOO= ../../test_min.pdb
+POSITI= ../../psr.inp
+;SETBOU= ../../CAPbound.inp
+;CELLPA= ../../cluster.inp
+METHOD= CANO
+LOOPLI= 500000
+RESTAR= NO
+NAMERO= restart.dat
+SETTEM= 300.0
+STARTT= 100.0
+HEATLO= 500000
+STOPCE= BOTH
+;NSTPCN= 1
+NAMECO= md.cod
+OUTCOO= 2500
+;OUTATM=
+NAMETO= test.ene
+PARALV= DOUB
+N_SIMD= 256
+RANDOM= #RNDSED
+LAMBDA= 0.6
+;OCOORD= test_md.pdb
+
+1
+RESTAR= YES
+POSITI= OFF
+LOOPLI= 4000000
+INITIA= OFF
+STARTT= OFF
+HEATLO= OFF
+RANDOM= OFF
+NAMERI= ../../md#PMD/n#RUN/restart.dat
+
+2
+LOOPLI= 500000
+LAMBDA= #LAMBDA
+; For GEprep
+PROJNM= test
+SIMTYP= CLMD    ; Constant LaMbDa MD simulation
+CODLST= file.list
+MINVAL= 0.6
+MAXVAL= 0.85
+FITDIM= 2
+NWINDO= 1
+SIMTEM= 300.0
+FORCES= 3000.0
+INPENE= n#RUN/test.ene
+NFIRST= 250001
+NFINAL= 15000000
+
+3
+METHOD= GE
+LAMBDA= OFF
+NAMEP1= ../../md#PMD/test.nf
+; For GEprep
+SIMTYP= ALSD
+PREFIT= ../md#PMD/test.nf
+FORCES= 2500.0
+NFIRST= 100001
+FITDIM= 4
+
+6
+FORCES= 1800.0
+
+9
+NXMAXV= 0.88
+
+10
+LOOPLI= 1000000
+
+12
+NXMAXV= 0.90
+
+14
+FORCES= 1500.0
+
+15
+NXMAXV= 0.93
+
+18
+NXMAXV= 0.96
+
+21
+NXMAXV= 1.0
+
+24
+NXMAXV= 1.03
+FORCES= 1500.0
+
+26
+LOOPLI= 15000000
+NFIRST= 1
+MINLMD= 0.75
+MAXLMD= 1.25
+MINEAA= -630.0
+MAXEAA= -170.0
+MINEAB= -1220.0
+MAXEAB= -440.0
+*****************************************************************
+In the initial part of this file, several variables necessary for executing multiple MD runs are defined.
+The available options are the following five:
+        1 : nmd i j
+                nmd specifies the first and last IDs of the MD runs you wish to execute.
+                The integers i and j must satisfy the condition i <= j.
+                For example, if you set it as "nmd 0 2," three directories md0, md1, and md2 will be created.
+                The calculations will be executed in the order of md0 → md1 → md2.
+        2 : nrun i
+                nrun specifies the number of MD runs you want to execute simultaneously (where i is any natural number).
+                For example, if you set it as "nrun 60," subdirectories named n1 through n60 will be created within each of the md* directories.
+                Each of these subdirectories will contain the corresponding input file (md.inp) and executable file (md_run.exe).
+                When executing the MD simulations using j_presto_mpi or j_presto_master, the 60 MD runs within the md* directories will be executed simultaneously as a single MPI job.
+        3 : nmpi i
+                nmpi specifies the number of MPI processes to be used, where i is any natural number.
+                When executing calculations with j_presto_mpi, the number of processes specified in nmpi must match the number of MD runs indicated by nrun to allow for simultaneous execution.
+                If you do not have enough computational resources to run all the specified MD runs concurrently, you can use j_presto_master for a master-slave parallel computation setup.
+                In this case, you can set nmpi to a smaller value than what is specified in nrun.
+        4 : temper r s
+                temper is a variable used when you want to set different temperatures for each MD run.
+                In the example above, it is not utilized.
+                The variables r and s should be any positive real numbers.
+                By setting this variable, the placeholder "#TEMPER" in the file will be replaced with evenly distributed temperatures ranging from r to s for each run specified by nrun.
+        5 : lambda r s
+                lambda is a variable used when you execute ALSD simulations and want to set different lambda values for each MD run.
+                The variables r and s should be any positive real numbers.
+                By setting this variable, the placeholder "#LAMBDA" in the file will be replaced with evenly distributed lambda values ranging from r to s for each run specified by nrun.
+The three variables, nmd, nrun, and nmpi, are required in batch_set.inp.
+
+After these variables, there will be blocks that start with an integer and ends with a blank line.
+In the "0" block, you can specify the options you want to use for calculations from md0 onwards.
+For available options, refer to "EXE> INPUT", "EXE> MD", and "EXE> OUTPUT" for conventional MDs, and "GEprep" for McMD and ALSD simulations.
+The semicolon (;) is a comment character, meaning that any text following it on the same line will be ignored.
+The placeholder "#RNDSED" specifies the random seed for each MD run.
+By default, each run receives a unique seed value, with md0/n1 assigned a seed of 1, md0/n2 a seed of 2, and so on, up to md0/n60, which receives a seed of 60.
+If you wish to adjust these seed values, you can use the -r option followed by an integer.
+For instance, executing the command "j_presto batch_set -r 4" will add 4 to each default seed.
+Therefore, the seeds for this example would change from their original values (1 to 60) to new values ranging from 5 (1 + 4) to 64 (60 + 4).
+
+In the "1" block, you will specify the options that you want to set for runs starting from md1.
+The options set in md0 will be inherited as they are, but if you want to change an option set in md0 or set an option that was not specified in md0, you will write it here.
+By specifying [option name]= OFF, you can revert any previously set options to an unset state.
+For instance, in the "1" block, the application of position restraints is removed (POSITI= OFF), and settings related to temperature increase (INITIA, STARTT, HEATLO) as well as the random seed for initial velocities (RANDOM) are also disabled.
+Additionally, you modify the length of the simulation (LOOPLI) and set the configuration to resume the simulation from a previous calculation using the restart file specified in NAMERI (RESTAR= YES).
+Here, the NAMERI variable includes placeholders (#PMD, #RUN).
+The placeholder #PMD is automatically assigned the ID of the previous MD run (0 for md1), while #RUN is assigned the ID of the current MD run (4 for md1/n4), and these placeholders will be replaced accordingly.
+
+In the "2" block, preparations for starting the ALSD simulation begin.
+The ALSD simulation divides the system into two regions:
+	region A, which promotes structural changes
+	region B, which maintains structural changes equivalent to conventional MD
+As a result, the system's energy can be expressed as 
+	E = E_AA + E_AB + E_BB
+represent the energies within region A, between regions A and B, and within region B, respectively.
+In ALSD, a scaling factor, denoted as λ, is introduced to scale the interactions related to region A.
+The potential energy of the system is modified as follows:
+	E_ALSD = λ^2 * E_AA + λ * E_AB + E_BB + RT lnP(λ)
+where R is the gas constant, T is the simulation temperature, and P(λ) is the canonical distribution function along the lambda axis.
+The λ particle recieves a force given by
+	F_ALSD = -2 * E_AA * λ -E_AB -RT dlnP(λ)/dλ
+while moving within a specified range (for example, from 0.6 to 1.03).
+When λ=1, the forces acting on the atoms of the system are equivalent to those in conventional MD.
+However, when λ<1, the interactions related to region A are weakened, thereby promoting the structural changes.
+At the initial stage of the calculation, the term, dlnP(λ)/dλ, is unknown.
+Therefore, it is estimated through iterative simulationss.
+Once dlnP(λ)/dλ is accurately estimated, ALSD can perform a random walk over the specified range of λ, allowing for efficient conformational sampling.
+
+In md2, as a precursor to ALSD, an initial estimate of dlnP(λ)/dλ will be obtained through multiple MD runs, each configured with different values of λ.
+By setting LAMBDA= #LAMBDA, different λ values ranging from 0.6 to 0.85 set by "lambda" will be assigned for each MD run.
+The lines below "; For GEprep" contain options for the GEprep program, which estimates dlnP(λ)/dλ.
+The simulation type "SIMTYP" is specified as constant lambda MD (CLMD).
+In this calculation, the λ particle is fixed at an initial value and does not change during the computation.
+For other setting options, please refer to the manual for each option name.
+
+In the "3" and the later blocks, the ALSD simulation begins using the estimated dlnP(λ)/dλ from the CLMD simulation.
+The LAMBDA option must be disabled here (set to LAMBDA= OFF); otherwise, even if the calculation is resumed from a restart file, the value of λ will not be carried over and will be forcibly reverted to the value set by the LAMBDA option.
+Please take note of this.
+In GEprep, the energy and λ values from the simulation trajectory specified in the INPENE option are read, and the predicted function parameters for 
+dlnP(λ)/dλ  are outputted as a *.nf file.
+This file can be read using the "PREFIT" option to run the ALSD simulation.
+In the subsequent blocks, structural relaxation and estimation of dlnP(λ)/dλ are repeatedly conducted up to md25, while adjusting the range of λ values to explore (NXMAXV) and the force that pulls the λ particle back when it goes beyond the specified range (FORCES).
+Finally, the last MD run is executed at md26 for analysis.
+For the meaning of each option, please refer to their respective names, and for the list of options available in GEprep, consult the "GEprep" documentation.
+
+In ALSD, if these options are not set appropriately, it may lead to abnormal termination of the calculation during the process.
+Specifically, if λ takes on extreme values that are too small or too large, it can cause atomic collisions or structural twists that do not occur in normal MD, resulting in instability of the system.
+The settings for controlling the motion of the λ particle, such as "FORCES," and for fitting dlnP(λ)/dλ), like "FITDIM" and "NXMAXV," are crucial for the success of the calculation.
+Therefore, it is highly recommended to refer to these terms in the manual and read the explanations thoroughly.
+
+In batch_set.inp, you can use the following placeholders:
+           #CMD : Current MD ID (2 for md2/n5)
+           #PMD : Previous MD ID (1 for md2/n5)
+           #RUN : Current run ID (5 for md2/n5)
+        #LAMBDA : Lambda value (refer to the explanation in the text above)
+        #TEMPER : Temperature (refer to the explanation in the text above)
+        #RNDSED : Random seed (refer to the explanation in the text above)
+          #NRUN : Number of runs in an MD set by "nrun"
+          #NMPI : Numper of MPI parallelization set by "nmpi"
+>GEprep
+"j_presto GEprep" prepares a parameter file (*.nf) for Generalized Ensemble (GE) MD simulations such as McMD and ALSD.
+This program is required when running Generalized Ensemble MD simulations such as McMD or ALSD, but these simulations are usually set up through "j_presto batch_set".
+In the execution script (md_multi_*.exe) generated during this process, "j_presto GEprep" is automatically executed, so you rarely need to run this program explicitly.
+Execution is performed as follows:
+	j_presto GEprep [input file for GEprep (GEprep.inp)]
+As mentioned earlier, the input file required for this program (GEprep.inp) is usually automatically generated, so the template is not provided by "j_presto get_tmpl".
+The options for GEprep are set in batch_set.inp, and based on this file, GEprep.inp is automatically generated.
+The main options that can be configured for GEprep are as follows:
+	PROJNM : Project name for output file names
+	SIMTYP : Simulation type
+	DATLST : Data file list for input energy and lambda values
+	MINVAL : The minimum limit of energy or lambda sampling range
+	MAXVAL : The maximum limit of energy or lambda sampling range
+	SIMTEM : Simulation temperature
+	FITDIM : The maximum degree of the polynomial used for function fitting
+	NWINDO : Number of windows for spline fitting
+	NXMINV : The minimum limit of energy or lambda sampling range for next simulation
+	NXMAXV : The maximum limit of energy or lambda sampling range for next simulation
+	PREFIT : function parameter data for previous simulation
+	TMPSMP : Temperature for reweighting
+	NXTEMP : Temperature for next simulation
+	LAMBDA : Lambda for reweighting
+	MINLMD : The minimum limit of lambda for ALSD reweighting
+	MAXLMD : The maximum limit of lambda for ALSD reweighting
+	MINEAA : The minimum limit of Energy in region A for ALSD reweighting
+	MAXEAA : The maximum limit of Energy in region A for ALSD reweighting
+	MINEAB : The minimum limit of Energy between region A and B for ALSD reweighting
+	MAXEAB : The maximum limit of Energy between region A and B for ALSD reweighting
+	FORCES : Force size applied to lambda particle when it goes out of the range from MINVAL to MAXVAL
+	INPENE : Input energy and lambda values file (*.ene) to estimate the function dlnP(λ)/dλ
+	NFIRST : The initial structure number used for the function estimation
+	NFINAL : The final structure number used for the function estimation
+For details on each option, refer to the option names in the manual.
+
+McMD realizes a wide conformational search of molecules by balancing the search for stable conformations and the promotion of conformational changes through a random walk of the system's potential energy, E, from low energy regions corresponding to low temperatures to high energy regions corresponding to high temperatures.
+In McMD, the simulation is performed using the multicanonical energy (E_McMD), which modifies E as follows:
+        E_McMD = E + RTlnP(E)
+where R is gas constant, T is simulation temperature, and P(E) is the canonical distribution.
+In McMD, each atom in the system moves under forces (F_McMD) derived from the differentiation of E_McMD:
+        F_McMD = F + RT dlnP(E)/dE
+
+Adaptive Lambda Square Dynamics (ALSD) is a variant of McMD that enables the calculation to promote only conformational changes in a specific region of the system (Region A) selected by the user, while maintaining conventional MD-like conformational changes in the rest of the system (Region B).
+In ALSD, the system's potential energy is divided as follows.
+        E = E_AA + E_AB + E_BB
+E_AA, E_AB, and E_BB represent the energies within region A, between regions A and B, and within region B, respectively.
+ALSD is an MD simulation that introduces a scaling factor λ to scale the energies related to region A.
+The potential energy of the system is modified as follows:
+        E_ALSD = λ^2 * E_AA + λ * E_AB + E_BB + RT lnP(λ)
+where P(λ) is the canonical distribution function along the lambda axis.
+In ALSD, each atom in the system and λ moves under forces (F_ALSD) derived from the differentiation of E_ALSD:
+        F_ALSD = λ^2 * F_AA + λ * F_AB + F_BB (for atoms)
+        F_ALSD = -2 * E_AA * λ -E_AB -RT dlnP(λ)/dλ (for λ)
+where F_AA, F_AB, and F_BB are the forces in conventional MD simulation for intra-region A, inter region A-B, and intra-region B, respectively.
+
+The functions (dlnP(E)/dE, dlnP(λ)/dλ) in the force equations for McMD and ALSD are artificially introduced to allow E and λ to undergo a random walk.
+At the begining of the simulation, the form of these functions are unknown.
+Therefore, the shape of these functions are predicted and refined by iterative simulations to achieve efficient conformational exploration.
+These functions are predicted from the values of E and λ obtained from the simulations and are fitted as polynomial spline functions.
+
+Here is an explanation of the contents of the main files generated after executing "j_presto GEprep":
+	*.dist
+		This file is output to confirm whether the simulation is performing a random walk within the specified E or λ range.
+		In the case of McMD, the first column of this file contains the values of potential energy E.
+		The second column contains the logarithm of the distribution function along the E-axis (lnP(E)).
+		In the case of ALSD, the first column contains λ.
+		The second column contains the logarithm of the distribution function along the λ-axis (lnP(λ)).
+		If these distributions become flat within the region selected by "MINVAL" and "MAXVAL", it indicates that the estimation of dlnP(E)/dE or dlnP(λ)/dλ is successful.
+		If not, you should review settings such as "FITDIM", "NWINDO", "NXMINV", "NXMAXV", and "FORCES" to achieve flatness.
+	*.dlnN (for McMD) or *.dlnP (for ALSD)
+		This file is output to confirm the estimated function from the simulations and its fitted counterpart with a polynomial spline fitting.
+		The first column contains the values of potential energy E or λ.
+		The second column contains the raw function data calculated from the input data.
+		The third column containts the function data fitted using a polynomial spline.
+		The fourth column represents the function data with the forces specified by "FORCES" option applied to the data in the third column.
+		If there is a significant deviation between the data in the second and third columns, indicating that the fitting is not working well, the efficiency of conformational exploration in subsequent simulations may decrease, and in some cases, the simulation may terminate abnormally.
+		In such cases, it is recommended to review settings such as "FITDIM", "NWINDO", "NXMINV", "NXMAXV", and "FORCES" to achieve flatness.
+	*.nf
+		This file outputs the parameter information for the function needed to execute McMD and ALSD.
+		When running McMD or ALSD simulations with "j_presto md_run," it is necessary to specify this file using the "NAMEGE" option in the input file (md.inp).
+>PROJNM
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for Generalized Ensemble MD simulations like McMD and ALSD.
+This option sets the output file name when the GEprep program is executed:
+	PROJNM= test 
+If this option is not set, the default name "test" will be used.
+>SIMTYP
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for Generalized Ensemble MD simulations like McMD and ALSD.
+This option specifies the simulation type being executed.
+The types that can be specified are the following:
+	SIMTYP= CANO : Canonical MD simulation
+	SIMTYP= MULT : Multicanonical MD (McMD) simulation
+	SIMTYP= CLMD : Constant Lambda MD (CLMD) simulation
+	SIMTYP= ALSD : Adaptive Lambda Square Dynamics (ALSD) simulation
+In McMD and ALSD simulations, it is necessary to initially perform either Canonical MD or CLMD to determine the parameters required for the calculations.
+For specific operational details regarding ALSD, please also refer to the description in "batch_set_ALSD.inp".
+> DATLST
+"j_presto GEprep" estimates the function parameters necessary for executing McMD and ALSD simulations.
+This estimation requires the energy and lambda values from the previous simulation.
+The "DATLST" option specifies the names of the energy and λ data files (.ene) output from the previous simulation, along with the range of data to be used for the estimation.
+The format for this file is as follows:
+	n1/test.ene
+	100001 500000
+	n2/test.ene
+	100001 500000
+	n3/test.ene
+	100001 500000
+	.
+	.
+	.
+In this file, the settings for each input file are described in two lines.
+The first line contains the file name, and the second line consists of two integers.
+In this example, it indicates that data will be input from line 100,001 to line 500,000 of the file.
+If the input files are prepared using "j_presto batch_set," this file will be automatically generated as "file.list" within the md* directory, so please modify it as necessary.
+The *.ene data file can be output by specifying the "NAMETO" option in the configuration file "md.inp" when running MD with "j_presto md_run".
+>MINVAL
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for Generalized Ensemble MD simulations like McMD and ALSD.
+This option specifies the minimum limit for energy sampling in McMD or for lambda sampling in ALSD.
+>MAXVAL
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for Generalized Ensemble MD simulations like McMD and ALSD.
+This option specifies the maximum limit for energy sampling in McMD or for lambda sampling in ALSD.
+>SIMTEM
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for Generalized Ensemble MD simulations like McMD and ALSD.
+This option specifies the simulation temperature for current MD simulations.
+>FITDIM
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for Generalized Ensemble MD simulations like McMD and ALSD.
+This option specifies the order of the polynomial spline function for McMD or ALSD.
+
+McMD realizes a wide conformational search of molecules by balancing the search for stable conformations and the promotion of conformational changes through a random walk of the system's potential energy, E, from low energy regions corresponding to low temperatures to high energy regions corresponding to high temperatures.
+In McMD, the simulation is performed using the multicanonical energy (E_McMD), which modifies E as follows:
+	E_McMD = E + RTlnP(E)
+where R is gas constant, T is simulation temperature, and P(E) is the canonical distribution.
+In McMD, each atom in the system moves under forces (F_McMD) derived from the differentiation of E_McMD:
+	F_McMD = F + RT dlnP(E)/dE
+
+Adaptive Lambda Square Dynamics (ALSD) is a variant of McMD that enables the calculation to promote only conformational changes in a specific region of the system (Region A) selected by the user, while maintaining conventional MD-like conformational changes in the rest of the system (Region B).
+In ALSD, the system's potential energy is divided as follows.
+	E = E_AA + E_AB + E_BB
+E_AA, E_AB, and E_BB represent the energies within region A, between regions A and B, and within region B, respectively.
+ALSD is an MD simulation that introduces a scaling factor λ to scale the energies related to region A.
+The potential energy of the system is modified as follows:
+        E_ALSD = λ^2 * E_AA + λ * E_AB + E_BB + RT lnP(λ)
+where P(λ) is the canonical distribution function along the lambda axis.
+In ALSD, each atom in the system and λ moves under forces (F_ALSD) derived from the differentiation of E_ALSD:
+	F_ALSD = λ^2 * F_AA + λ * F_AB + F_BB (for atoms)
+        F_ALSD = -2 * E_AA * λ -E_AB -RT dlnP(λ)/dλ (for λ)
+where F_AA, F_AB, and F_BB are the forces in conventional MD simulation for intra-region A, inter region A-B, and intra-region B, respectively.
+
+The functions (dlnP(E)/dE, dlnP(λ)/dλ) in the force equations for McMD and ALSD are artificially introduced to allow E and λ to undergo a random walk.
+At the begining of the simulation, the form of these functions are unknown.
+Therefore, the shape of these functions are predicted and refined by iterative simulations to achieve efficient conformational exploration.
+These functions are predicted from the values of E and λ obtained from the simulations and are fitted as polynomial spline functions.
+The option "FITDIM" specifies the order of the polynomial spline function.
+In this fitting, increasing the order reduces the fitting error but may lead to overfitting, causing the function to violate when extrapolated.
+Therefore, it is recommended to keep the order between 2 and 6.
+In the early stages of the simulations, it is advisable to use a small value like 2, and gradually increase the order to around 4 or 6 as the estimation of the function stabilizes.
+
+The distributions (lnP(E) or lnP(λ)) explored by the simulations and the estimated functions can be checked in the "dist" file and the "dlnN (or dlnP)" file, respectively.
+For more details, please refer to the description of "GEprep".
+If you feel that the fitting error is large, it is recommended to increase the number of windows for spline fitting using "NWINDO" instead.
+>NWINDO
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for Generalized Ensemble MD simulations like McMD and ALSD.
+This option specifies the number of windows for the polynomial spline function of McMD or ALSD.
+
+McMD realizes a wide conformational search of molecules by balancing the search for stable conformations and the promotion of conformational changes through a random walk of the system's potential energy, E, from low energy regions corresponding to low temperatures to high energy regions corresponding to high temperatures.
+In McMD, the simulation is performed using the multicanonical energy (E_McMD), which modifies E as follows:
+        E_McMD = E + RTlnP(E)
+where R is gas constant, T is simulation temperature, and P(E) is the canonical distribution.
+In McMD, each atom in the system moves under forces (F_McMD) derived from the differentiation of E_McMD:
+        F_McMD = F + RT dlnP(E)/dE
+
+Adaptive Lambda Square Dynamics (ALSD) is a variant of McMD that enables the calculation to promote only conformational changes in a specific region of the system (Region A) selected by the user, while maintaining conventional MD-like conformational changes in the rest of the system (Region B).
+In ALSD, the system's potential energy is divided as follows.
+        E = E_AA + E_AB + E_BB
+E_AA, E_AB, and E_BB represent the energies within region A, between regions A and B, and within region B, respectively.
+ALSD is an MD simulation that introduces a scaling factor λ to scale the energies related to region A.
+The potential energy of the system is modified as follows:
+        E_ALSD = λ^2 * E_AA + λ * E_AB + E_BB + RT lnP(λ)
+where P(λ) is the canonical distribution function along the lambda axis.
+In ALSD, each atom in the system and λ moves under forces (F_ALSD) derived from the differentiation of E_ALSD:
+        F_ALSD = λ^2 * F_AA + λ * F_AB + F_BB (for atoms)
+        F_ALSD = -2 * E_AA * λ -E_AB -RT dlnP(λ)/dλ (for λ)
+where F_AA, F_AB, and F_BB are the forces in conventional MD simulation for intra-region A, inter region A-B, and intra-region B, respectively.
+
+The functions (dlnP(E)/dE, dlnP(λ)/dλ) in the force equations for McMD and ALSD are artificially introduced to allow E and λ to undergo a random walk.
+At the begining of the simulation, the form of these functions are unknown.
+Therefore, the shape of these functions are predicted and refined by iterative simulations to achieve efficient conformational exploration.
+These functions are predicted from the values of E and λ obtained from the simulations and are fitted as polynomial spline functions.
+The option "NWINDO" specifies the number of windows for the polynomial spline function.
+
+In this fitting, increasing the order reduces the fitting error but may lead to overfitting, causing the function to violate when extrapolated.
+Therefore, it is recommended to keep the order between 2 and 6.
+In the early stages of the simulations, it is advisable to use a small value like 2, and gradually increase the order to around 4 or 6 as the estimation of the function stabilizes.
+
+The distributions (lnP(E) or lnP(λ)) explored by the simulations and the estimated functions can be checked in the "dist" file and the "dlnN (or dlnP)" file, respectively.
+For more details, please refer to the description of "GEprep".
+If you feel that the fitting error is large, it is recommended to increase the number of windows for spline fitting using "NWINDO" instead.
+>NXMINV
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for Generalized Ensemble MD simulations like McMD and ALSD.
+This option specifies the minimum limit of energy or lambda sampling range for next simulation.
+In McMD and ALSD simulations, it is common to initially explore conformations in a relatively high energy or low λ region to promote conformational changes.
+Gradually, the range is extended toward lower energy or higher λ values to search for stable conformations.
+The option "NXMINV" allows for changing the minimum limit of the search currently set by "MINVAL" in the next simulation.
+If "NXMINV" is changed significantly from the current value set by "MINVAL," it may lead to poor extrapolation of the fitting function used in McMD and ALSD calculations.
+This can result in abnormal terminations in the next simulation or significant deviations in the distribution along the potential energy E or λ axis from a flat state.
+In such cases, it is necessary to reassess the value of "NXMINV" and recalculate.
+>NXMAXV
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for Generalized Ensemble MD simulations like McMD and ALSD.
+This option specifies the maximum limit of energy or lambda sampling range for next simulation.
+In McMD and ALSD simulations, it is common to initially explore conformations in a relatively high energy or low λ region to promote conformational changes.
+Gradually, the range is extended toward lower energy or higher λ values to search for stable conformations.
+The option "NXMAXV" allows for changing the maximum limit of the search currently set by "MAXVAL" in the next simulation.
+If "NXMAXV" is changed significantly from the current value set by "MAXVAL," it may lead to poor extrapolation of the fitting function used in McMD and ALSD calculations.
+This can result in abnormal terminations in the next simulation or significant deviations in the distribution along the potential energy E or λ axis from a flat state.
+In such cases, it is necessary to reassess the value of "NXMAXV" and recalculate.
+>PREFIT
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for Generalized Ensemble MD simulations like McMD and ALSD.
+This option specifies the function parameter file (*.nf) currently used in the simulation.
+McMD and ALSD simulations require function parameter to be executed.
+At the beginning of the simulation, this function parameter is estimated using Canonical MD or Constant lambda MD (CLMD), and the results are output to a file named "*.nf".
+In subsequent steps of McMD and ALSD, the following are used to update the function parameter for the next simulation:
+	1) this *.nf file
+	2) the data of the potential energy E and λ values obtained from the simulation
+"PREFIT" is the option for specifying the "*.nf" file in this process.
+>TMPSMP
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for McMD.
+This option specifies the temperature of the conformational ensemble you want to reconstruct in McMD.
+McMD is a simulation method that explores a wide energy range from low to high temperatures.
+The resulting confirmational ensemble includes a variety of conformations, ranging from stable to unstable configurations.
+In McMD, you can perform reweighting to reconstruct a conformational ensemble corresponding to any desired temperature from the resulting ensemble.
+"TMPSMP" allows you to specify the temperature of the ensemble you want to reconstruct.
+>NXTEMP
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for McMD.
+This option specifies the simulation temperature for the next simulation.
+If you want to change the current simulation temperature set by "SIMTMP" for the next simulation, you specify that temperature using "NXTMP".
+>LAMBDA
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for ALSD.
+This option specifies the lambda value for ALSD reweighting.
+The default is "1.0".
+ALSD is a simulation method that allows users to explore a wide range of λ values by varying λ during the simulation to sample various conformations related to the region of interest (Region A) where the user wants to promote the conformational changes.
+The resulting confirmational ensemble includes a variety of conformations, ranging from stable to unstable configurations.
+In ALSD, you can perform reweighting to reconstruct a conformational ensemble corresponding to any desired λ from the resulting ensemble.
+In general, ensembles with λ values other than 1 do not hold physical significance in ALSD, so it is not necessary to explicitly set this option.
+This option is used when there is a specific purpose for reconstructing ensembles with λ values other than 1.
+>MINLMD
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for ALSD.
+This option specifies the minimum limit of lambda for ALSD reweighting.
+ALSD is a simulation method that allows users to explore a wide range of λ values by varying λ during the simulation to sample various conformations related to the region of interest (Region A) where the user wants to promote the conformational changes.
+The resulting confirmational ensemble includes a variety of conformations, ranging from stable to unstable configurations.
+
+In ALSD, you can perform reweighting to reconstruct a conformational ensemble corresponding to any desired λ from the resulting ensemble.
+To perform this reweighting, it is necessary to determine the distribution in the three-dimensional space of 1) λ, 2) potential energy within region A (E_AA), and 3) potential energy between regions A and B (E_AB) based on the conformational ensemble obtained from the ALSD simulation.
+This allows for the calculation of the probability of occurrence of each conformation when λ = 1.
+In practical computation, obtaining this three-dimensional distribution requires a significant amount of memory.
+To keep the memory usage for reweighting calculations within feasible limits, it is essential to narrow down the ranges for λ, E_AA, and E_AB necessary for reproducing the conformational ensemble at λ = 1.
+
+First, specify the range of λ to obtain conformations using "MINLMD" and "MAXLMD".
+The range specified for λ should be centered around λ = 1, with some width on either side (for example, from 0.75 to 1.25).
+Initially, arbitrary real numbers should be assigned to "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB." 
+Once these settings are made, running "j_presto GEprep" will produce a log with messages similar to the following:
+	* Selected min & max lambda or the square for CANO dist.
+             	0.750 -      1.250
+  	* min & max EAA & EAB in the selected lrange
+        	EAA :        -621.246 -        -173.357
+        	EAB :       -1208.770 -        -440.000
+Based on these values, adjust "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB" appropriately, and run "j_presto GEprep" again.
+This will yield an output file (*.prob) that assigns the probability of occurrence of each conformation when λ = 1, which can be analyzed using the program "j_presto Ens_Ana".
+>MAXLMD
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for ALSD.
+This option specifies the maximum limit of lambda for ALSD reweighting.
+ALSD is a simulation method that allows users to explore a wide range of λ values by varying λ during the simulation to sample various conformations related to the region of interest (Region A) where the user wants to promote the conformational changes.
+The resulting confirmational ensemble includes a variety of conformations, ranging from stable to unstable configurations.
+
+In ALSD, you can perform reweighting to reconstruct a conformational ensemble corresponding to any desired λ from the resulting ensemble.
+To perform this reweighting, it is necessary to determine the distribution in the three-dimensional space of 1) λ, 2) potential energy within region A (E_AA), and 3) potential energy between regions A and B (E_AB) based on the conformational ensemble obtained from the ALSD simulation.
+This allows for the calculation of the probability of occurrence of each conformation when λ = 1.
+In practical computation, obtaining this three-dimensional distribution requires a significant amount of memory.
+To keep the memory usage for reweighting calculations within feasible limits, it is essential to narrow down the ranges for λ, E_AA, and E_AB necessary for reproducing the conformational ensemble at λ = 1.
+
+First, specify the range of λ to obtain conformations using "MINLMD" and "MAXLMD".
+The range specified for λ should be centered around λ = 1, with some width on either side (for example, from 0.75 to 1.25).
+Initially, arbitrary real numbers should be assigned to "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB."
+Once these settings are made, running "j_presto GEprep" will produce a log with messages similar to the following:
+        * Selected min & max lambda or the square for CANO dist.
+                0.750 -      1.250
+        * min & max EAA & EAB in the selected lrange
+                EAA :        -621.246 -        -173.357
+                EAB :       -1208.770 -        -440.000
+Based on these values, adjust "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB" appropriately, and run "j_presto GEprep" again.
+This will yield an output file (*.prob) that assigns the probability of occurrence of each conformation when λ = 1, which can be analyzed using the program "j_presto Ens_Ana".
+>MINEAA
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for ALSD.
+This option specifies the minimum limit of E_AA for ALSD reweighting.
+ALSD is a simulation method that allows users to explore a wide range of λ values by varying λ during the simulation to sample various conformations related to the region of interest (Region A) where the user wants to promote the conformational changes.
+The resulting confirmational ensemble includes a variety of conformations, ranging from stable to unstable configurations.
+
+In ALSD, you can perform reweighting to reconstruct a conformational ensemble corresponding to any desired λ from the resulting ensemble.
+To perform this reweighting, it is necessary to determine the distribution in the three-dimensional space of 1) λ, 2) potential energy within region A (E_AA), and 3) potential energy between regions A and B (E_AB) based on the conformational ensemble obtained from the ALSD simulation.
+This allows for the calculation of the probability of occurrence of each conformation when λ = 1.
+In practical computation, obtaining this three-dimensional distribution requires a significant amount of memory.
+To keep the memory usage for reweighting calculations within feasible limits, it is essential to narrow down the ranges for λ, E_AA, and E_AB necessary for reproducing the conformational ensemble at λ = 1.
+
+First, specify the range of λ to obtain conformations using "MINLMD" and "MAXLMD".
+The range specified for λ should be centered around λ = 1, with some width on either side (for example, from 0.75 to 1.25).
+Initially, arbitrary real numbers should be assigned to "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB."
+Once these settings are made, running "j_presto GEprep" will produce a log with messages similar to the following:
+        * Selected min & max lambda or the square for CANO dist.
+                0.750 -      1.250
+        * min & max EAA & EAB in the selected lrange
+                EAA :        -621.246 -        -173.357
+                EAB :       -1208.770 -        -440.000
+Based on these values, adjust "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB" appropriately, and run "j_presto GEprep" again.
+This will yield an output file (*.prob) that assigns the probability of occurrence of each conformation when λ = 1, which can be analyzed using the program "j_presto Ens_Ana".
+>MAXEAA
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for ALSD.
+This option specifies the maximum limit of E_AA for ALSD reweighting.
+ALSD is a simulation method that allows users to explore a wide range of λ values by varying λ during the simulation to sample various conformations related to the region of interest (Region A) where the user wants to promote the conformational changes.
+The resulting confirmational ensemble includes a variety of conformations, ranging from stable to unstable configurations.
+
+In ALSD, you can perform reweighting to reconstruct a conformational ensemble corresponding to any desired λ from the resulting ensemble.
+To perform this reweighting, it is necessary to determine the distribution in the three-dimensional space of 1) λ, 2) potential energy within region A (E_AA), and 3) potential energy between regions A and B (E_AB) based on the conformational ensemble obtained from the ALSD simulation.
+This allows for the calculation of the probability of occurrence of each conformation when λ = 1.
+In practical computation, obtaining this three-dimensional distribution requires a significant amount of memory.
+To keep the memory usage for reweighting calculations within feasible limits, it is essential to narrow down the ranges for λ, E_AA, and E_AB necessary for reproducing the conformational ensemble at λ = 1.
+
+First, specify the range of λ to obtain conformations using "MINLMD" and "MAXLMD".
+The range specified for λ should be centered around λ = 1, with some width on either side (for example, from 0.75 to 1.25).
+Initially, arbitrary real numbers should be assigned to "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB."
+Once these settings are made, running "j_presto GEprep" will produce a log with messages similar to the following:
+        * Selected min & max lambda or the square for CANO dist.
+                0.750 -      1.250
+        * min & max EAA & EAB in the selected lrange
+                EAA :        -621.246 -        -173.357
+                EAB :       -1208.770 -        -440.000
+Based on these values, adjust "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB" appropriately, and run "j_presto GEprep" again.
+This will yield an output file (*.prob) that assigns the probability of occurrence of each conformation when λ = 1, which can be analyzed using the program "j_presto Ens_Ana".
+>MINEAB
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for ALSD.
+This option specifies the minimum limit of E_AB for ALSD reweighting.
+ALSD is a simulation method that allows users to explore a wide range of λ values by varying λ during the simulation to sample various conformations related to the region of interest (Region A) where the user wants to promote the conformational changes.
+The resulting confirmational ensemble includes a variety of conformations, ranging from stable to unstable configurations.
+
+In ALSD, you can perform reweighting to reconstruct a conformational ensemble corresponding to any desired λ from the resulting ensemble.
+To perform this reweighting, it is necessary to determine the distribution in the three-dimensional space of 1) λ, 2) potential energy within region A (E_AA), and 3) potential energy between regions A and B (E_AB) based on the conformational ensemble obtained from the ALSD simulation.
+This allows for the calculation of the probability of occurrence of each conformation when λ = 1.
+In practical computation, obtaining this three-dimensional distribution requires a significant amount of memory.
+To keep the memory usage for reweighting calculations within feasible limits, it is essential to narrow down the ranges for λ, E_AA, and E_AB necessary for reproducing the conformational ensemble at λ = 1.
+
+First, specify the range of λ to obtain conformations using "MINLMD" and "MAXLMD".
+The range specified for λ should be centered around λ = 1, with some width on either side (for example, from 0.75 to 1.25).
+Initially, arbitrary real numbers should be assigned to "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB."
+Once these settings are made, running "j_presto GEprep" will produce a log with messages similar to the following:
+        * Selected min & max lambda or the square for CANO dist.
+                0.750 -      1.250
+        * min & max EAA & EAB in the selected lrange
+                EAA :        -621.246 -        -173.357
+                EAB :       -1208.770 -        -440.000
+Based on these values, adjust "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB" appropriately, and run "j_presto GEprep" again.
+This will yield an output file (*.prob) that assigns the probability of occurrence of each conformation when λ = 1, which can be analyzed using the program "j_presto Ens_Ana".
+>MAXEAB
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for ALSD.
+This option specifies the maximum limit of E_AB for ALSD reweighting.
+ALSD is a simulation method that allows users to explore a wide range of λ values by varying λ during the simulation to sample various conformations related to the region of interest (Region A) where the user wants to promote the conformational changes.
+The resulting confirmational ensemble includes a variety of conformations, ranging from stable to unstable configurations.
+
+In ALSD, you can perform reweighting to reconstruct a conformational ensemble corresponding to any desired λ from the resulting ensemble.
+To perform this reweighting, it is necessary to determine the distribution in the three-dimensional space of 1) λ, 2) potential energy within region A (E_AA), and 3) potential energy between regions A and B (E_AB) based on the conformational ensemble obtained from the ALSD simulation.
+This allows for the calculation of the probability of occurrence of each conformation when λ = 1.
+In practical computation, obtaining this three-dimensional distribution requires a significant amount of memory.
+To keep the memory usage for reweighting calculations within feasible limits, it is essential to narrow down the ranges for λ, E_AA, and E_AB necessary for reproducing the conformational ensemble at λ = 1.
+
+First, specify the range of λ to obtain conformations using "MINLMD" and "MAXLMD".
+The range specified for λ should be centered around λ = 1, with some width on either side (for example, from 0.75 to 1.25).
+Initially, arbitrary real numbers should be assigned to "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB."
+Once these settings are made, running "j_presto GEprep" will produce a log with messages similar to the following:
+        * Selected min & max lambda or the square for CANO dist.
+                0.750 -      1.250
+        * min & max EAA & EAB in the selected lrange
+                EAA :        -621.246 -        -173.357
+                EAB :       -1208.770 -        -440.000
+Based on these values, adjust "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB" appropriately, and run "j_presto GEprep" again.
+This will yield an output file (*.prob) that assigns the probability of occurrence of each conformation when λ = 1, which can be analyzed using the program "j_presto Ens_Ana".
+>FORCES
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for ALSD.
+This option specifies the force size applied to λ particle when it goes out of the λ range set by "MINVAL" and "MAXVAL".
+
+In ALSD simulations, it is crucial to carefully set "FORCES" to ensure successful simulation outcomes. The λ particle scales the interactions within the region of interest (Region A) to promote the conformational change.
+Similar to the atoms in the system, the λ particle undergoes motion while experiencing forces. In ALSD, if the λ particle moves outside the range set by "MINVAL" and "MAXVAL", an additional force is applied to bring it back within the specified range.
+The "FORCES" option designates the magnitude of this force.
+
+There is no strict rule for determining this force's magnitude, but empirically, setting it to roughly half the mass of the λ particle has been effective.
+By default, the mass of λ is set as the sum of the atomic masses in Region A.
+This value is logged as "LAMBDA WEIGHT: ***" in the output when you execute "j_presto md_run", which can be referenced when tuning "FORCES".
+
+Setting this value too small may cause the λ particle to deviate significantly from the desired range, leading to simulation instability or unexpected terminations.
+Conversely, if this value is set too large, the system will experience excessive force along the λ direction near the boundary.
+This could interfere with conformational sampling, as conformations trying to fold in low-λ regions may be forcibly shifted towards high-λ values, thus hindering the sampling of stable conformations.
+
+In the early stages of ALSD calculations, the estimate of the function dlnP(λ)/dλ, which governs λ’s motion, is less accurate (For details, refer to the description of "NWINDO"), making it more likely for the λ particle to deviate from the range.
+Therefore, it is advisable to start with a larger "FORCES" value and gradually reduce it as the simulation progresses and the estimation accuracy improves, bringing it closer to the final target value.
+For specific setup examples, you may refer to the template file settings available in "j_presto get_tmpl batch_set_ALSD.inp".
+>INPENE
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for Generalized Ensemble MD simulations like McMD and ALSD.
+This option specifies the location of *.ene file to calculate the function, which is necessary for executing McMD and ALSD.
+This option automatically generates a list of *.ene files, which contain energy and λ values, through the execution of "j_presto batch_set".
+As described in the template file obtained with "j_presto get_tmpl batch_set_ALSD.inp", placeholders (e.g., #RUN) should be used in the description.
+>NFIRST
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for Generalized Ensemble MD simulations like McMD and ALSD.
+This option specifies from which data point in the *.ene file, containing energy and λ values, to use data essential for calculating functions necessary to execute McMD or ALSD.
+In McMD and ALSD, iterative calculations are performed while updating the functions.
+Since these simulations resume from the previous one, the initial stage of the simulation partly inherits the effects of the previously used function.
+To avoid this influence, if you want to exclude information from the first 100,000 steps after starting the calculation and use information from step 100,001 onwards for function estimation, set NFIRST=100001.
+>NFINAL
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for Generalized Ensemble MD simulations like McMD and ALSD.
+This option specifies to which data point in the *.ene file, containing energy and λ values, to use data essential for calculating functions necessary to execute McMD or ALSD.
+If you want to include data up to a specific data point, set that value here.
+If you want to use all data up to the end of the file, specify a sufficiently large number.
+>get_tmpl
+This command is used to obtain the input file or the script templates necessary for executing j_presto (get template).
+The usage is as follows:
+	j_presto get_tmpl [file name to retrieve]
+The list of files that can be obtained is as follows:
+	gen_db             : Script for generating parameter database files (*.tpldb) for j_presto.
+	prep               : Script for preparing the necessary files for MD simulations and energy minimization (*.pdb, *.tpl, *.shk).
+	min.inp            : Input file for performing an energy minimization calculation.
+	md.inp             : Input file for performing a single MD simulation.
+	CAPbound.inp       : Input file to perform calculations with CAP boundary.
+	cluster.inp        : Input file for using CMM for electrostatic interaction calculations or for ALSD simulations.
+	psr.inp            : Input file to restrain position of atoms.
+	dsr.inp            : Input file to restrain distances between atoms.
+	dhr.inp            : Input file to restrain dihedral angles.
+	md_run             : Script for running a single MD simulation or energy minimization.
+	batch_set.inp      : Input file for batch_set to prepare input files for multiple MD simulations in bulk, used to specify the MD schedule.
+	batch_set_ALSD.inp : Input file for batch_set to prepare input files for ALSD simulations in bulk, used to specify the MD schedule.
+	md_multi           : Script for running multiple MD simulations as a single MPI job.
+Additionally, to retrieve all of these files at once, you can use "j_presto get_tmpl all".
+>j_presto_mpi
+"j_presto_mpi" executes multiple MD simulation runs as a single MPI job using an embarrassingly parallel approach.
+This program may require different MPI execution commands depending on your computing environment, such as mpirun, mpiexec, or mpiexec.hydra.
+For example, if your environment uses mpiexec.hydra, you would run the following command:
+	mpiexec.hydra j_presto_mpi [MD ID] [Number of MD runs] [Number of MPI parallel processes]
+When generating input files using the "j_presto batch_set" command, first retrieve the template script "md_multi.exe" by running:
+	j_presto get_tmpl md_multi
+After obtaining this template, modify it as necessary.
+Depending on the computer environment you are using, specify the necessary options for job schedulers such as QSUB (for PBS or Torque), PJSUB (for NQSII or Fugaku), sbatch (for SLURM), or bsub (for LSF), and also appropriately modify the number of OpenMP threads (e.g., export OMP_NUM_THREADS=8).
+If you are unsure about this content, it is recommended that you check the manual of the computer you are using for the section on how to execute parallel computations.
+This template file contains scripts for both running parallel execution command (j_presto_mpi) and master-slave execution command (j_presto_master).
+Use the one you need and either comment out the unnecessary one with # or delete it.
+The "batch_set" will then use this modified file to automatically generate scripts, named md_multi_*.exe (where * corresponds to the MD ID), to execute multiple MD runs as a single MPI job.
+>j_presto_master
+"j_presto_master" executes multiple MD simulation runs as a single MPI job using a master-slave approach.
+This program may require different MPI execution commands depending on your computing environment, such as mpirun, mpiexec, or mpiexec.hydra.
+For example, if your environment uses mpiexec.hydra, you would run the following command:
+        mpiexec.hydra j_presto_master [MD ID] [Number of MD runs] [Number of MPI parallel processes]
+When generating input files using the "j_presto batch_set" command, first retrieve the template script "md_multi.exe" by running:
+        j_presto get_tmpl md_multi
+After obtaining this template, modify it as necessary.
+Depending on the computer environment you are using, specify the necessary options for job schedulers such as QSUB (for PBS or Torque), PJSUB (for NQSII or Fugaku), sbatch (for SLURM), or bsub (for LSF), and also appropriately modify the number of OpenMP threads (e.g., export OMP_NUM_THREADS=8).
+If you are unsure about this content, it is recommended that you check the manual of the computer you are using for the section on how to execute parallel computations.
+This template file contains scripts for both running parallel execution command (j_presto_mpi) and master-slave execution command (j_presto_master).
+Use the one you need and either comment out the unnecessary one with # or delete it.
+The "batch_set" will then use this modified file to automatically generate scripts, named md_multi_*.exe (where * corresponds to the MD ID), to execute multiple MD runs as a single MPI job.
+>md_multi.exe
+md_multi.exe is a script used to execute multiple MD runs prepared with "j_presto batch_set" as a single MPI job.
+You can obtain the template file by using "j_presto get_tmpl md_multi" command.
+After obtaining this template, modify it as necessary.
+This script executes "j_presto_mpi" or "j_presto_master".
+These program may require different MPI execution commands depending on your computing environment, such as mpirun, mpiexec, or mpiexec.hydra.
+For example, if your environment uses mpiexec.hydra, you would run the following command:
+        mpiexec.hydra (j_presto_mpi or j_presto_master) [MD ID] [Number of MD runs] [Number of MPI parallel processes]
+Depending on the computer environment you are using, specify the necessary options for job schedulers such as QSUB (for PBS or Torque), PJSUB (for NQSII or Fugaku), sbatch (for SLURM), or bsub (for LSF), and also appropriately modify the number of OpenMP threads (e.g., export OMP_NUM_THREADS=8).
+If you are unsure about this content, it is recommended that you check the manual of the computer you are using for the section on how to execute parallel computations.
+This template file contains scripts for both running parallel execution command (j_presto_mpi) and master-slave execution command (j_presto_master).
+Use the one you need and either comment out the unnecessary one with # or delete it.
+The "batch_set" will then use this modified file to automatically generate scripts, named md_multi_*.exe (where * corresponds to the MD ID), to execute multiple MD runs as a single MPI job.
+>Ens_Ana
+"j_presto Ens_Ana" performs analysis of conformational ensembles obtainted from simulation results.
+This subprogram is scheduled to be added in the next update.
+>manual
+The command "j_presto manual" is the command you are currently using.
+It provides an interactive explanation of commands and options available in j_presto.
+>tutorial
+If you want to check the details of the tutorial, type the item number like "tutorial 1".
+
+Preparation for j_presto program
+tutorial 1 : Download AMBERtools
+tutorial 2 : Download j_presto repository
+tutorial 3 : Install j_presto
+
+Preparation to execute simulation
+tutorial 4 : Create a topology database file (*.tpldb) with "j_presto gen_db"
+tutorial 5 : Prepare input files for MD simulation with "j_presto prep"
+tutorial 6 : Execute energy minimization calculations with "j_presto md_run min.inp"
+
+Execution of simulation
+tutorial 7-1 : Execute a single MD simulation with "j_presto md_run md.inp"
+tutorial 7-2 : Execute multiple MD simulations as a single MPI job with "j_presto_mpi" or "j_presto_master"
+
+tutorial 8 : Analyze the simulatin results
+>tutorial 1
+Download AMBERtools
+
+To create simulation parameter files for j_presto, a database provided by AMBERtools is required.
+AMBERtools is an external program provided by the AMBER project at the University of California, San Diego (UCSD) in the United States, and the developers of j_presto do not hold its copyright.
+Users are responsible for downloading it at their own risk.
+	1 : Access the AMBERtools webpage (https://ambermd.org/AmberTools.php).
+	2 : Click the "Download AmberTools" link
+	3 : Read the description on the linked page carefully and download AmberTools using your preferred method.
+	4 : Extract the downloaded file (AmberTools***.tar.bz2, where *** is the version number) and copy the directory containing the parameter files (leaprc, dat, lib, frcmod, prep files) to a location of your choice.
+	    For example, in the case of AmberTools24, these files are stored inside the amber24_src/dat/leap directory.
+	5 : If you are using bash, add the line 
+		export J_PRESTO_AMBER_DATABASE_PATH="[the path where you placed the db directory]"
+	    to your .bashrc or .bash_profile file, and then run
+		source .bashrc (if you added it to the .bashrc file)
+	    to set the path to the AMBER database directory.
+Once you have completed this task, please proceed to "tutorial 2".
+>tutorial 2
+Download j_presto repository
+
+	1 : Access the GitHub Repository:
+		Open your web browser and navigate to the j_presto GitHub repository page.
+	2 : Clone or Download the Repository:
+		To clone the repository, click on the green "Code" button located on the right side of the page.
+		Copy the URL provided in the dropdown menu.
+		Open your terminal and enter the following command:
+			git clone [copied URL]
+		Alternatively, you can choose to download the repository as a ZIP file.
+		Click the "Code" button, then select "Download ZIP".
+		This will download the repository contents as a compressed file to your local machine.
+		Extract the Files.
+Once you have completed this task, please proceed to "tutorial 3".
+>tutorial 3
+Install j_presto
+
+	1 : The j_presto program is written in Fortran and Python3.
+	    Before installing the program, please ensure that you have installed the following three components:
+		1 : Intel Fortran (ifort) or gfortran
+		2 : python3
+		3 : f2py, which is required to compile Fortran subroutines into Python modules.
+	2 : Navigate into the downloaded j_presto directory and execute the installation script named "setup.sh" as follows:
+		./setup.sh
+	3 : The setup.sh script first checks whether the necessary Python modules for installation are present.
+	    If any modules are missing, their names will be displayed, and the installation of j_presto will be aborted.
+	    In this case, please install the missing Python modules with "pip" command or similar, and then run setup.sh again.
+	    !! CAUTION !!
+	    Even when the Python modules are installed, if their versions are outdated, it can cause Python errors and lead to abnormal termination of the j_presto program.
+	    In such cases, it is recommended to check the error messages and update the relevant Python modules to their latest versions.
+	4 : When you run setup.sh, you will be prompted to specify two things: the location to store the j_presto executable files, and the Fortran compiler to use.
+	    For the first, choose an appropriate directory (the default is ~/local/bin/), and for the latter, select either ifort or gfortran (the default is ifort).
+	5 : Finally, if you are using bash, add the path where you saved the j_presto directry including executable files to your .bashrc or .bash_profile file as follows:
+		export J_PRESTO_PATH="[the path where you placed the J_PRESTO directory]"
+	   and please add J_PRESTO_PATH to your PATH as shown below:
+		export PATH="$PATH:$J_PRESTO_PATH"
+	   After that, run
+		source .bashrc (if you added it to the .bashrc file)
+	   to set the directory containing the j_presto executables to your system's path.
+>tutorial 4
+Create a topology database file (*.tpldb) with "j_presto gen_db"
+
+To run simulations with j_presto, you first need to create a database file (*.tpldb) that includes the parameters for the proteins, nucleic acids, glycans, lipids, or small molecule ligands you wish to use in the calculations.
+These files require input from the AMBERtools database (see tutorial 1).
+If the AMBER database path (J_PRESTO_AMBER_DATABASE_PATH) is correctly set, you can specify just the names of the parameter files (dat, prep, lib, frcmod, leaprc files) without needing to specify their absolute or relative paths.
+
+If you want to simulate molecules that are not included in the AMBER database, you can create parameters using quantum chemistry programs such as Gaussian or GAMESS, and translate the file to AMBER-compatible parameter files using the Antechamber program included in AMBERtools.
+The files you create (prep, frcmod files) can be incorporated into the j_presto topology database file by running
+	j_presto gen_db -i [created file path]
+This allows you to use these custom parameters in j_presto simulations.
+
+For instructions on how to use the gen_db command, please refer to the help section (j_prest gen_db -h) or ask for details in this manual by typing "gen_db".
+If you're using j_presto gen_db for the first time, you can obtain a script template for executing gen_db by running
+	j_presto get_tmpl gen_db
+Adjust this template according to your settings to easily execute the command.
+Once you have completed this task, please proceed to "tutorial 5".
+>tutorial 5
+Prepare input files for MD simulation with "j_presto prep"
+
+To execute a simulation with j_presto, you will need the topology database file (.tpldb) created in the tutorial 4 and a PDB file including coordinate data of your target system.
+The command "j_presto prep" uses these two files to perform the pre-setup for the simulation system and generates the coordinate information file (.pdb), topology file (.tpl), and, if applicable, the SHAKE constraint file (.shk).
+These files can then be used as input for executing the simulation with "j_presto md_run".
+
+For instructions on how to use the prep command, please refer to the help section (j_prest prep -h) or ask for details in this manual by typing "prep".
+If you're using j_presto prep for the first time, you can obtain a script template for executing prep by running
+        j_presto get_tmpl prep
+Adjust this template according to your settings to easily execute the command.
+Once you have completed this task, please proceed to "tutorial 6".
+>tutorial 6
+Execute energy minimization calculations with "j_presto md_run min.inp"
+
+After preparing the necessary files with "j_presto prep", before starting the MD simulation, you should first perform an energy minimization calculation to resolve any atomic clashes or structural distortions in the initial structure provided by the PDB file.
+To run this calculation, you need to prepare an input file (min.inp) with the necessary settings and execute it by running
+	j_presto md_run min.inp
+You can obtain a template for this min.inp file using
+	j_presto get_tmpl min.inp
+Feel free to modify the settings in this file to your preferences and execute it.
+For options you can configure in min.inp, launch the manual with "j_presto manual" and refer to the section on "min.inp".
+Additionally, you can also get a template for the minimization calculation execution script with
+	j_presto get_tmpl md_run
+, which might serve as a helpful reference.
+
+If necessary, you will need to prepare several additional input files.
+For example, a configuration file for introducing CAP boundaries (CAPbound.inp), a reference structure PDB file for applying position restraints, a position restraint input file (psr.inp), a distance restraint input file (dsr.inp), a dihedral restraint input file (dhr.inp), and an input file required to perform the cell multipole expansion method (CMM) or ALSD simulations (cluster.inp).
+You can obtain templates for each of these files using
+	j_presto get_tmpl [desired file name]
+For the settings that can be configured in each file, please refer to "j_presto manual" and ask about the specific items.
+
+If you have set the "OCOORD" option in the "EXE > OUTPUT" block of min.inp, you will be able to obtain the structural information after energy minimization as a PDB file.
+This file will be used as the initial structure for the subsequent MD simulation.
+
+After completing this task, proceed to "tutorial 7-1" if you want to run a single MD simulation.
+If you wish to run multiple MD simulations as a MPI job, move on to "tutorial 7-2-1".
+>tutorial 7-1
+Execute a single MD simulation with "j_presto md_run md.inp"
+
+Once you have minimized the energy of the input structure, you can start the MD simulation.
+This calculation can be executed with
+	j_presto md_run md.inp
+You can obtain a template for the input file (md.inp) by using
+	j_presto get_tmpl md.inp"
+so please set the options in this file to your preferences and execute it.
+For options that can be used in md.inp, refer to "j_presto manual" and ask about md.inp.
+You can also obtain a template for the execution script with "j_presto get_tmpl md_run", which you can utilize as needed.
+
+If necessary, you will need to prepare several additional input files.
+For example, a configuration file for introducing CAP boundaries (CAPbound.inp), a reference structure PDB file for applying position restraints, a position restraint input file (psr.inp), a distance restraint input file (dsr.inp), a dihedral restraint input file (dhr.inp), and an input file required to perform the cell multipole expansion method (CMM) or ALSD simulations (cluster.inp).
+You can obtain templates for each of these files using
+        j_presto get_tmpl [desired file name]
+For the settings that can be configured in each file, please refer to "j_presto manual" and ask about the specific items.
+
+If you have set the "NAMECO" option in the "EXE > MD" block of md.inp, you will be able to output the structural coordinates during the MD simulation.
+This file will be used for the subsequent analyses.
+
+Once you have completed this task, please proceed to "tutorial 8".
+>tutorial 7-2
+Execusion multiple MD simulations as a single MPI job with "j_presto_mpi" or "j_presto_master"
+
+When you execute a single MD simulation run, you prepare an input file (md.inp) describing the desired settings, and then execute the calculation with "j_presto md_run md.inp".
+However, in practical operations, you may need to run multiple MD simulations simultaneously with different initial velocities, or in McMD or ALSD simulations, repeatedly execute numerous MD runs for conformational sampling.
+Preparing input files and executing for each of these runs is a very labor-intensive task.
+In j_presto, bundle programs, "j_presto_mpi" or "j_presto_master", is provided to execute multiple MD runs collectively as a single MPI job, and the "j_presto batch_set" is responsible for automatically preparing the input files and execution scripts necessary for these runs.
+
+Please refer to the "j_presto manual" for instructions on preparing the input files required for "j_presto batch_set" and on how to execute it, and ask about "batch_set".
+Once you have completed this task, please proceed to "tutorial 8".
+>tutorial 8
+Analyze the simulation results
+
+Notice: In future versions of j_presto, I plan to release the analysis program "j_presto Ens_Ana" (Ensemble Analysis).
+However, it is not yet available in the current version as the development is still ongoing.
+Please stay tuned for updates.
+>FAQ
+1  : Regarding the download and installation of j_presto.
+	1-1  : 	How to introduce the required AMBER parameter files for running j_presto?
+	 	Please refer to "tutorial 1".
+	1-2  : 	How to obtain j_presto program?
+	 	Please refer to "tutorial 2".
+	1-3  : 	How to install j_presto program?
+	 	Please refer to "tutorial 3".
+	1-4  : 	What should I do when Python error messages are displayed and the j_presto program terminates abnormally?
+		Please refer to "tutorial 3" and read the process 3.
+2  : Regarding j_presto gen_db
+	2-1  : 	What should I do when Python error messages are displayed and the j_presto program terminates abnormally?
+		Please refer to "tutorial 3" and read the process 3.
+	2-2  : 	Please tell me about solvent coordinate database file (*.slv).
+		Please refer to "gen_db -s".
+3  : Regarding j_presto prep
+	3-1  : 	What should I do when Python error messages are displayed and the j_presto program terminates abnormally?
+		Please refer to "tutorial 3" and read the process 3.
+	3-2  : 	Please tell me how to handle histidine in j_presto?
+		When preparing for simulations with "j_presto prep", the program automatically assigns each histidine to one of the three types based on the surrounding environment and the pH conditions of the solvent.
+		For more details, please refer to the explanations of 'prep -pH,' 'prep -dh,' and 'prep -th'.
+		If you prefer not to have this automatic assignment, you can use the 'prep -nah' argument.
+		Additionally, you can explicitly specify the type of histidine by modifying the residue names in the input PDB to "HIE", "HID", and "HIP".
+	3-3 : 	Please tell me how to introduce disulfide bonds and covalent bonds.
+		In the PDB file format, disulfide bonds and covalent bonds are represented with "SSBOND" and "LINK" lines, respectively.
+		For more details, please look up the PDB format online.
+		The 'j_presto prep' reads these pieces of information from the PDB file and assigns parameters for disulfide bonds and covalent bonds in simulations, outputting a topology file (*.tpl).
+		If you want to introduce disulfide bonds or covalent bonds, you should add the corresponding "SSBOND" or "LINK" lines to the input PDB file and execute "j_presto prep".
+	3-4 :	Can j_presto trim a part of simulation system?
+		Yes, it can. For more details, please refer to "prep -ts".
+	3-5 :	The duplex pair of DNA will be removed due to the trimming of the system.
+		To prevent this issue, you can use "j_presto prep -pair." Please refer to "prep -pair" for more details.
+	3-6 :	I want to cancel out the charge at the ends of the peptide chain.
+		In such cases, you can use "j_presto prep -ACE" and "j_presto prep -NME" to add the ACE and NME groups to the N-terminus and C-terminus of the peptide chain, respectively.
+		For more details, please refer to "prep -ACE" and "prep -NME."
+
+4  : Regarding j_presto md_run
+	4-1 : 	After running j_presto md_run, memory or OpenMP-related errors are occured that prevent the calculation from proceeding.
+		There is a possibility that the simulation will stop due to insufficient memory required for execution.
+		Below are examples of countermeasures.
+		In the script that executes j_presto md_run, set the following variables.
+		The examples provided are for a bash script, so be aware that the corresponding syntax may differ in other scripts such as csh.
+			ulimit -s 16384
+			export OMP_STACKSIZE=16M
+			export OMP_NUM_THREADS=8
+
+			j_presto md_run md.inp > md.log
+		OMP_NUM_THREADS:
+			This variable sets the number of threads for OpenMP parallelization.
+			When OpenMP generates threads for parallel calculations, it needs to allocate memory for the threads in proportion to the number of threads.
+			Therefore, in high parallel calculations, there is a possibility of running out of memory.
+			Reducing the value of this variable may alleviate memory shortages (however, the calculation speed is generally reduced as well).
+		ulimit and OMP_STACKSIZE:
+			Generally, the maximum amount of memory that a program can use is limited by the hardware.
+			The commands and variables to change this upper limit are ulimit and the OMP_STACKSIZE variable.
+			For example, to set the limit to 16 megabytes, ulimit should be set in KB (16MB = 16 * 1024KB = 16384), and OMP_STACKSIZE should be set to 16M.
+			Note that these two values must match.
+	4-2 :	Can parallel computation be performed with "j_presto md_run"?
+		The program "j_presto md_run" supports parallelization with OpenMP, but it does not support MPI parallelization.

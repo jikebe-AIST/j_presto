@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+  
+import argparse, os, sys, time, shutil
+
+def display_credits():
+    program_name = "get_tmpl"
+    author = "Jinzen Ikebe"
+    version = "1.0.0"
+    first_release_date = "2024-11-11"
+    current_release_date = "2024-11-11"
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    print("*" * 50)
+    print("*")
+    print(f"*    {program_name} (Version {version})")
+    print("*")
+    print(f"*                         Author : {author}")
+    print(f"*             First Release Date : {first_release_date}")
+    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print("*")
+    print(f"*" * 50)
+    print()
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+    except FileNotFoundError:
+        print("Error: License file not found.")
+        sys.exit()
+
+def copy_file(src, dest):
+    # If the destination file already exists, modify the filename
+    if os.path.exists(dest):
+        old_dest = dest
+        base, ext = os.path.splitext(dest)
+        dest = f"{base}_tmpl{ext}"  # Add _tmpl to the filename
+        print(f"{old_dest} already exists. Copying as {dest} instead.")
+
+    # Copy the file
+    shutil.copy(src, dest)
+    print(f"Copied {src} to {dest}")
+
+def main():
+    stime = time.perf_counter()
+    parser = argparse.ArgumentParser(description='j_presto get_tmpl gives you templates of input files and scripts for executing j_presto.')
+    parser.add_argument('access_key')
+    parser.add_argument('input')
+
+    args = parser.parse_args()
+    access_key = args.access_key
+    input_type = args.input
+    if access_key != "j_presto":
+        sys.exit()
+    display_credits()
+
+    # Mapping of input types to file paths
+    file_mapping = {
+        "gen_db": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "gen_db.exe"),
+        "prep": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "prep.exe"),
+        "min.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "min.inp"),
+        "md.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "md.inp"),
+        "CAPbound.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "CAPbound.inp"),
+        "cluster.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "cluster.inp"),
+        "psr.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "psr.inp"),
+        "dsr.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "dsr.inp"),
+        "dhr.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "dhr.inp"),
+        "md_run": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "md_run.exe"),
+        "batch_set.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "batch_set.inp"),
+        "batch_set_ALSD.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "batch_set_ALSD.inp"),
+        "md_multi": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "md_multi.exe"),
+    }
+
+    # Check if input type is "all" to copy all files
+    if input_type == "all":
+        for input_type in file_mapping.keys():
+            src_file = file_mapping[input_type]
+            dest_file = os.path.basename(src_file)  # Set destination to current directory with the same name
+            copy_file(src_file, dest_file)
+    elif input_type in file_mapping:
+        src_file = file_mapping[input_type]
+        dest_file = os.path.basename(src_file)  # Set destination to current directory with the same name
+        copy_file(src_file, dest_file)
+    else:
+        print(f"Error: Unknown input type '{input_type}'.") ; sys.exit()
+
+    etime = time.perf_counter()
+    print(f"\nExecution time : {etime - stime} (S)")
+    print(f"\n+++ Program j_presto get_tmpl normally ended +++")
+
+if __name__ == "__main__":
+    main()
+

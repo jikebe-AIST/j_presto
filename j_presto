@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+
+import subprocess
+import sys, os
+
+def run_program(program_name, args):
+    try:
+        sys.stdout.flush()
+        program_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "sp", program_name)
+        if program_name == "md_run" and len(args) > 1 and args[1] == "-h":
+            print("To check the how to use 'md_run', please execute 'j_presto manual'.")
+            sys.exit(0)
+        elif program_name == "md_run" and len(args) > 1 and os.path.isfile(args[1]):
+            with open(args[1], 'r') as input_file:
+                subprocess.run([program_path], stdin=input_file, check=True)
+        elif program_name == "GEprep" and len(args) > 1 and args[1] == "-h":
+            print("To check the how to use 'GEprep', please execute 'j_presto manual'.")
+            sys.exit(0)
+        elif program_name == "GEprep" and len(args) > 1 and os.path.isfile(args[1]):
+            with open(args[1], 'r') as input_file:
+                subprocess.run([program_path], stdin=input_file, check=True)
+        else:
+            subprocess.run([program_path] + args, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Error occurred while running {program_name}: {e}") ; sys.exit(1)
+
+def display_credits():
+    program_name = "j_presto"
+    author = "Jinzen Ikebe"
+    version = "1.0.0"
+    first_release_date = "2024-11-11"
+    current_release_date = "2024-11-11"
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    print("*" * 50)
+    print("*")
+    print(f"*    {program_name} (Version {version})")
+    print("*")
+    print(f"*                         Author : {author}")
+    print(f"*             First Release Date : {first_release_date}")
+    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print("*")
+    print(f"*" * 50)
+    print()
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+            print(license_content)
+    except:
+        print("Error: License file not found.")
+        sys.exit()
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: j_presto <program_name> <arguments>")
+        sys.exit(1)
+
+    if sys.argv[1] == "-h":
+        print("Usage: j_presto <function> <arguments>\n")
+        print("functions:")
+        print("       gen_db :  gen_db generates a *.tpldb file, which is database for creating J-PRESTO topology files (*.tpl).")
+        print("         prep :  prep creates coordinate file (*.pdb), topology file (*.tpl), and SHAKE file (*.shk) for simulation.")
+        print("       md_run :  md_run execute MD simulation. ")
+        print("     get_tmpl :  get_tmpl give you templates of input files and scripts for executing j_presto. ")
+        print("    batch_set :  batch_set sets up all the necessary files and directories required to run multiple MD simulations efficiently.")
+        print("       GEprep :  GEprep prepares a parameter file (*.nf) for Generalized Ensemble MD simulation.")
+        print("      mpi_run :  mpi_run executes multiple MD simulation runs as a single MPI job using an embarrassingly parallel approach.")
+        print("   mpi_master :  mpi_master executes multiple MD simulation runs as a single MPI job using a master-slave approach.")
+        print("      Ens_Ana :  Ens_Ana performs analysis of conformational ensembles obtained from simulation results. (Scheduled to be added in the next update)")
+        print("       manual :  manual shows how to use options for j_prest. ")
+        print("\n")
+        sys.exit(1)
+
+    program_name = sys.argv[1]
+    args = ["j_presto"] + sys.argv[2:]
+
+    display_credits()
+    if program_name == "manual":
+        args = [args[0], os.path.join(os.environ.get("J_PRESTO_PATH"), "manual.txt")]
+    run_program(program_name, args)
+
+if __name__ == "__main__":
+    main()
+

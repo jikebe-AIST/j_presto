@@ -1,0 +1,12 @@
+*.o
+*.mod
+presto_v3
+mkshkl
+prepar
+patch
+enear_*_*.f90
+celpar_*.f90
+cutoff_*.f90
+dneres_*.f90
+dnergv_*.f90
+shake_*.f90
