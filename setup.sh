@@ -111,53 +111,40 @@ if [ $? -eq 0 ]; then
     # Store the current directory
     CURRENT_DIR=$(pwd)
 
-    # Navigate to src_md_run directory
-    if [ -d "src_md_run" ]; then
-        cd src_md_run || exit
+    build_and_copy() {
+        local src_dir=$1
+	local exe_names=($2)
 
-        # Replace the FC variable in the Makefile with the chosen compiler
-        sed -i "s/^FC = .*/FC = $COMPILER/" Makefile
+        if [ -d "$src_dir" ]; then
+            cd "$src_dir" || exit
 
-        if make; then
-            echo "Make completed successfully."
-            # Copy the executables to the J_PRESTO directory, renaming md to md_run
-            cp md_run mkshkl "../$PRESTO_DIR/sp/"
-            echo "Executables md_run and mkshkl have been copied to $PRESTO_DIR."
+            # Replace the FC variable in the Makefile with the chosen compiler
+            sed -i "s/^FC = .*/FC = $COMPILER/" Makefile
+
+            if make; then
+                echo "Make completed successfully in $src_dir."
+                # Copy the executable to the J_PRESTO directory
+		for exe_name in "${exe_names[@]}"; do
+                    cp "$exe_name" "../$PRESTO_DIR/sp/"
+                    echo "Executable $exe_name has been copied to $PRESTO_DIR."
+                done
+            else
+                echo "Make failed in $src_dir."
+                exit 1
+            fi
+
+            # Return to the original directory
+            cd "$CURRENT_DIR" || exit
         else
-            echo "Make failed."
+            echo "$src_dir directory does not exist."
             exit 1
         fi
+    }
 
-        # Return to the original directory
-        cd "$CURRENT_DIR" || exit
-    else
-        echo "src_md_run directory does not exist."
-        exit 1
-    fi
-
-    # Navigate to src_GEprep directory
-    if [ -d "src_GEprep" ]; then
-        cd src_GEprep || exit
-
-        # Replace the FC variable in the Makefile with the chosen compiler
-        sed -i "s/^FC = .*/FC = $COMPILER/" Makefile
-
-        if make; then
-            echo "Make completed successfully."
-            # Copy the executables to the J_PRESTO directory, renaming md to md_run
-            cp GEprep "../$PRESTO_DIR/sp/"
-            echo "Executables GEprep have been copied to $PRESTO_DIR."
-        else
-            echo "Make failed."
-            exit 1
-        fi
-
-        # Return to the original directory
-        cd "$CURRENT_DIR" || exit
-    else
-        echo "src_GEprep directory does not exist."
-        exit 1
-    fi
+    # Build and copy executables
+    build_and_copy "src_md_run" "md_run mkshkl"
+    build_and_copy "src_GEprep" "GEprep"
+    build_and_copy "src_Ens_Ana" "Ens_Ana"
 
     # Move the J_PRESTO directory to the specified destination
     # Check if the destination already has a J_PRESTO directory

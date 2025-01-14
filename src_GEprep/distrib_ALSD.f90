@@ -66,7 +66,7 @@
 !     Initialization
 
       ! Heap memory
-      allocate(wei(nAB),weit(nEAA,nEAB),tw(nEAA,nEAB,nlmd))
+9999  allocate(wei(nAB),weit(nEAA,nEAB),tw(nEAA,nEAB,nlmd))
       allocate(twF(nEAA,nEAB,nlmd),Pc(nlmd,nEAA,nEAB))
       allocate(aveEAA(nAB),aveEAB(nAB),cEAAEAB(nAB))
       allocate(TaveEAA(nAB),TaveEAB(nAB),TcEAAEAB(nAB),acclabrat(nAB))
@@ -399,6 +399,35 @@
       write(4,*)maxE,0
       write(4,*)maxE,iset+1
       close(4)
+
+      if ( adjene ) then
+        adjene = .false.
+        if ( minEAA2.lt.minEAA .or. maxEAA2.gt.maxEAA .or.             &
+             minEAB2.lt.minEAB .or. maxEAB2.gt.maxEAB ) then
+          deallocate(wei,weit,tw,twF,Pc,aveEAA,aveEAB,cEAAEAB,TaveEAA, &
+            TaveEAB,TcEAAEAB,acclabrat,flt,lmdrng,COEold,low_old,      &
+            high_old)
+          minEAA = float(floor(minEAA2/5) * 5)
+          maxEAA = ceiling(maxEAA2/5.0) * 5.0
+          minEAB = float(floor(minEAB2/5) * 5)
+          maxEAB = ceiling(maxEAB2/5.0) * 5.0
+          rtmp = (maxEAA-minEAA)/sEAA ; nEAA = idint(rtmp)
+          if ( abs(rtmp-nEAA) .gt. 0.0001d0 ) nEAA = nEAA + 1
+          rtmp = (maxEAB-minEAB)/sEAB ; nEAB = idint(rtmp)
+          if ( abs(rtmp-nEAB) .gt. 0.0001d0 ) nEAB = nEAB + 1
+          nEAA = nEAA + 1 ; nEAB = nEAB + 1
+          write(6,*)
+          write(6,'(2x,a)')"* Bin size recalculation"
+          write(6,'(8x,2(a,f15.3))')"LAMBDA : ",minlmd," - ",maxlmd
+          write(6,'(8x,2(a,f15.3))')"   EAA : ",minEAA," - ",maxEAA
+          write(6,'(8x,2(a,f15.3))')"   EAB : ",minEAB," - ",maxEAB
+          write(6,'(2x,a)')"* Bin size & number for reweighting ALSD"
+          write(6,'(8x,a,f15.3,a3,i6)')"LAMBDA : ",slmd," x ",nlmd
+          write(6,'(8x,a,f15.3,a3,i6)')"   EAA : ",sEAA," x ",nEAA
+          write(6,'(8x,a,f15.3,a3,i6)')"   EAB : ",sEAB," x ",nEAB
+          goto 9999
+        endif
+      endif
 
 !***************************
 !     Output average EAB for each lambda

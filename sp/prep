@@ -731,7 +731,7 @@ def output_pdb(filnam):
                         ires += 1 ; ires_old = dat["nres"] ; ires_width = max(4, min(7, len(str(ires))))
                     dat["natm"], dat["nres"] = iatm, ires ; x, y, z = dat["cod"]
                     aname = dat["aname"] if len(dat["aname"]) == 4 else " " + dat["aname"][0:3]
-                    ofile.write("{:4}{:>7} {:4} {:4} {:>{ires_width}}{}{:8.3f}{:8.3f}{:8.3f}\n".format("ATOM", iatm, aname, dat["rname"], str(ires), " "*(8-ires_width), x, y, z, ires_width=ires_width))
+                    ofile.write("{:4}{:>7} {:4} {:4} {:>{ires_width}}{}{:8.3f}{:8.3f}{:8.3f}{:23}{:1}{:2}\n".format("ATOM", iatm, aname, dat["rname"], str(ires), " "*(8-ires_width), x, y, z, " ", next((c for c in aname if c != " ")), " ", ires_width=ires_width))
 #                ofile.write("TER\n")
 
 def search_natm(lst):
@@ -806,7 +806,7 @@ def output_tpl(filname):
             print(f"\n+ Output SSBOND or LINK information\n")
             ## Input topology database
             with open(tpldb, "r") as fil:
-                lines = fil.readlines() ; istart = next(i for i, line in enumerate(lines) if line.startswith(";PRE> LINK"))
+                lines = fil.readlines() ; istart = next(i for i, line in enumerate(lines) if line.startswith(";PRE>LINK"))
             bd, bfc, blen, ag, afc, angl, tor, tfc, tdiv, tperi, tphase, tnbf, imp, ifc, idiv, iperi, iphase = [[] for _ in range(17)]
             for line in lines[istart:]:
                 tmp = line.split() ; i = len(tmp)
@@ -830,12 +830,12 @@ def output_tpl(filname):
             at_list = [0] + [info["atype"] for lst in pdb_tpl["order"] for chn in lst for info in pdb_tpl["atm_inf"][chn]]
             bd_list = [[] for _ in range(len(at_list))] ; ixnatm = 0
             for i, lst in enumerate(pdb_tpl["order"]):
-                nmol = pdb_tpl["nmol"][i] ; natm = int(pdb_tpl["tpl_inf"][lst[0]]["ATOMS"][1].split()[-1])
+                nmol = pdb_tpl["nmol"][i] ; natm = len(pdb_tpl["tpl_inf"][lst[0]]["ATOMS"])
                 info = pdb_tpl["tpl_inf"][lst[0]]
                 if "BONDS" in info:
                     for _ in range(nmol):
-                        for line in info["BONDS"][2:]:
-                            tmp = line.split() ; i1, i2 = int(tmp[0]), int(tmp[1])
+                        for tmp in info["BONDS"]:
+                            i1, i2 = int(tmp[0]), int(tmp[1])
                             bd_list[i1+ixnatm].append(i2+ixnatm) ; bd_list[i2+ixnatm].append(i1+ixnatm)
                         ixnatm += natm
                 else:
@@ -966,10 +966,10 @@ def output_tpl(filname):
                     for i in range(len(info[1])):
                         out.write(f"T {info[0][0]:>6}{info[0][1]:>6}{info[0][2]:>6}{info[0][3]:>6}{info[1][i]:10.4f}{info[2][i]:5}{info[3][i]:5} {info[4][i]:10.4f}{info[5][i]:5} ; {info[6]:>3}")
                         maxtor += 1
-                    if info[1] == [0.0]:
-                        print(f"* The torsion parameter for {info[7]}-{info[8]}-{info[9]}-{info[10]} could NOT be found.")
-                        out.write(f" (Parameter NOT found.)")
-                    out.write("\n")
+                        if info[1] == [0.0]:
+                            print(f"* The torsion parameter for {info[7]}-{info[8]}-{info[9]}-{info[10]} could NOT be found.")
+                            out.write(f" (Parameter NOT found.)")
+                        out.write("\n")
             ## IMPROPER TORSION
             save = [] ; Tiat = [0] * 4
             for ilst, lst in enumerate(LINKlist, start=1):
@@ -1087,10 +1087,13 @@ def add_solvent():
         def move_coordinates(objects, center):
             for obj in objects:
                 obj["cod"] = [round(cod - cen, 3) for cod, cen in zip(obj["cod"], center)]
+        def move_coordinates2(objects, center):
+            for obj in objects:
+                obj[:] = [round(cod - cen, 3) for cod, cen in zip(obj, center)]
         for atm_info in pdb_tpl["atm_inf"]:
             move_coordinates(atm_info, slv_center)
-        move_coordinates(iaSS, slv_center)
-        move_coordinates(iaLINK, slv_center)
+        move_coordinates2(iaSS, slv_center)
+        move_coordinates2(iaLINK, slv_center)
         print(f'* The center was shifted parallel to [0.000, 0.000, 0.000]')
         if slv_bound:
             slv_bound = [bound - slv_center[i // 2] for i, bound in enumerate(slv_bound)]

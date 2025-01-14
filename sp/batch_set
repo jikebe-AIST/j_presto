@@ -5,8 +5,9 @@ import argparse, os, sys, time, re
 namELM = {}
 namELM["INPUT"] = [
         'TOPOLO','TPLFMT','COORDI','CRDFMT','SETSHK','SETVAR','SETBOU',
-        'REFCOO','POSITI','DISTAN','DIHEDR','SETORI','OUTMON','CELLPA',
-        'EXTCMM','REPULS']
+        'REFCOO','POSITI','DISTAN','DIHEDR','SETORI','OUTMON','EXTCMM',
+        'REPULS','CELLVL','CELSIZ','CELRES','CLUSTA','CLUSTB','GEPSME',
+        'SCALET','LWEIGH','LTCNTL']
 namELM["MD"] = [
         'RESTAR','CPUTIM','LOOPLI','UPDATE','TIMEST','OUTLOG','LOGFOR',
         'STOPCE','METHOD','SETTEM','RELAXA','INITIA','RANDOM','STARTT',
@@ -27,7 +28,7 @@ namELM["GE"] =[
         'NWINDO','NXMINV','NXMAXV','PREFIT','TMPSMP','NXTEMP','LMDSMP',
         'LSMPSQ','MINLMD','MAXLMD','MINEAA','MAXEAA','MINEAB','MAXEAB',
         'ACCELE','ACCRAT','ACCEL2','ACCRT2','ACCLAB','ACCRTL','ACCTHL',
-        'NEGLCT','FORCES','FORCEL','FORCEH','IGNDAT']
+        'NEGLCT','FORCES','FORCEL','FORCEH','IGNDAT','ADJENE']
 namELM["filelist"] =[
         'INPENE','NFIRST','NFINAL']
 
@@ -131,8 +132,6 @@ def read_batch_set(batch_set, md_run, md_multi, rseed):
     for imd in range(iist, ien + 1):
         cmd = str(imd) ; pmd = str(imd - 1) ; cdir = "md" + cmd
         replacements.update({"#CMD": cmd, "#PMD": pmd})
-        if not os.path.exists(cdir):
-            os.makedirs(cdir)
         if imd in ELM:
             for key, value in ELM[imd].items():
                 value = False if value == "OFF" else value
@@ -140,7 +139,7 @@ def read_batch_set(batch_set, md_run, md_multi, rseed):
                     if key in section:
                         ELEMNT[key] = value ; break
 
-            batch_set_txt = "" ; filelist_txt = ""
+            batch_set_txt = ""
             sections = {"INPUT": namELM["INPUT"],"MD": namELM["MD"],"OUTPUT": namELM["OUTPUT"]}
             for section_name, keys in sections.items():
                 active = [key for key in keys if ELEMNT[key]]
@@ -150,6 +149,11 @@ def read_batch_set(batch_set, md_run, md_multi, rseed):
                         batch_set_txt += f"{key}= {ELEMNT[key]}\n"
                     batch_set_txt += "QUIT\n"
 
+        if imd < ist:
+            continue
+        if not os.path.exists(cdir):
+            os.makedirs(cdir)
+        filelist_txt = ""
         for irun in range(1, nrun + 1):
             run = str(irun) ; cdir2 = os.path.join(cdir, f"n{run}")
             if not os.path.exists(cdir2):

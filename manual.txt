@@ -36,7 +36,7 @@ Sub-program name list:
 	get_tmpl   : Obtaining templates of input files and scripts for excuting j_presto.
 	batch_set  : Setting up all the necessary files and directories required to run multiple MD simulations efficiently
 	GEprep     : Preparation of a parameter file (*.nf) for Generalized Ensemble MD simulations such as McMD and ALSD.
-	Ens_Ana    : Performing analysis of conformational ensembles obtained from simulation results (Scheduled to be added in the next update)
+	Ens_Ana    : Performing analysis of conformational ensembles obtained from simulation results
 	manual     : Viewing the manual.
 The simulations performed by j_presto support parallelization using OpenMP, but currently do not support parallelization via MPI or GPU.
 However, you can use the programs j_presto_mpi and j_presto_master, which allow you to bundle multiple OpenMP-parallelized MD simulation runs and execute them as a single MPI job.
@@ -377,7 +377,14 @@ The main option list that can be configured is as follows:
 	POSITI : Positional restraint configuration file
 	DISTAN : Distance restraint configuration file
 	DIHEDR : Dihedral angle restraint configuration file
-	CELLPA : Cell multipole expansion, configuration file for ALSD
+	CELLVL : Cell level setting for cell multipole expansion method (CMM)
+	CELSIZ : Cell size setting for CMM
+	CELRES : Specification of atoms for residue-level grid assignment in CMM
+	CLUSTA : Specification of atoms (Region A) to enhance conformational changes in ALSD simulation
+	GEPSME : Method of Generalized Ensemble method for enhancing conformational sampling in Partial System (GEPS)
+	SCALET : Scaled energy term specification
+	LWEIGH : Weight of lambda particle for ALSD simulation
+	LTCNTL : Temperature control of lambda particle for ALSD simulation
 For details about each option, please consult the manual.
 >CAPbound.inp
 Input file to perform calculations with CAP boundary.
@@ -444,24 +451,6 @@ with two available options:
         DHR> LIST
 For detailed information about these options, please refer to the manual like "DHR> NUMBER".
 The template for the dhr.inp file can be obtained via "j_presto get_tmpl dhr.inp", which can be conveniently modified to suit your needs.
->cluster.inp
-This file is used for specifying settings when using the Cell Multipole expansion Method (CMM) for the long-range electrostatic interaction calculation (i.e., when setting "CAL15M= CMM") or running ALSD simulations.
-If you are using CMM with the default settings, it is not necessary to prepare this file.
-In the "EXE> INPUT" block of the md.inp or min.inp input files for "j_presto md_run," set the file name with the "CELLPA" option.
-Options are specified with
-	INPCLS> [Option name]
-and continue until the next "INPCLS>" line appears or until the end of the file is reached.
-Below is a list of available options.
-	INPCLS> CELLVL              : The hierarchical level of cells for CMM
-	INPCLS> CELSIZ              : Cell size
-	INPCLS> RESLIST             : Selection of molecules where atoms' cell assignment in CMM is done by residue
-	INPCLS> CLSTLIST            : Selection of the region (Region A) to enhance conformational changes in ALSD simulations
-	INPCLS> CLSTMETHOD          : Settings for conducting ALSD simulations
-	INPCLS> SCALED_TERM         : Selection of energy terms to enhance in ALSD simulations
-	INPCLS> LAMBDA_WEIGHT       : Setting the mass of the scale factor, λ, in ALSD simulations
-	INPCLS> LAMBDA_TEMP_CONTROL : Setting the temperature control for the scale factor, λ, in ALSD simulations
-For details on how to use each option, search for relevant terms in the "j_presto manual" like "INPCLS> CELLVL".
-A template for this file can be obtained with "j_presto get_tmpl cluster.inp", and you can modify this file to suit your preferred settings.
 >EXE> MD
 This block in the input file for "j_presto md_run" is used to configure the necessary setting options for the MD simulations.
 It is utilized only in md.inp file.
@@ -607,12 +596,82 @@ You can obtain the template for the dhr.inp file using the command:
         j_presto get_tmpl dhr.inp
 making it convenient to modify this file appropriately for your use.
 For detailed settings of the dhr.inp file, please refer to "j_presto manual" and inquire "dhr.inp".
->CELLPA
-This option is specify the input file (cluster.inp) for settings when using the Cell Multipole expansion Method (CMM) for the long-range electrostatic interaction calculation (i.e., when setting "CAL15M= CMM") or when you want to change the default settings for CMM, as well as for running ALSD simulations.
-You can obtain the template for the cluster.inp file using the command:
-        j_presto get_tmpl cluster.inp
-making it convenient to modify this file appropriately for your use.
-For detailed settings of the cluster.inp file, please refer to "j_presto manual" and inquire "cluster.inp".
+> CELLVL
+When you choose cell multipole expansion method (CMM) for electrostatic interaction calculation (when you set CAL15M= CMM), space is divided into a grid structure.
+The smallest grid (level 1 grid) consists of 2x2x2 = 8 cells, which are then grouped into a level 2 grid.
+Similarly, a level 3 grid is formed by grouping eight level 2 grids, and so on, creating a hierarchical structure.
+
+When calculating the electrostatic interactions acting on a specific atom, the interactions from atoms belonging to nearby grids are computed precisely.
+For atoms in slightly farther grids, the interactions are approximated using contributions from level 1 grids.
+Even more distant interactions are approximated based on contributions from level 2 grids.
+This hierarchical approach allows for both high accuracy and computational efficiency.
+
+In this option, you can set the maximum level of the grid.
+The j_presto corresponds to level 3 to 5.
+The default setting is 3.
+If you wish to configure a cell level other than the default, you can do so using this option.
+Please note that even if you set this value, j_presto may internally adjust it to an appropriate level.
+>CELSIZ
+When you choose cell multipole expansion method (CMM) for electrostatic interaction calculation (when you set CAL15M= CMM), space is divided into a grid structure.
+The smallest grid (level 1 grid) consists of 2x2x2 = 8 cells, which are then grouped into a level 2 grid.
+Similarly, a level 3 grid is formed by grouping eight level 2 grids, and so on, creating a hierarchical structure.
+
+When calculating the electrostatic interactions acting on a specific atom, the interactions from atoms belonging to nearby grids are computed precisely.
+For atoms in slightly farther grids, the interactions are approximated using contributions from level 1 grids.
+Even more distant interactions are approximated based on contributions from level 2 grids.
+This hierarchical approach allows for both high accuracy and computational efficiency.
+
+In this option, you can set the level 1 grid size.
+The default setting is 6.0 Å.
+If you wish to configure a cell level other than the default, you can do so using this option.
+Please note that even if you set this value, j_presto may internally adjust it to an appropriate level.
+> CELRES
+When you choose cell multipole expansion method (CMM) for electrostatic interaction calculation (when you set CAL15M= CMM), space is divided into a grid structure.
+The smallest grid (level 1 grid) consists of 2x2x2 = 8 cells, which are then grouped into a level 2 grid.
+Similarly, a level 3 grid is formed by grouping eight level 2 grids, and so on, creating a hierarchical structure.
+
+When calculating the electrostatic interactions acting on a specific atom, the interactions from atoms belonging to nearby grids are computed precisely.
+For atoms in slightly farther grids, the interactions are approximated using contributions from level 1 grids.
+Even more distant interactions are approximated based on contributions from level 2 grids.
+This hierarchical approach allows for both high accuracy and computational efficiency.
+
+In this calculation, it is necessary to determine which grid each atom belongs to.
+Instead of using the individual positions of each atom, you can determine the grid for a residue by using the position of its center of mass.
+This allows you to assign the same grid to all atoms of a residue such as water molecule.
+Specify the atom groups to which grids should be assigned for each residue using the "atom specifier" as follows:
+	CELRES= [atom_specifier]
+For details on atom specification using the atom specifier, refer to the "atom specifier" section.
+However, all residues that include at least one of the specified atoms are applied for the residue-wise grid assignment.
+>CLUSTA
+If you want to conduct ALSD simulations, you need to select the region (Region A) where you wish to enhance confirmational changes using this option.
+Specify the atom groups for the Region A using the "atom specifier" as follows: 
+        CLUSTA= [atom_specifier]
+For details on atom specification using the atom specifier, refer to the "atom specifier" section.
+> GEPSME
+When you want to perform ALSD simulation, please set this option as follows:
+	GEPSME= LMD
+>SCALET
+This option allows you to select which energy terms to enhance when performing ALSD simulations.
+The selection is made using a four-digit number as follows:
+	SCALET= 0010
+It is known that ALSD simulations that do not scale both the electrostatic interaction energy and van der Waals energy, or at least one of these two energy terms, have low structural exploration efficiency.
+Therefore, in j_presto, these two energy terms are always scaled.
+The four-digit number provided in this option specifies the scaling for the bond, angle, torsion, and improper torsion terms, respectively.
+0 means "not scaled" and 1 means "scaled".
+Only for the torsion term, you can also select options 2 (scale all except peptide bonds) or 3 (scale all except peptide bonds, but scale the XXX-PRO peptide bond).
+The default setting is "0030".
+>LWEIGH
+In ALSD simulations, just like the atoms consisting the system, the scaling factor λ also moves according to the Hamiltonian.
+This option specifies the mass of the λ particle.
+If this option is not specified, the mass is set to the total mass of the atoms in the region where conformation changes are enhanced (i.e. the atoms selected by "CLUSTA" option).
+However, if you explicitly want to set this value, you can use this option as follows:
+	LWEIGH= 1000.0
+>LTCNTL
+In ALSD simulations, just like the atoms consisting the system, the scaling factor λ also moves according to the Hamiltonian.
+If you want to control the temperature of the λ particle, set this option as follows:
+	LTCNTL= YES
+In the above example, the temperature control of λ is coupled with the atoms of the system.
+The default setting is "NO," which means that temperature control is not applied directly, but is controlled indirectly through the Hamiltonian.
 >METHOD
 This option allows you to set the calculation method, with different parameters available for configuration in the "EXE> MD" block of md.inp and "EXE> MINI" block of min.inp.
 In EXE> MD in md.inp, the following options can be selected:
@@ -1080,116 +1139,6 @@ Then, from the 2nd to the 9th components, the residue number IDs within the spec
 The 10th to 13th components represent fmin, fmax, rmin, and rmax, respectively.
 The 14th component is an option to output information about the atoms to which the dihedral angle restraints has been applied when executing "j_presto md_run".
 Setting this option to "YES" enable the output.
->INPCLS> CELLVL
-This option can be configured in the input file for CMM (cluster.inp).
-In CMM, space is divided into a grid structure.
-The smallest grid (level 1 grid) consists of 2x2x2 = 8 cells, which are then grouped into a level 2 grid.
-Similarly, a level 3 grid is formed by grouping eight level 2 grids, and so on, creating a hierarchical structure.
-
-When calculating the electrostatic interactions acting on a specific atom, the interactions from atoms belonging to nearby grids are computed precisely.
-For atoms in slightly farther grids, the interactions are approximated using contributions from level 1 grids.
-Even more distant interactions are approximated based on contributions from level 2 grids.
-This hierarchical approach allows for both high accuracy and computational efficiency.
-
-In this option, you can set the number of grid levels as follows:
-	INPCLS> CELLVL
-	3
-The maximum level which j_presto can be set is 5.
-The default setting is 3.
-If you wish to configure a cell level other than the default, you can do so using this option.
-Please note that even if you set this value, j_presto may internally adjust it to an appropriate level.
->INPCLS> CELSIZ
-This option can be configured in the input file for CMM (cluster.inp).
-In CMM, space is divided into a grid structure.
-The smallest grid (level 1 grid) consists of 2x2x2 = 8 cells, which are then grouped into a level 2 grid.
-Similarly, a level 3 grid is formed by grouping eight level 2 grids, and so on, creating a hierarchical structure.
-
-When calculating the electrostatic interactions acting on a specific atom, the interactions from atoms belonging to nearby grids are computed precisely.
-For atoms in slightly farther grids, the interactions are approximated using contributions from level 1 grids.
-Even more distant interactions are approximated based on contributions from level 2 grids.
-This hierarchical approach allows for both high accuracy and computational efficiency.
-
-In this option, you can set the smallest grid size.
-	INPCLS> CELSIZ
-	6.0
-The default setting is 6.0 Å.
-If you wish to configure a cell level other than the default, you can do so using this option.
-Please note that even if you set this value, j_presto may internally adjust it to an appropriate level.
->INPCLS> RESLIST
-This option can be configured in the input file for CMM (cluster.inp).
-In CMM, space is divided into a grid structure.
-The smallest grid (level 1 grid) consists of 2x2x2 = 8 cells, which are then grouped into a level 2 grid.
-Similarly, a level 3 grid is formed by grouping eight level 2 grids, and so on, creating a hierarchical structure.
-
-When calculating the electrostatic interactions acting on a specific atom, the interactions from atoms belonging to nearby grids are computed precisely.
-For atoms in slightly farther grids, the interactions are approximated using contributions from level 1 grids.
-Even more distant interactions are approximated based on contributions from level 2 grids.
-This hierarchical approach allows for both high accuracy and computational efficiency.
-
-In this calculation, it is necessary to determine which grid each atom belongs to.
-Instead of using the individual positions of each atom, you can determine the grid for a molecule by using the position of its center of mass.
-This allows you to assign the same grid to all atoms of a molecule such as water molecule.
-
-With this option, you can specify the residues for which you want to determine the grid assignment not based on the default method of using each atom's position, but rather by residue.
-The specification method is as follows:
-	INPCLS> RESLIST
-	1 999999   1   999999  *  WAT  NO
-The 1st and 2nd components are the first and last chain IDs you want to select.
-In the above example, since the actual number of existing chains is less than the specified final chain number (999999), all chains are selected.
-The 3rd and 4th components specify the first and last residue IDs in the selected chains.
-Similar to the case of chains, if the actual number of existing residues in the selected chain is less than the specified final residue number (999999), all residues are selected.
-The 5th and 6th components specify atom and residue names, respectively.
-For these component, in addition to specifying exact names, wildcards using the asterisk (*) can also be employed.
-For example, "*" represents all atoms or residues, and "C*" refers to all atoms or residues whose first character is C.
-However, note that wildcards can only be used at the end of the name; therefore, specifications like "*A" or "*C*" are not allowed.
-Since "INPCLS> RESLIST" is an option for specifying residues, there is no need to specify the fifth component.
-However, all residues that include at least one of the specified atoms are applied for the residue-wise grid assignment.
-The 7th component is an option to output information about the residues to which the residue-wise grid assignment has been applied when executing "j_presto md_run".
->INPCLS> CLSTLIST
-If you want to conduct ALSD simulations, you need to select the region where you wish to enhance confirmational changes using this option.
-The method for setting this up is as follows:
-	INPCLS> CLSTLIST
-	1  1   1   20   *    *  NO
-	2  2   1    1   *  LIG  NO
-The 1st and 2nd components are the first and last chain IDs you want to select.
-The 3rd and 4th components specify the first and last residue IDs in the selected chains.
-The 5th and 6th components specify atom and residue names, respectively.
-For these component, in addition to specifying exact names, wildcards using the asterisk (*) can also be employed.
-For example, "*" represents all atoms or residues, and "C*" refers to all atoms or residues whose first character is C.
-However, note that wildcards can only be used at the end of the name; therefore, specifications like "*A" or "*C*" are not allowed.
-There are special designations as follows:
-        HEAV : heavy atoms (atoms other than hydrogen)
-        SIDE : atoms other than the backbone of proteins or nucleic acids
-In the above example, all atoms from residues 1 to 20 of the first chain and all atoms of the residue named "LIG" of residue 1 of the second chain are selected as the region to enhance the conformational change.
->INPCLS> CLSTMETHOD
-When you want to perform ALSD simulations, please set this option as follows:
-	INPCLS> CLSTMETHOD
-	LMD
->INPCLS> SCALED_TERM
-This option allows you to select which energy terms to enhance when performing ALSD simulations.
-The selection is made using a four-digit number as follows:
-	INPCLS> SCALED_TERM
-	0010
-It is known that ALSD simulations that do not scale both the electrostatic interaction energy and van der Waals energy, or at least one of these two energy terms, have low structural exploration efficiency.
-Therefore, in j_presto, these two energy terms are always scaled.
-The four-digit number provided in this option specifies the scaling for the bond, angle, torsion, and improper torsion terms, respectively.
-0 means "not scaled" and 1 means "scaled".
-Only for the torsion term, you can also select options 2 (scale all except peptide bonds) or 3 (scale all except peptide bonds, but scale the XXX-PRO peptide bond).
-The default setting is "0030".
->INPCLS> LAMBDA_WEIGHT
-In ALSD simulations, just like the atoms consisting the system, the scaling factor λ also moves according to the Hamiltonian.
-This option specifies the mass of the λ particle.
-If this option is not specified, the mass is set to the total mass of the atoms in the region where conformation changes are enhanced (i.e. the atoms selected by "INPCLS> CLSTLIST").
-However, if you want to change this value, you can use this option as follows:
-	INPCLS> LAMBDA_WEIGHT
-	1000.0
->INPCLS> LAMBDA_TEMP_CONTROL
-In ALSD simulations, just like the atoms consisting the system, the scaling factor λ also moves according to the Hamiltonian.
-This option sets the temperature control method for the λ particle as follows:
-	>INPCLS> LAMBDA_TEMP_CONTROL
-	YES
-In the above example, the temperature control of λ is coupled with the atoms of the system.
-The default setting is "NO," which means that temperature control is not applied directly, but is controlled indirectly through the Hamiltonian.
 >batch_set
 The "j_presto batch_set" automatically generates input files and execution scripts necessary for running multiple MD simulation runs.
 When you execute a single MD simulation run, you prepare an input file (md.inp) describing the desired settings, and then execute the calculation with "j_presto md_run md.inp".
@@ -1233,7 +1182,6 @@ SETSHK= ../../test.shk
 REFCOO= ../../test_min.pdb
 POSITI= ../../psr.inp
 ;SETBOU= ../../CAPbound.inp
-;CELLPA= ../../cluster.inp
 METHOD= CANO
 LOOPLI= 500000
 RESTAR= NO
@@ -1342,7 +1290,6 @@ SETSHK= ../../test.shk
 REFCOO= ../../test_min.pdb
 POSITI= ../../psr.inp
 ;SETBOU= ../../CAPbound.inp
-;CELLPA= ../../cluster.inp
 METHOD= CANO
 LOOPLI= 500000
 RESTAR= NO
@@ -1565,6 +1512,7 @@ The main options that can be configured for GEprep are as follows:
 	MINEAB : The minimum limit of Energy between region A and B for ALSD reweighting
 	MAXEAB : The maximum limit of Energy between region A and B for ALSD reweighting
 	FORCES : Force size applied to lambda particle when it goes out of the range from MINVAL to MAXVAL
+	ADJENE : Frag for automatically redefining energy ranges for ALSD reweighting
 	INPENE : Input energy and lambda values file (*.ene) to estimate the function dlnP(λ)/dλ
 	NFIRST : The initial structure number used for the function estimation
 	NFINAL : The final structure number used for the function estimation
@@ -1792,7 +1740,7 @@ To keep the memory usage for reweighting calculations within feasible limits, it
 
 First, specify the range of λ to obtain conformations using "MINLMD" and "MAXLMD".
 The range specified for λ should be centered around λ = 1, with some width on either side (for example, from 0.75 to 1.25).
-Initially, arbitrary real numbers should be assigned to "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB." 
+Initially, arbitrary real numbers should be assigned to "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB". 
 Once these settings are made, running "j_presto GEprep" will produce a log with messages similar to the following:
 	* Selected min & max lambda or the square for CANO dist.
              	0.750 -      1.250
@@ -1800,6 +1748,8 @@ Once these settings are made, running "j_presto GEprep" will produce a log with 
         	EAA :        -621.246 -        -173.357
         	EAB :       -1208.770 -        -440.000
 Based on these values, adjust "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB" appropriately, and run "j_presto GEprep" again.
+If this re-execution is bothersome, it is recommended to set the option "ADJENE= YES".
+If you set it, GEprep will automatically reset the values of MINEAA, MAXEAA, MINEAB, and MAXEAB and perform the re-execution.
 This will yield an output file (*.prob) that assigns the probability of occurrence of each conformation when λ = 1, which can be analyzed using the program "j_presto Ens_Ana".
 >MAXLMD
 Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for ALSD.
@@ -1815,7 +1765,7 @@ To keep the memory usage for reweighting calculations within feasible limits, it
 
 First, specify the range of λ to obtain conformations using "MINLMD" and "MAXLMD".
 The range specified for λ should be centered around λ = 1, with some width on either side (for example, from 0.75 to 1.25).
-Initially, arbitrary real numbers should be assigned to "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB."
+Initially, arbitrary real numbers should be assigned to "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB".
 Once these settings are made, running "j_presto GEprep" will produce a log with messages similar to the following:
         * Selected min & max lambda or the square for CANO dist.
                 0.750 -      1.250
@@ -1823,6 +1773,8 @@ Once these settings are made, running "j_presto GEprep" will produce a log with 
                 EAA :        -621.246 -        -173.357
                 EAB :       -1208.770 -        -440.000
 Based on these values, adjust "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB" appropriately, and run "j_presto GEprep" again.
+If this re-execution is bothersome, it is recommended to set the option "ADJENE= YES".
+If you set it, GEprep will automatically reset the values of MINEAA, MAXEAA, MINEAB, and MAXEAB and perform the re-execution.
 This will yield an output file (*.prob) that assigns the probability of occurrence of each conformation when λ = 1, which can be analyzed using the program "j_presto Ens_Ana".
 >MINEAA
 Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for ALSD.
@@ -1838,7 +1790,7 @@ To keep the memory usage for reweighting calculations within feasible limits, it
 
 First, specify the range of λ to obtain conformations using "MINLMD" and "MAXLMD".
 The range specified for λ should be centered around λ = 1, with some width on either side (for example, from 0.75 to 1.25).
-Initially, arbitrary real numbers should be assigned to "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB."
+Initially, arbitrary real numbers should be assigned to "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB".
 Once these settings are made, running "j_presto GEprep" will produce a log with messages similar to the following:
         * Selected min & max lambda or the square for CANO dist.
                 0.750 -      1.250
@@ -1846,6 +1798,8 @@ Once these settings are made, running "j_presto GEprep" will produce a log with 
                 EAA :        -621.246 -        -173.357
                 EAB :       -1208.770 -        -440.000
 Based on these values, adjust "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB" appropriately, and run "j_presto GEprep" again.
+If this re-execution is bothersome, it is recommended to set the option "ADJENE= YES".
+If you set it, GEprep will automatically reset the values of MINEAA, MAXEAA, MINEAB, and MAXEAB and perform the re-execution.
 This will yield an output file (*.prob) that assigns the probability of occurrence of each conformation when λ = 1, which can be analyzed using the program "j_presto Ens_Ana".
 >MAXEAA
 Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for ALSD.
@@ -1861,7 +1815,7 @@ To keep the memory usage for reweighting calculations within feasible limits, it
 
 First, specify the range of λ to obtain conformations using "MINLMD" and "MAXLMD".
 The range specified for λ should be centered around λ = 1, with some width on either side (for example, from 0.75 to 1.25).
-Initially, arbitrary real numbers should be assigned to "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB."
+Initially, arbitrary real numbers should be assigned to "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB".
 Once these settings are made, running "j_presto GEprep" will produce a log with messages similar to the following:
         * Selected min & max lambda or the square for CANO dist.
                 0.750 -      1.250
@@ -1869,6 +1823,8 @@ Once these settings are made, running "j_presto GEprep" will produce a log with 
                 EAA :        -621.246 -        -173.357
                 EAB :       -1208.770 -        -440.000
 Based on these values, adjust "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB" appropriately, and run "j_presto GEprep" again.
+If this re-execution is bothersome, it is recommended to set the option "ADJENE= YES".
+If you set it, GEprep will automatically reset the values of MINEAA, MAXEAA, MINEAB, and MAXEAB and perform the re-execution.
 This will yield an output file (*.prob) that assigns the probability of occurrence of each conformation when λ = 1, which can be analyzed using the program "j_presto Ens_Ana".
 >MINEAB
 Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for ALSD.
@@ -1884,7 +1840,7 @@ To keep the memory usage for reweighting calculations within feasible limits, it
 
 First, specify the range of λ to obtain conformations using "MINLMD" and "MAXLMD".
 The range specified for λ should be centered around λ = 1, with some width on either side (for example, from 0.75 to 1.25).
-Initially, arbitrary real numbers should be assigned to "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB."
+Initially, arbitrary real numbers should be assigned to "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB".
 Once these settings are made, running "j_presto GEprep" will produce a log with messages similar to the following:
         * Selected min & max lambda or the square for CANO dist.
                 0.750 -      1.250
@@ -1892,6 +1848,8 @@ Once these settings are made, running "j_presto GEprep" will produce a log with 
                 EAA :        -621.246 -        -173.357
                 EAB :       -1208.770 -        -440.000
 Based on these values, adjust "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB" appropriately, and run "j_presto GEprep" again.
+If this re-execution is bothersome, it is recommended to set the option "ADJENE= YES".
+If you set it, GEprep will automatically reset the values of MINEAA, MAXEAA, MINEAB, and MAXEAB and perform the re-execution.
 This will yield an output file (*.prob) that assigns the probability of occurrence of each conformation when λ = 1, which can be analyzed using the program "j_presto Ens_Ana".
 >MAXEAB
 Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for ALSD.
@@ -1907,7 +1865,7 @@ To keep the memory usage for reweighting calculations within feasible limits, it
 
 First, specify the range of λ to obtain conformations using "MINLMD" and "MAXLMD".
 The range specified for λ should be centered around λ = 1, with some width on either side (for example, from 0.75 to 1.25).
-Initially, arbitrary real numbers should be assigned to "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB."
+Initially, arbitrary real numbers should be assigned to "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB".
 Once these settings are made, running "j_presto GEprep" will produce a log with messages similar to the following:
         * Selected min & max lambda or the square for CANO dist.
                 0.750 -      1.250
@@ -1915,6 +1873,35 @@ Once these settings are made, running "j_presto GEprep" will produce a log with 
                 EAA :        -621.246 -        -173.357
                 EAB :       -1208.770 -        -440.000
 Based on these values, adjust "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB" appropriately, and run "j_presto GEprep" again.
+If this re-execution is bothersome, it is recommended to set the option "ADJENE= YES".
+If you set it, GEprep will automatically reset the values of MINEAA, MAXEAA, MINEAB, and MAXEAB and perform the re-execution.
+This will yield an output file (*.prob) that assigns the probability of occurrence of each conformation when λ = 1, which can be analyzed using the program "j_presto Ens_Ana".
+>ADJENE
+Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for ALSD.
+When this option is set to "YES" (ADJENE= YES), energy ranges for ALSD reweighting (MINEAA, MAXEAA, MINEAB, and MAXEAB) are automatically determined.
+The default setting is "NO".
+Note that enabling this option will cause the program to first read all the energy data to determine the range and then read the same data again, effectively doubling the computational time.
+ALSD is a simulation method that allows users to explore a wide range of λ values by varying λ during the simulation to sample various conformations related to the region of interest (Region A) where the user wants to promote the conformational changes.
+The resulting confirmational ensemble includes a variety of conformations, ranging from stable to unstable configurations.
+
+In ALSD, you can perform reweighting to reconstruct a conformational ensemble corresponding to any desired λ from the resulting ensemble.
+To perform this reweighting, it is necessary to determine the distribution in the three-dimensional space of 1) λ, 2) potential energy within region A (E_AA), and 3) potential energy between regions A and B (E_AB) based on the conformational ensemble obtained from the ALSD simulation.
+This allows for the calculation of the probability of occurrence of each conformation when λ = 1.
+In practical computation, obtaining this three-dimensional distribution requires a significant amount of memory.
+To keep the memory usage for reweighting calculations within feasible limits, it is essential to narrow down the ranges for λ, E_AA, and E_AB necessary for reproducing the conformational ensemble at λ = 1.
+
+First, specify the range of λ to obtain conformations using "MINLMD" and "MAXLMD".
+The range specified for λ should be centered around λ = 1, with some width on either side (for example, from 0.75 to 1.25).
+Initially, arbitrary real numbers should be assigned to "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB".
+Once these settings are made, running "j_presto GEprep" will produce a log with messages similar to the following:
+        * Selected min & max lambda or the square for CANO dist.
+                0.750 -      1.250
+        * min & max EAA & EAB in the selected lrange
+                EAA :        -621.246 -        -173.357
+                EAB :       -1208.770 -        -440.000
+Based on these values, adjust "MINEAA," "MAXEAA," "MINEAB," and "MAXEAB" appropriately, and run "j_presto GEprep" again.
+If this re-execution is bothersome, it is recommended to set the option "ADJENE= YES".
+If you set it, GEprep will automatically reset the values of MINEAA, MAXEAA, MINEAB, and MAXEAB and perform the re-execution.
 This will yield an output file (*.prob) that assigns the probability of occurrence of each conformation when λ = 1, which can be analyzed using the program "j_presto Ens_Ana".
 >FORCES
 Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that prepares parameter files needed for ALSD.
@@ -1961,7 +1948,6 @@ The list of files that can be obtained is as follows:
 	min.inp            : Input file for performing an energy minimization calculation.
 	md.inp             : Input file for performing a single MD simulation.
 	CAPbound.inp       : Input file to perform calculations with CAP boundary.
-	cluster.inp        : Input file for using CMM for electrostatic interaction calculations or for ALSD simulations.
 	psr.inp            : Input file to restrain position of atoms.
 	dsr.inp            : Input file to restrain distances between atoms.
 	dhr.inp            : Input file to restrain dihedral angles.
@@ -2011,10 +1997,454 @@ Use the one you need and either comment out the unnecessary one with # or delete
 The "batch_set" will then use this modified file to automatically generate scripts, named md_multi_*.exe (where * corresponds to the MD ID), to execute multiple MD runs as a single MPI job.
 >Ens_Ana
 "j_presto Ens_Ana" performs analysis of conformational ensembles obtainted from simulation results.
-This subprogram is scheduled to be added in the next update.
+The usege is as follows:
+	j_presto Ens_Ana [input file name]
+Ens_Ana performs various ensemble analyses according to the settings specified in the input file (Ens_Ana.inp).
+The template file for Ens_Ana.inp can be obtained using the command "j_presto get_tmpl Ens_Ana.inp", and it is recommended to modify this template to suit your desired setting.
+Additionally, the execution script for Ens_Ana (Ens_Ana.exe) can be obtained using "j_presto get_tmpl Ens_Ana", so please make use of it.
+For details on the various options that can be configured in the input file, refer to the "Ens_Ana.inp" file.
+>Ens_Ana.inp
+The input file for the program "j_presto Ens_Ana" to analyze simulation results.
+It is executed with this input file using the following command:
+	j_presto Ens_Ana [input file name]
+The main options that can be set in this file are as follows:
+	overwrite_flag			: Flag that allows overwriting of analysis results
+	project_name			: Specification of the output name for the analysis results
+	log_level			: Output log level
+	template_PDB			: Template PDB file name
+	input_topology			: Input topology file name
+	input_PDB_list			: List file for input PDB files
+	PDB_consistency_check		: Flag to check consistency of input PDB files
+	input_binary_list		: List file for Input j_presto binary files
+	output_PDB_flag			: Flag to output conformations in PDB format
+	output_binary_flag		: Flag to output conformations in j_presto binary format
+	reference_PDB			: Reference PDB file name
+	input_reference_PDB_list	: List file to input multiple PDB files as reference
+	input_reference_binary_list	: List file to input multiple j_presto binary files as reference
+	atom_spec_output		: Atom specifier for output
+	interval			: Interval for analysis
+	input_prob_file			: Probability file name for reweighing of GE calculations
+	weight_method			: Method for reweighting
+	weight_threshold		: Thresold for trimming conformations with low probability
+	random_seed			: random seed
+	input_energy_file		: Energy file name
+	periodic_boundary		: Boundary information for periodic boundary condition
+	DSSP_flag			: Flag to execute DSSP analysis
+	atom_spec_Rg			: Atom specifier to be used for radius of gyration calculation
+	atom_spec_RMSD			: Atom specifier to be used for RMSD calculate
+	atom_spec_RMSD_fit		: Atom specifier used for superimposing conformations during RMSD calculation
+	atom_spec_RMSD_ref		: Atom specifier in reference conformation for RMSD calculate
+	atom_spec_RMSD_ref_fit		: Atom specifier in reference conformation for superimposing during RMSD calculation
+	RMSD_mode			: RMSD calculation mode
+	interval_for_timeseries_RMSD	: The interval for RMSD calculation to track conformational changes over time in the simulation trajectory
+	RMSF_flag			: Flag for RMSF calculation 
+	PCA_method			: Specification of the coordinate format for PCA analysis
+	atom_spec_PCA			: Atom specifier to be used for PCA analysis
+	neighbor_residue_PCA		: Threshold for excluding nearby residues from the PCA coordinate calculation
+	tolerance_PCA			: Tolerance distance for determining residue-residue contacts in PCA analysis
+	atom_spec_Qvalue		: Atom specifier to be used for Qvalue calculation
+	tolerance_Qvalue		: Tolerance distance for determining residue-residue contacts in Qvalue analysis
+	tolerance_NCP			: Tolerance distance for determining Native Contact Pairs (NCPs) in reference conformations for Qvalue analysis
+	NCP_rate			: Threshold percentage of reference conformations where residue-residue contacts are considered Native Contact Pairs (NCPs)
+	cell_boundary			: Cell range for performing distribution analysis
+	atom_spec_distribution		: Atom specifier for distribution analysis
+	distribution_cell_size		: Grid cell size for distribution analysis
+	atom_spec_contact		: Atom specifier for contact analysis
+	water_radius_for_contact	: Tolerance distance for judging contact formation
+	measurements			: Specifier for distance, angle, dihedral angle analyses
+Each option can be set in the input file as follows:
+	[Option name] = [Option Value]
+For detailed information about each option, refer to the manual by looking up the option name.
+>overwrite_flag
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+In "j_presto Ens_Ana", when outputting analysis result files, the program checks if a file with the same name already exists.
+To skip this check and automatically overwrite the file, set "overwrite_flag = YES".
+The defalut is "NO".
+>project_name
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option specifies the file name for the output analysis results.
+The default is "a".
+If the file name is set to "test", a directory named "Ens_Ana_test" will be created in the same directory as the program execution, and all analysis result files will be stored there.
+>log_level
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option specifies the log level when running Ens_Ana.
+Three levels are available:
+	log_level = long	: Displays detailed logs
+	log_level = short	: Displays simplified logs
+	log_level = no		: Disables logging (default)
+>template_PDB
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option specifies the PDB file of the system to be analyzed.
+Information such as atom and residue names will be taken from the specified PDB file.
+Note that when using the "input_binary_list" option to provide data in j_presto binary format, the number of atoms in the system must match.
+If only partial atomic coordinate information was output as a binary file using the "OUTATM" option during the "j_presto md_run", the PDB file specified here must align with it; otherwise, the Ens_Ana program will terminate abnormally with an error.
+>input_topology
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option specifies the topology file (*.tpl) for topology information, such as atomic charges and van der Waals radii, when such physical properties are required for the analysis.
+The tpl file can be generated using "j_presto prep".
+It is used to provide atomic radii information for analyses such as Qvalue, contact, and distribution analysis.
+>input_PDB_list
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option specifies a list file containing the names of PDB files to be used in the analysis.
+Ens_Ana is designed to perform analyses on multiple structures (ensemble).
+To input numerous structures in PDB format, create a list file where each line contains on PDB file name as follows:
+	1.pdb
+	2.pdb
+	3.pdb
+	...
+and specify this list file using this option.
+>PDB_consistency_check
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option is a flag to check the consistency between the PDB files provided through "input_PDB_list" and the template PDB specified by "template_PDB".
+If inconsistencies exist, Ens_Ana cannnot perform accurate analysis; thus, the default setting is "YES".
+However, as this check requires additonal computation time, it can be set to "NO" to reduce the time if you are confident that the files are already consistent.
+This option also applies to consistency check for reference PDB files provided through "input_reference_PDB" and "input_reference_PDB_list".
+>input_binary_check
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option specifies a list file containing the names of j_presto coordinate binary format files (*.cod) to be used for analysis.
+The format of this file is as follows:
+	1.cod
+	51  99999999
+	2.cod
+	51  99999999
+	...
+Each binary file's information is written in two lines.
+The first line specifies the file name and the second one is the range of structures to be analyzed, defined by the first and last structure numbers included in the binary file.
+In the above example, the initial 50 structures are excluded, starting the analysis from the 51st structure. If the last number exceeds the total number in the binary file, all structures up to the last one are analyzed.
+The binary files are generated by executing "j_presto md_run" with the "NAMECO" option to specify their names.
+Note that if only partial coordinates were output using the "OUTATM" option, the PDB file specified by "template_PDB" option must also include only the corresponding atoms.
+>output_PDB_flag
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+When this flag is set to "YES," the input structures are output as PDB files.
+For example, if "project_name = test" is specified, PDB files will be saved under the directory "Ens_Ana_test/test_PDB/" with names such as "1.pdb".
+This option can be used to tranform j_presto binary format files to PDB files.
+Additionally, if RMSD analysis is performed simultaneously, the structures aligned to the reference structure can be output.
+Note that a large number of PDB files may be generated depending on the number of input structures.
+>output_binary_flag
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option outputs the input structures as a j_presto binary format file (*.cod).
+>reference_PDB
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option specifies reference PDB file name.
+This reference PDB file is used for RMSD and Qvalue analyses.
+>input_reference_PDB_list
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+If you input multiple reference PDB files, this option specifies a list file containing the names of PDB files.
+The list file format is as follows:
+	1.pdb
+	2.pdb
+	3.pdb
+	...
+For example, this option is used when calculating RMSD against multiple reference structures, such as NMR models, or determining Native Contact Pairs (NCPs) for Qvalue analysis based on multiple reference structures.
+>input_reference_binary_list
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+If you input multiple reference PDB files, this option specifies a list file containing the names of j_presto coordinate binary format files (*.cod).
+The list file format is as follows:
+	1.cod
+	51  999999
+	2.cod
+	51  999999
+	...
+Each binary file's information is written in two lines.
+The first line specifies the file name and the second one is the range of structures to be analyzed, defined by the first and last structure numbers included in the binary file.
+In the above example, the initial 50 structures are excluded, starting the analysis from the 51st structure. If the last number exceeds the total number in the binary file, all structures up to the last one are analyzed.
+The binary files are generated by executing "j_presto md_run" with the "NAMECO" option to specify their names.
+Note that if only partial coordinates were output using the "OUTATM" option, the PDB file specified by "template_PDB" option must also include only the corresponding atoms.
+For example, this option is used when calculating RMSD against multiple reference structures, such as NMR models, or determining Native Contact Pairs (NCPs) for Qvalue analysis based on multiple reference structures.
+>atom_spec_output
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option allows you to specify the atoms you want to output using the "output_PDB_flag" or "output_binary_flag", or the atoms to be analyzed by DSSP, in atom specifier format.
+Refer to the "atom specifier" documentation for the specification.
+>interval
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option is used when you want to reduce the number of input structures for analysis, typically for reasons related to computational time.
+The default value is 1 (using all structures).
+For example, setting "interval = 50" will analyze every 50th structure from the input.
+>input_prob_file
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option specifies the probability file (*.prob) that contains the weight information for each structure, typically used in analyses where the occurrence probability of each structure is considered, such as in GE simulations like McMD or ALSD.
+The probability file can be obtained by running "j_presto GEprep".
+>weight_method
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option specifies the method for analyzing the ensemble obtained from GE simulations.
+The available options are:
+	weight	: Performs analysis by considering the occurrence probability of each input structure as a weight.
+		  This method allows for more precise analysis but requires a longer computation time.
+	select	: Generates a random number between 0 and 1, then compares it to the occurrence probability of the input structures.
+		  If the probability is greater than the random number, the structure is accepted; otherwise, it is rejected, and the analysis is conducted accordingly.
+		  This method is useful when a quicker, simpler analysis is needed or when generating a subensemble set considering the weights.
+The random seed required for generating random numbers can be specified using the option "random_seed".
+>weight_threshold
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+If you set the option "weight_method = weight" and the occurrence probability of each structure obtained from GE simulations such as McMD or ALSD is smaller than the value set by this option, it will be excluded from the analysis.
+This helps to exclude structures with extremely low contributions to the analysis, thereby improving calculation speed.
+The default value is 0.00001.
+>random_seed
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+When you select the option "weight_method = select", the random numbers generated using the random seed set here will be used to select structures.
+The default value is 999999.
+>input_energy_file
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+If you want to perform physically meaningful analyses using structures obtained from GE simulations such as McMD or ALSD, it is necessary to consider the occurrence probabilities of each structure.
+These probabilities are assigned based on the file specified by the option "input_prob_file," which requires energy information for each structure.
+When the structures are provided in the j_presto binary format specified by the option "input_binary_list", this energy information is included along with the coordinate data.
+On the other hand, when the structure information is provided via the option "input_PDB_list", these values are not included.
+Therefore, the file specified by this option must include the energy as supplementary information.
+In the specified file, the energy values of each structure listed in "input_PDB_list" must be written in the same order as the input PDB files, with one energy value per line.
+For McMD, each line should contain a single energy value for the entire system.
+For ALSD, each line should include two values: EAA (the energy within region A where structural changes are enhanced) and EAB (the energy between region A and region B, where structural changes occur similarly to conventional MD).
+>periodic_boundary
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+If the input structural information assumes periodic boundary conditions, this option specifies the lower and upper bounds of the boundaries.
+The periodic boundary conditions in j_presto only support rectangular shapes.
+The specification format is:
+	periodic_boundary = [xmin:xmax,ymin:ymax,zmin:zmax]
+Note that no spaces are allowed within the square brackets.
+>DSSP_flag
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+If the program DSSP (mkdssp), which determines secondary structures from protein three-dimensional structural information, is installed and executable in your computational environment, the Ens_Ana program can internally execute mkdssp to analyze secondary structures.
+Since mkdssp is an external program, it must be installed at your own responsibility.
+Please note that the developers of j_presto assume no liability for the use of this program.
+
+When the option "DSSP_flag = yes" is set, Ens_Ana internally outputs each input structure as a PDB file and executes the mkdssp program.
+Be aware that this analysis involves a large amount of data output and may significantly increase computation time.
+During DSSP analysis, log files for the analysis results of each structure (*.dssp) will be generated.
+If analyzing a large number of structures, these files may consume substantial disk space; therefore, they are deleted after the analysis of each structure is completed.
+If you wish to retain these files while performing DSSP analysis, set the option to "DSSP_flag = output".
+The default setting is "DSSP_flag = no".
+
+When DSSP analysis is performed, multiple result files will be output, including:
+	*.SS 	: Each structure's secondary structure is output on one line, with each residue's secondary structure represented by a single character (e.g., "H" for alpha-helix, "S" for bend, " " for no secondary structure and so on).
+	*.sscs 	: The number of secondary structure elements in each structure is output on one line.
+	*.sscr	: The occurrence probabilities of secondary structures for each residue are output.
+	*.sscw	: The proportions of secondary structures for the entire ensemble are output.
+>atom_spec_Rg
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option allows you to specify the atoms for calculating radius of gyration (Rg).
+Refer to the "atom specifier" documentation for the specification.
+>atom_spec_RMSD
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option allows you to specify the atoms for calculating Root Mean Square Deviation (RMSD).
+Refer to the "atom specifier" documentation for the specification.
+
+In RMSD calculations, if the region for structural superposition differs from the region for RMSD calculation, this option specifies the region for RMSD calculation, whilile the region for superposition should be specified using "atom_spec_RMSD_fit".
+If not specified, the two regions are assumed to be the same.
+
+Additionally, if the reference structure for the RMSD calculation differs from the input structure, you can specify the region of the reference structure to be used in the calculation and the region for the superposition separately using "atom_spec_RMSD_ref" and "atom_spec_RMSD_reffit", respectively.
+>atom_spec_RMSD_fit
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option allows you to specify the atoms to superimpose the conformations for Root Mean Square Deviation (RMSD) calculation.
+Refer to the "atom specifier" documentation for the specification.
+
+In RMSD calculations, if the region for structural superposition differs from the region for RMSD calculation, this option specifies the region for RMSD superposition, while the region for calculation should be specified using "atom_spec_RMSD".
+
+Additionally, if the reference structure for the RMSD calculation differs from the input structure, you can specify the region of the reference structure to be used in the calculation and the region for the superposition separately using "atom_spec_RMSD_ref" and "atom_spec_RMSD_reffit", respectively.
+>atom_spec_RMSD_ref
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option allows you to specify the atoms in the reference conformation for calculating Root Mean Square Deviation (RMSD).
+Refer to the "atom specifier" documentation for the specification.
+
+In RMSD calculations, if the region for RMSD calculation in input structures differs from those in reference structures, this option specifies the region for reference structures, while the region for input structures should be specified using "atom_spec_RMSD".
+
+Additionally, if you want to set different regions for RMSD calculation and superimposition in the reference structures, this option specifies the region for RMSD calculation, while the region for superimposition using "atom_spec_RMSD_reffit".
+>atom_spec_RMSD_reffit
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option allows you to specify the atoms in the reference conformation to superimpose for Root Mean Square Deviation (RMSD) calculation.
+Refer to the "atom specifier" documentation for the specification.
+
+In RMSD calculations, if the region for RMSD calculation in reference structures differs from the region for superimposing in reference structures, this option specifies the region for superimposing, while the region for RMSD calculation should be specified using "atom_spec_RMSD_ref".
+>RMSD_mode
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+When multiple reference structures are provided for RMSD calculation, the RMSD calculation mode can be specified as follows:
+	RMSD_mode = average 	: The average structure of all reference structures is calculated, and the RMSD values of the input structures are then calculated relative to this average structure.
+	RMSD_mode = multi	: The RMSD is calculated for each of the input reference structures individually.
+>interval_for_timeseries_RMSD
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option can be used when you want to evaluate structural changes over time by inputting simulation trajectories.
+For example, if you set "interval_for_timeseries_RMSD = 5", it will calculate the RMSD of the current input structure relative to the structure 5 earlier.
+>RMSF_flag
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+To calculate the Root Mean Square Fluctuation (RMSF) of the input ensemble relative to the reference structure, set this option to "RMSF_flag = yes".
+>PCA_method
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option specifies the format of the coordinate data to be used for principal component analysis (PCA).
+Please specify the atoms to be used for PCA analysis with the "atom_spec_PCA" option.
+The available formats are as follows:
+	1 : Residue based method
+		This option specifies the structural representation using internal coordinates, where the distance between specified residues is used.
+		If the total number of residues in the system is N, the number of dimensions of the structural representation will be (N*(N-1))/2.
+		For GE simulations like McMD or ALSD, which consider significant structural changes, using internal coordinates for PCA is often more effective for structural classification than using Cartesian coordinates.
+		Residue pairs that are always in close proximity via covalent bonds typically contribute less to the PCA, so the "neighbor_residue_PCA" option can be used to exclude residue pairs adjacent in the amino acid sequence from the structural representation, reducing the number of dimensions in the analysis.
+		Depending on how the inter-residue distances are defined, the following options can be selected:
+
+		1-1 : PCA_method = average
+			The distance between two residues is defined as the average of the distances between all pairs of atoms, one from each residue.
+		1-2 : PCA_method = min
+			The distance between two residues is defined as the minimum distance between all pairs of atoms, one from each residue.
+		1-3 : PCA_method = max
+			The distance between two residues is defined as the maximum distance between all pairs of atoms, one from each residue.
+		1-4 : PCA_method = contact
+			This option represents the structure using internal coordinates, where a value of 1 is assigned when two residues are in contact and 0 when they are not.
+			The contact threshold distance can be specified using the "tolerance_PCA" option.
+	2 : Atom based method
+		This option provides the structure representation at the atomic level.
+		The following options can be specified:
+
+		2-1 : PCA_method = cord
+			The structure is represented by the Cartesian coordinates of the selected atoms.
+			If N atoms are selected, the representation will be in 3N dimensions.
+			This representation is commonly used for PCA in analyses of conformational fluctuation in constant temperature simulations around the initial structure.
+		2-2 : PCA_method = intercord
+			The structure is represented using the pairwise distances of the specified atoms as internal coordinates.
+			If N atoms are selected, the number of internal coordinates will be N*(N-1)/2.
+			Note that this method can result in a significantly larger number of dimensions compared to other approaches.
+>atom_spec_PCA
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option allows you to specify the atoms for principle component analysis (PCA).
+Refer to the "atom specifier" documentation for the specification.
+>neighbor_residue_PCA
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+In some methods specified by the "PCA_method" option, the structure is represented using internal coordinates based on residue pair distances.
+Since the distance between nearby residues in the amino acid sequence often does not change significantly during structural variations, these pairs typically do not contribute to the PCA analysis.
+By excluding such nearby residue pairs, the dimensionality of the structural representation can be reduced, effectively cutting down the computational cost.
+For example, setting "neighbor_residue_PCA = 2" will exclude distances between each residue and its two adjacent residues in the sequence.
+The default value is 1.
+>tolerance_PCA
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+When the option "PCA_method = contact" is selected, this option specifies the distance threshold for determining residue-residue contacts.
+
+If a topology file is provided by the "input_topology" option, contact between two atoms is determined if the sum of their vdW radii plus the specified distance is less than or equal to the distance between them.
+The default value for this is 2.8 Å (the diameter of a water molecule) when a topology file is used.
+
+If no topology file is provided, the vdW radii are not considered, and contact is determined simply based on whether the distance between two atoms is less than or equal to the specified distance, with a default of 6.0 Å.
+>atom_spec_Qvalue
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option allows you to specify the atoms for Qvalue (native contact pair reproduction rate) analysis.
+Refer to the "atom specifier" documentation for the specification.
+>neighbor_residue_Qvalue
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+In Qvalue analysis (native contact pair reproduction rate analysis), residue pairs that are in contact in the native structure (Native Contact Pairs, NCPs) are identified, and the proportion of these NCPs reproduced in the simulation structure is calculated to assess how closely the structure resembles the native one.
+Residue pairs that are in close proximity on the amino acid sequence and are likely to be in contact even when the structure changes can artificially inflate the Qvalue, hindering accurate representation of native structure reproduction.
+This option is used to exclude such adjacent residue pairs from Qvalue analysis.
+For example, setting "neighbor_residue_Qvalue = 2" will exclude pairs of residues within two positions of each other on the amino acid sequence from being considered as NCPs.
+>tolerance_Qvalue
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option specifies the distance threshold for judging reproduction of native contact pairs (NPCs) in the input structure.
+
+When a topology file is provided by the "input_topology" option, if the minimum atomic distance between two residues forming an NCP is within the sum of their vdW radii plus the specified distance, the NCP is considered to be reproduced. 
+The default value for this is 2.8 Å (the diameter of a water molecule) when a topology file is used.
+
+When no topology file is provided, the vdW radii are not considered, and NCP reproduction is judged simply based on whether the minimum distance is within the specified distance, with a default of 6.0 Å.
+>tolerance_NCP
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option specifies the distance threshold for determining native contact pairs (NPCs) in the reference structures.
+
+When a topology file is provided by the "input_topology" option, if the minimum atomic distance between two residues is within the sum of their vdW radii plus the specified distance, the residue pair is determined as an NCP.
+The default value for this is 2.8 Å (the diameter of a water molecule) when a topology file is used.
+
+When no topology file is provided, the vdW radii are not considered, and NCP is determined simply based on whether the minimum distance is within the specified distance, with a default of 6.0 Å.
+>NCP_rate
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option allows you to set a threshold ratio for determining NCPs (Native Contact Pairs) when multiple reference structures are used for Qvalue analysis.
+Specifically, NCPs are identified in each reference structure, and an NCP is considered for inclusion if it is found in a specified percentage or more of the reference structures.
+This ensures that only NCPs that are common across multiple reference structures are used, allowing for a more reliable analysis.
+The default is 0.7.
+>cell_bounary
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+In distribution analysis, the spatial region occupied by the group of atoms specified using the "atom_spec_distribution" option is analyzed.
+The boundaries of the grid used for this analysis are specified by this option.
+The cell boundary only support rectangular shapes.
+The specification format is:
+	cell_boundary = [xmin:xmax,ymin:ymax,zmin:zmax]
+Note that no spaces are allowed within the square brackets.
+>atom_spec_distribution
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+In distribution analysis, the spatial region occupied by the group of atoms specified using this option is analyzed.
+Refer to the "atom specifier" documentation for the specification.
+>distribution_cell_size
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+In distribution analysis, the spatial region occupied by the group of atoms specified using the "atom_spec_distribution" option is analyzed.
+The spatial range specified by the "cell_boundary" option is divided into a grid of cells, with each cell having the size specified by the "distribution_cell_size" option.
+The analysis checks whether atoms are present in each cell.
+While setting a smaller cell size allows for higher resolution analysis, it should be noted that this will increase the required computation time.
+>atom_spec_contact
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option is specified as follows:
+	atom_spec_contact = [atom specifier for probe group]_[atom specifier for target group]
+Please connect the two atom specifiers with an underscore (_).
+Refer to the "atom specifier" documentation for the specification.
+It analyzes the probability of each atom in target group contacting any atom in probe atom.
+>tolerance_contact
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+Contact analysis calculates the probability that the target atom group comes into contact with the probe atom group specified by "atom_spec_contact" option.
+This option sets the threshold for contact detection.
+If the "input_topology" option provides the van der Waals radii information of the atoms, these values are used.
+If not, default radius values for each atom type are used.
+If two atoms come within the sum of their radii plus the threshold specified by this option, they are considered to be in contact.
+The default is 2.8 Å (diameter of water molecule).
+>measurements
+An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
+This option is used to measure the distance, angle, and dihedral angles of the specified atoms.
+Multiple metrics can be measured, and they are specified in the following format:
+	measurements = [metric 1];[metric 2];[metric 3];...
+Each metric should be listed separated by semicolons, and it is important to note that no spaces should be included between them.
+Each metric is specified by connecting atom specifiers with an underscore(_)
+
+If two atom specifiers (A and B) are provided in the metric, the distance between atoms A and B is measured.
+	[atom_spec A]_[atom_spec B]
+If three atom specifiers (A, B, and C) are provided, the angle between atoms A, B, and C is measured.
+	[atom_spec A]_[atom_spec B]_[atom_spec C]
+If four atom specifiers (A, B, C, and D) are provided, the dihedral angle formed by atoms A, B, C, and D is measured.
+	[atom_spec A]_[atom_spec B]_[atom_spec C]_[atom_spec D]
+Refer to the "atom specifier" documentation for the specification.
 >manual
 The command "j_presto manual" is the command you are currently using.
 It provides an interactive explanation of commands and options available in j_presto.
+>atom specifier
+In the j_presto program, atom groups can sometimes be specified using "atom specifier".
+The atom specifier is provided as a sequence of characters without spaces, represented by combinations of "atom specification blocks" and "block concatenation operators".
+There are two types of atom specifier blocks: (1) specification by name or ID, and (2) specification by coordinate range.
+
+(1) specification by name or ID
+As shown below, atoms can be selected based on their atomic IDs.
+	14		: An atom with atomic ID 14
+	1<20		: Atoms with atomic IDs from 1 to 20
+	10<30,40<50	: Atoms with atomic IDs from 10 to 30 and from 40 to 50
+
+Additionally, atoms can be specified by their names as shown below.
+	CA		: All "CA" atoms
+	N,CA,C,O	: Main chain atoms of proteins
+	C*		: All carbon atoms (atoms starting with the letter "C")
+	!H*,h*		: All atoms except hydrogen (atoms that do not start with "H" or "h")
+In atom specifiers, as shown in the third example, atom names can be specified using the wildcard "*".
+However, note that the wildcard can only be used at the end of the name.
+For example, specifying "*H" is not allowed.
+Additionally, by placing "!" at the beginning of each atom specifier block, as shown in the fourth example, negation of conditions can be performed.
+
+By specifying as shown below, you can also select residues.
+	1<20:CA		: CA atoms of residues 1 to 20
+	LYS,ARG:*	: All atoms of "LYS" and "ARG" residues
+	WAT:O		: All oxygen atoms of water molecules
+	!ALA:*		: All atoms except those of "ALA" residue
+
+Furthermore, selection by chains can be made as shown below.
+	1:*:*		: All atoms of the first chain
+	A,B:ARG:CA	: CA atoms of the "ARG" residue in chains "A" and "B"
+
+(2) specification by coordinate range
+Atoms can be specified based on a range of coordinates as shown below.
+	[-5.0<5.0:2<:<-3]	: All atoms with x coordinates between -5.0 and 5.0, y greater than or equal to 2, and z less than or equal to -3
+	[-2<-1,1<2::]		: All atoms with x coordinates between -2 and -1 or between 1 and 2
+
+Each block can be concatenated using "block concatenation operators (&, |)"
+"A&B" means A and B, while "A|B" is A or B.
+	!H*,h*&[:5<:]		: All atoms that are not hydrogen and have a y-coordinate greater than or equal to 5
+	1<5:CA|11<20:N		: Either "CA" atoms of residues 1 to 5 or "N" atoms of residues 11 to 20
+Atom specifiers are resolved from left to right.
+If you want to prioritize a certain part, you can enclose it in parentheses, which allows you to specify the order of resolution, similar to how arithmetic operations are handled.
+	ARG:*|1<15:*&!H*,h*	: Non hydrogen atoms that belong to residue "ARG" or residues 1 to 15
+	ARG:*|(1<15:*&!H*,h*)	: All atoms of residue "ARG" and non-hydrogen atoms of residue 1 to 15
+
 >tutorial
 If you want to check the details of the tutorial, type the item number like "tutorial 1".
 
@@ -2134,7 +2564,7 @@ Additionally, you can also get a template for the minimization calculation execu
 , which might serve as a helpful reference.
 
 If necessary, you will need to prepare several additional input files.
-For example, a configuration file for introducing CAP boundaries (CAPbound.inp), a reference structure PDB file for applying position restraints, a position restraint input file (psr.inp), a distance restraint input file (dsr.inp), a dihedral restraint input file (dhr.inp), and an input file required to perform the cell multipole expansion method (CMM) or ALSD simulations (cluster.inp).
+For example, a configuration file for introducing CAP boundaries (CAPbound.inp), a reference structure PDB file for applying position restraints, a position restraint input file (psr.inp), a distance restraint input file (dsr.inp), and a dihedral restraint input file (dhr.inp).
 You can obtain templates for each of these files using
 	j_presto get_tmpl [desired file name]
 For the settings that can be configured in each file, please refer to "j_presto manual" and ask about the specific items.
@@ -2157,7 +2587,7 @@ For options that can be used in md.inp, refer to "j_presto manual" and ask about
 You can also obtain a template for the execution script with "j_presto get_tmpl md_run", which you can utilize as needed.
 
 If necessary, you will need to prepare several additional input files.
-For example, a configuration file for introducing CAP boundaries (CAPbound.inp), a reference structure PDB file for applying position restraints, a position restraint input file (psr.inp), a distance restraint input file (dsr.inp), a dihedral restraint input file (dhr.inp), and an input file required to perform the cell multipole expansion method (CMM) or ALSD simulations (cluster.inp).
+For example, a configuration file for introducing CAP boundaries (CAPbound.inp), a reference structure PDB file for applying position restraints, a position restraint input file (psr.inp), a distance restraint input file (dsr.inp), and a dihedral restraint input file (dhr.inp).
 You can obtain templates for each of these files using
         j_presto get_tmpl [desired file name]
 For the settings that can be configured in each file, please refer to "j_presto manual" and ask about the specific items.
@@ -2179,9 +2609,8 @@ Once you have completed this task, please proceed to "tutorial 8".
 >tutorial 8
 Analyze the simulation results
 
-Notice: In future versions of j_presto, I plan to release the analysis program "j_presto Ens_Ana" (Ensemble Analysis).
-However, it is not yet available in the current version as the development is still ongoing.
-Please stay tuned for updates.
+Simulation results can be analyzed using the "j_presto Ens_Ana" program.
+For instructions on how to use it, refer to "Ens_Ana".
 >FAQ
 1  : Regarding the download and installation of j_presto.
 	1-1  : 	How to introduce the required AMBER parameter files for running j_presto?

@@ -279,6 +279,16 @@
                            " used in the dlnN fitting"
         endif 
       endif 
+
+      ! adjust energy for ALSD simulation
+      if ( reweight_flg ) then
+        if ( ELEMNT(34)(1:1).eq."Y" .or. ELEMNT(34)(1:1).eq."y" ) then
+          adjene = .true.
+          write(6,'(2x,a)')"* Energy ranges for ALSD reweighting is "//&
+            "automatically set."
+        endif
+      endif
+
 !***************************
 
       return

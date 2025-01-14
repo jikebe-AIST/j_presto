@@ -14,7 +14,8 @@ EXE> INPUT
 
 ; if you need... 
 ;      DISTAN= dsr.inp           ; Input file to specify distance restraints if you need
-;       CELLPA= cluster.inp      ; Input file for CMM and/or ALSD simulation
+;      GEPSME= LMD               ; When you perform ALSD
+;      CLUSTA= *                 ; Input region A enhanced the conf. sampling in ALSD
 
 QUIT
 

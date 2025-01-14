@@ -9,7 +9,6 @@ SETSHK= ../../test.shk
 REFCOO= ../../test_min.pdb
 POSITI= ../../psr.inp
 ;SETBOU= ../../CAPbound.inp
-;CELLPA= ../../cluster.inp
 METHOD= CANO
 LOOPLI= 500000
 RESTAR= NO

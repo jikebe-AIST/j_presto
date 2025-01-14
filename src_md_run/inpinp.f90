@@ -1,8 +1,7 @@
 
       subroutine inpinp(iread,iprint,ier,onend,iitplf,iicrdf,iifsor,   &
                         citpln,cicrdn,cishkn,civarn,ciboun,cirefn,     &
-                        cipscn,cidscn,cidhcn,cimntn,cicmpn,cieCMn,     &
-                        cirep)
+                        cipscn,cidscn,cidhcn,cimntn,cieCMn,cirep)
 
 !*******************************************************************
 !
@@ -10,7 +9,7 @@
 !
 !*******************************************************************
 
-      use COMERG,only: iyeflg,iyfshk
+      use COMCMM ; use COMERG,only: iyeflg,iyfshk
 
       implicit none
 
@@ -30,35 +29,39 @@
       ! boundary, ref.cord., position, distance, dihedral constraints,
       ! monitoring items, cell data, cell parameters, & external CMM
         character(80),intent(out):: citpln,cicrdn,cishkn,civarn,ciboun,&
-          cirefn,cipscn,cidscn,cidhcn,cimntn,cicmpn,cieCMn,cirep
+          cirefn,cipscn,cidscn,cidhcn,cimntn,cieCMn,cirep
 
       ! Number of elements in this routine
-        integer(4),parameter:: numele = 16
+        integer(4),parameter:: numele = 24
       ! Max number of elements in one line
         integer(4),parameter:: mxelel = 10
       ! Max contents in one element
-        integer(4),parameter:: maxcon = 2
+        integer(4),parameter:: maxcon = 5
 
       character(6):: elemnt(numele) = (/                               &
         'TOPOLO','TPLFMT','COORDI','CRDFMT','SETSHK','SETVAR','SETBOU',&
-        'REFCOO','POSITI','DISTAN','DIHEDR','SETORI','OUTMON','CELLPA',&
-        'EXTCMM','REPULS'/)
+        'REFCOO','POSITI','DISTAN','DIHEDR','SETORI','OUTMON','EXTCMM',&
+        'REPULS','CELLVL','CELSIZ','CELRES','CLUSTA','CLUSTB','GEPSME',&
+        'SCALET','LWEIGH','LTCNTL'/)
 
       character(1):: dataty(numele) = (/                               &
         'D','C','D','C','D','D','D',  'D','D','D','D','C','D','D',     &
-        'D','D'/)
+        'D','I','R','D','D','D','C',  'D','R','C'/)
 
       character(4):: datcon(maxcon,numele)
       data datcon(1:2,2) /'FORM','BINA'/
       data datcon(1:2,4) /'PDB ','BINA'/
       data datcon(1:2,12) /'NO  ','YES '/
+      data datcon(1:5,21) /'AND ','OR  ','XOR ','LMD ','LMD2'/
+      data datcon(1:2,24) /'NO  ','YES '/
 
       integer(4):: numspe(numele) = (/                                 &
-        0,2,0,2,0,0,0,  0,0,0,0,2,0,0,  0,0/)
+        0,2,0,2,0,0,0,  0,0,0,0,2,0,0,  0,0,0,0,0,0,5, 0,0,2/)
 
       character(80):: line,space
       integer(4):: posele(mxelel),iwork(mxelel)
       integer(4):: intele(numele)
+      real(8):: reaele(numele)
       character(80):: chaele(numele)
       logical(4):: onlist
 
@@ -70,7 +73,7 @@
       character(80):: cval(maxval)
 
       integer(4):: efcol,numerr,icol,nelel,numval,numint,numcha,icon,i
-      integer(4):: ierr
+      integer(4):: numrea,ierr
 
 !****************************************************************
 
@@ -79,15 +82,10 @@
       ier = 0 ; numerr = 0 ; onend = .false. ; onlist = .false.
       chaele(1) = " " ; intele(2) = 1
       chaele(3) = " " ; intele(4) = 1
-      chaele(5:11) = " " ; intele(12) = 1 ; chaele(13:16) = " "
-
-!      intele(1:9) = 1
-!      forall( i=10:18 ) intele(i) = i
-!      chaele(19:27) = " "
-!      intele(28:30) = 1
-!      intele(31) = 19
-!      intele(32) = 21
-!      chaele(33:34) = " " ; intele(35) = 0 ; chaele(36) = " "
+      chaele(5:11) = " " ; intele(12) = 1 ; chaele(13:15) = " "
+      intele(16) = 3 ; reaele(17) = 6.d0 ; chaele(18:20) = " "
+      intele(21) = 1 ; chaele(22) = "0030" ; reaele(23) = 0.d0
+      intele(24) = 1
 
       ! 1) READ CONTROL DATA FOR INPUT
 100   do
@@ -144,11 +142,14 @@
         endif
 
         ! 1-3) STORE DATA OF EACH ELEMENT
-        numint = 0 ; numcha = 0
+        numint = 0 ; numrea = 0 ; numcha = 0
         do i = 1,nelel
           if ( dataty(posele(i)) .eq. "I" ) then
             numint = numint + 1 ; numcha = numcha + 1
             intele(posele(i)) = ival(numint)
+          elseif ( dataty(posele(i)) .eq. "R" ) then
+            numrea = numrea + 1 ; numcha = numcha + 1
+            reaele(posele(i)) = rval(numrea)
           elseif ( dataty(posele(i)) .eq. "C" ) then
             numcha = numcha + 2
             do icon = 1,numspe(posele(i))
@@ -169,84 +170,87 @@
        iicrdf = intele(4) ; cishkn = chaele(5) ; civarn = chaele(6)
        ciboun = chaele(7) ; cirefn = chaele(8) ; cipscn = chaele(9)
        cidscn = chaele(10) ; cidhcn = chaele(11) ; iifsor = intele(12)
-       cimntn = chaele(13) ; cicmpn = chaele(14) ; cieCMn = chaele(15)
-       cirep = chaele(16)
+       cimntn = chaele(13) ; cieCMn = chaele(14) ; cirep = chaele(15)
+       nlev = intele(16) ; cminsiz = reaele(17) ; celres = chaele(18)
+       clusta = chaele(19) ; clustb = chaele(20)
+       cluster_method = datcon(intele(21),21)
+       scaleterm = chaele(22) ; lambda_m = reaele(23)
+       if ( intele(24) .eq. 1 ) then
+         l_temp_control = .false.
+       else
+         l_temp_control = .true.
+       endif
 
       ! 3) OUTPUT CONTROL DATA OF INPUT
       if ( citpln .ne. " " ) then
         write(iprint,*)' '
-        write(iprint,*)'      1) TOPOLOGY FILE '
+        write(iprint,*)'         TOPOLOGY FILE '
         write(iprint,*)'           FORMAT        : ',datcon(iitplf,2)
         write(iprint,*)'           NAME          : ',trim(citpln)
       endif
       if ( cicrdn .ne. " " ) then
         write(iprint,*)' '
-        write(iprint,*)'      2) INITIAL COORDINATE FILE '
+        write(iprint,*)'         INITIAL COORDINATE FILE '
         write(iprint,*)'           FORMAT        : ',datcon(iicrdf,4)
         write(iprint,*)'           NAME          : ',trim(cicrdn)
       endif
       if ( cishkn .ne. " " ) then
         write(iprint,*)' '
-        write(iprint,*)'      3) CONTROL DATA FOR SETTING SHAKE '
+        write(iprint,*)'         CONTROL DATA FOR SETTING SHAKE '
         write(iprint,*)'           NAME          : ',trim(cishkn)
         iyfshk = 1
       endif
       if ( civarn .ne. " " ) then
         write(iprint,*)' '
-        write(iprint,*)'      4) CONTROL DATA FOR SETTING VARIABLES '
+        write(iprint,*)'         CONTROL DATA FOR SETTING VARIABLES '
         write(iprint,*)'           NAME          : ',trim(civarn)
       endif
       if ( ciboun .ne. " " ) then
         write(iprint,*)' '
-        write(iprint,*)'      5) CONTROL DATA FOR SETTING BOUNDARY '
+        write(iprint,*)'         CONTROL DATA FOR SETTING BOUNDARY '
         write(iprint,*)'           NAME          : ',trim(ciboun)
         iyeflg(14) = 1
       endif
       if ( cirefn .ne. " " ) then
         write(iprint,*)' '
-        write(iprint,*)'      6) REFERENCE COORDINATE FILE '
+        write(iprint,*)'         REFERENCE COORDINATE FILE '
         write(iprint,*)'           NAME          : ',trim(cirefn)
       endif
       if ( cipscn .ne. " " ) then
         write(iprint,*)' '
-        write(iprint,*)'      7) CONTROL DATA FOR POSITION CONS. '
+        write(iprint,*)'         CONTROL DATA FOR POSITION CONS. '
         write(iprint,*)'           NAME          : ',trim(cipscn)
         iyeflg(11) = 1
       endif
       if ( cidscn .ne. " " ) then
         write(iprint,*)' '
-        write(iprint,*)'      8) CONTROL DATA FOR DISTANCE CONS. '
+        write(iprint,*)'         CONTROL DATA FOR DISTANCE CONS. '
         write(iprint,*)'           NAME          : ',trim(cidscn)
         iyeflg(12) = 1
       endif
       if ( cidhcn .ne. " " ) then
         write(iprint,*)' '
-        write(iprint,*)'      9) CONTROL DATA FOR DIHEDRAL CONS. '
+        write(iprint,*)'         CONTROL DATA FOR DIHEDRAL CONS. '
         write(iprint,*)'           NAME          : ',trim(cidhcn)
         iyeflg(13) = 1
       endif
       if ( iifsor .eq. 2 ) then
         write(iprint,*)' '
-        write(iprint,*)'     10) SET ORIGIN      : ',datcon(iifsor,12)
+        write(iprint,*)'         SET ORIGIN      : ',datcon(iifsor,12)
       endif
       if ( cimntn .ne. " " ) then
         write(iprint,*)' '
-        write(iprint,*)'     11) MONITORING TRAJECTORY SELECTION '
+        write(iprint,*)'         MONITORING TRAJECTORY SELECTION '
         write(iprint,*)'           NAME          : ',trim(cimntn)
-      endif
-      if ( cicmpn .ne. " " ) then
-        write(iprint,*)' '
-        write(iprint,*)'     12) CELL and CLUSTERING PARAMETERS '
-        write(iprint,*)'           NAME          : ',trim(cicmpn)
       endif
       if ( cieCMn .ne. " " ) then
         write(iprint,*)' '
-        write(iprint,*)"     13) EXTERNAL CMM CALCULATION"
+        write(iprint,*)"         EXTERNAL CMM CALCULATION"
         write(iprint,*)'           NAME          : ',trim(cieCMn)
       endif
       if ( cirep .ne. " " ) then
         write(iprint,*)' '
-        write(iprint,*)"     14) REPULSION CALCULATION"
+        write(iprint,*)"         REPULSION CALCULATION"
         write(iprint,*)'           NAME          : ',trim(cirep)
         iyeflg(15) = 1
       endif

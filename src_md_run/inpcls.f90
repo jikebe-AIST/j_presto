@@ -1,5 +1,5 @@
 
-      subroutine inpcls(iprint,iicmpu,cicmpn,ier)
+      subroutine inpcls(iprint,ier)
 
 !*************************************************************
 !
@@ -11,240 +11,154 @@
       use COMBAS
       use COMERG
       use COMCMM ; use PHYCNS,only: eekcal
+      use COMCMMC,only: cord
       !$ use omp_lib
 
       implicit none
 
-      ! Logical unit number for output log and read
-        integer(4),intent(in):: iprint,iicmpu
-      ! Input file name
-        character(*),intent(in):: cicmpn
+      ! Logical unit number for output log
+        integer(4),intent(in):: iprint
       ! Condition code
         integer(4),intent(out):: ier
 
-      integer(4):: efcol,icol,ncou,ilst(ixnatm)
+      integer(4):: efcol,icol,ncou
       real(8):: fac,tmp
       character(80):: line,space,line2,efcol2
 
       integer(4):: i,j,k,n,ia,ib,isum,pint,n14,curn
       ! heap memory
-      integer(4),allocatable:: Tntab14(:,:),Titab14(:,:)
+      integer(4),allocatable:: Tntab14(:,:),Titab14(:,:),tlist(:),     &
+                               ilist(:),tnCHN(:)
       integer(4):: Tnntab14
       integer(4),allocatable:: Ticmmres(:,:),Ticmmatm(:,:)
+      character(1),allocatable:: tCHN(:)
       logical(4):: fstflg,ex
       logical(4),allocatable:: resflg(:)
       allocate(Tntab14(2,ixnatm),Titab14(max14n,ixnatm))
+      allocate(tlist(ixnatm),ilist(ixnatm),tnCHN(ixnatm),tCHN(ixnatm))
 
 !******************************************
 
 !     0) Initital setting
-      allocate(icls(ixnatm))
+      nfrg = 1 ; ier = 0 ; space = " " ; ncmmatm = 1 ; ncmmres = 0
+      allocate(icls(ixnatm),icmmatm(2,1))
+      icmmatm(1:2,1) = (/1,ixnatm/)
       !$OMP parallel default (none)                                  & !
       !$OMP private(i)                                               & !
-      !$OMP shared(icls,ixnatm,Titab14)
+      !$OMP shared(icls,ixnatm,Titab14,ilist,tnCHN,tCHN)
       !$OMP do schedule (static)
       do i = 1,ixnatm
-        icls(i) = 1
-        Titab14(:,i) = 0
+        icls(i) = 1 ; Titab14(:,i) = 0 ; ilist(i) = i ; tnCHN(i) = 1
+        tCHN(i) = " "
       enddo
       !$OMP end do
       !$OMP end parallel
-      ier = 0 ; space = " "
-      nlev = 3 ; cminsiz = 6.d0
-      ncmmatm = 1 ; ncmmres = 0
-      allocate(icmmatm(2,1)) ; icmmatm(1:2,1) = (/1,ixnatm/)
-      nfrg = 1
-      cluster_method = "AND"
 
-      inquire(file=trim(cicmpn),exist=ex)
-      if ( ex ) then
-        ! 1) Open file
-        call flopen(iicmpu,cicmpn,10,'NULL',80,ier)
-        if ( ier .ne. 0 ) then
-          write(iprint,*)"ERROR> FILE OPEN ERROR IN INPCLS"
-          write(iprint,'(a80)')cicmpn
-          return
-        endif
+      ! CELL LEVEL
+      if ( nlev.lt.3 .or. nlev.gt.5 ) then
+        write(iprint,*)"ERROR> INPCLS"
+        write(iprint,*)"You can only set CMM level = 3 ~ 5"
+        stop
+      endif
 
-        ! 2) Read control data
-        do
-          read(iicmpu,'(a80)',end=800)line
-          icol = efcol(line,space,";")
-          if ( icol .le. 0 ) cycle
-          if ( index(line(1:icol),"INPCLS>") .ne. 0 ) then
+      ! CELL SIZE
+      if ( cminsiz .le. 0.d0 ) cminsiz = 6.d0
 
-            ! CMM LEVEL
-            if ( index(line(1:icol),"CMMLVL").ne.0 .or.                &
-                 index(line(1:icol),"CELLVL").ne.0 ) then
-              line = efcol2(iicmpu,";",ier)
-              if ( ier .ne. 0 ) then
-                write(iprint,*)"ERROR> INPCLS"
-                write(iprint,*)"CMMLVL or CELLVL is inappropriate"
-                return
+      ! RESIDUE CALCULATION LIST FOR CMM
+      if ( len(trim(celres)) .ne. 0 ) then
+        call atom_specifier(len(trim(celres)),trim(celres),ilist,      &
+          cxatmn,absres,cxresn,tnCHN,tCHN,cord,ncou,tlist)
+        !! Make cmm residue list
+        if ( ncou .ne. 0 ) then
+          n = absres(ixnatm)
+          allocate(resflg(n)) ; resflg(1:n) = .false.
+          do i = 1,ncou
+            resflg(absres(tlist(i))) = .true.
+          enddo
+
+          allocate(Ticmmres(2,n),Ticmmatm(2,n))
+          ncmmatm = 0 ; ncmmres = 0 ; ia = 1 ; ib = 1
+          do i = 1,n-1
+            if ( resflg(i) .neqv. resflg(i+1) ) then
+              if ( resflg(i) ) then
+                ncmmres = ncmmres + 1
+                Ticmmres(1:2,ncmmres) = (/ia,ib/)
+              else
+                ncmmatm = ncmmatm + 1
+                Ticmmatm(1:2,ncmmatm) = (/ixrstr(ia),ixrend(ib)/)
               endif
-              read(line,*)nlev
-              if ( nlev.lt.3 .or. nlev.gt.5 ) then
-                write(iprint,*)"ERROR> INPCLS"
-                write(iprint,*)"You can only set CMM level = 3 ~ 5"
-                stop
-              endif
-
-            ! CELL SIZE
-            elseif ( index(line(1:icol),"CMMCSZ").ne.0 .or.            &
-                     index(line(1:icol),"CELSIZ").ne.0 ) then
-              line = efcol2(iicmpu,";",ier)
-              if ( ier .ne. 0 ) then
-                write(iprint,*)"ERROR> INPCLS"
-                write(iprint,*)"CMMCSZ or CELSIZ is inappropriate"
-                return
-              endif
-              read(line,*)cminsiz
-              if ( cminsiz .le. 0.d0 ) cminsiz = 6.d0
-
-            ! RESIDUE CALCULATION LIST FOR CMM
-            elseif ( index(line(1:icol),"RESLIST") .ne. 0 ) then
-              write(iprint,*)
-              write(iprint,*)"INFORMATION> INPCLS"
-              write(iprint,*)"        SELECT FOLLOWING ATOMS FOR "//   &
-                             "RESIDUE CELL CEPARATION FOR CMM"
-              call rdlstatm(iprint,iicmpu,"INPCLS",.true.,ncou,ilst,ier)
-              if ( ier .ne. 0 ) then
-                write(iprint,*)"ERROR> INPCLS"
-                write(iprint,*)"RESLIST is inappropriate"
-                return
-              endif
-
-              ! Make cmm residue list
-              if ( ncou .ne. 0 ) then
-                n = absres(ixnatm)
-                allocate(resflg(n)) ; resflg(1:n) = .false.
-                do i = 1,ncou
-                  resflg(absres(ilst(i))) = .true.
-                enddo
-
-                allocate(Ticmmres(2,n),Ticmmatm(2,n))
-                ncmmatm = 0 ; ncmmres = 0
-                ia = 1 ; ib = 1
-                do i = 1,n-1
-                  if ( resflg(i) .neqv. resflg(i+1) ) then
-                    if ( resflg(i) ) then
-                      ncmmres = ncmmres + 1
-                      Ticmmres(1:2,ncmmres) = (/ia,ib/)
-                    else
-                      ncmmatm = ncmmatm + 1
-                      Ticmmatm(1:2,ncmmatm) = (/ixrstr(ia),ixrend(ib)/)
-                    endif
-                    ia = i+1
-                  endif
-                  ib = i+1
-                enddo
-                ! final loop provision
-                if ( resflg(n) ) then
-                  ncmmres = ncmmres + 1
-                  Ticmmres(1:2,ncmmres) = (/ia,ib/)
-                else
-                  ncmmatm = ncmmatm + 1
-                  Ticmmatm(1:2,ncmmatm) = (/ixrstr(ia),ixrend(ib)/)
-                endif
-
-                deallocate(icmmatm)
-                allocate(icmmatm(2,ncmmatm),icmmres(2,ncmmres))
-                icmmatm(1:2,1:ncmmatm) = Ticmmatm(1:2,1:ncmmatm)
-                icmmres(1:2,1:ncmmres) = Ticmmres(1:2,1:ncmmres)
-                deallocate(Ticmmatm,Ticmmres)
-              endif
-
-            ! CLUSTER LIST 2
-            elseif ( index(line(1:icol),"CLSTLIST2") .ne. 0 ) then
-              write(iprint,*)
-              write(iprint,*)"INFORMATION> INPCLS"
-              write(iprint,*)"        SELECT FOLLOWING ATOMS FOR "//   &
-                             "CLUSTER2"
-              call rdlstatm(iprint,iicmpu,"INPCLS",.true.,ncou,ilst,ier)
-              if ( ier .ne. 0 ) then
-                write(iprint,*)"ERROR> INPCLS"
-                write(iprint,*)"CLSTLIST2 is inappropriate"
-                return
-              endif
-              do i = 1,ncou
-                icls(ilst(i)) = 5
-              enddo
-
-            ! CLUSTER LIST
-            elseif ( index(line(1:icol),"CLSTLIST") .ne. 0 ) then
-              write(iprint,*)
-              write(iprint,*)"INFORMATION> INPCLS"
-              write(iprint,*)"        SELECT FOLLOWING ATOMS FOR "//   &
-                             "CLUSTER"
-              call rdlstatm(iprint,iicmpu,"INPCLS",.true.,ncou,ilst,ier)
-              if ( ier .ne. 0 ) then
-                write(iprint,*)"ERROR> INPCLS"
-                write(iprint,*)"CLSTLIST is inappropriate"
-                return
-              endif
-              do i = 1,ncou
-                icls(ilst(i)) = 4
-              enddo
-
-            ! CLUSTER METHOD
-            elseif ( index(line(1:icol),"CLSTMETHOD") .ne. 0 ) then
-              line = efcol2(iicmpu,";",ier)
-              if ( ier .ne. 0 ) then
-                write(iprint,*)"ERROR> INPCLS"
-                write(iprint,*)"CLSTMETHOD is inappropriate"
-                return
-              endif
-              read(line,*)cluster_method
-              if ( cluster_method(1:3).ne."LMD" .and.                  &
-                   cluster_method.ne."AND" .and.                       &
-                   cluster_method.ne."OR"  .and.                       &
-                   cluster_method.ne."XOR" ) then
-                write(iprint,*)" !! CAUTION !!"
-                write(iprint,*)" CLSTMETHOD you input is strange."
-                write(iprint,*)" CLSTMETHOD is changed to 'LMD'"
-                cluster_method = "LMD"
-              endif
-
-            ! SCALED_TERM
-            elseif ( index(line(1:icol),"SCALED_TERM") .ne. 0 ) then
-              line = efcol2(iicmpu,";",ier)
-              if ( ier .ne. 0 ) then
-                write(iprint,*)"ERROR> INPCLS"
-                write(iprint,*)"SCALED_TERM is inappropriate"
-                return
-              endif
-              read(line(1:1),*)scale_bond
-              read(line(2:2),*)scale_angle
-              read(line(3:3),*)scale_tor
-              read(line(4:4),*)scale_imp
-
-            ! lambda weight
-            elseif ( index(line(1:icol),"LAMBDA_WEIGHT") .ne. 0 ) then
-              line = efcol2(iicmpu,";",ier)
-              if ( ier .ne. 0 ) then
-                write(iprint,*)"ERROR> INPCLS"
-                write(iprint,*)"LAMBDA_WEIGHT is inappropriate"
-                return
-              endif
-              read(line,*)tmp
-              if ( tmp .gt. 0.d0 ) lambda_m = tmp
-
-            ! lambda temp control
-            elseif ( index(line(1:icol),"LAMBDA_TEMP_CONTROL")         &
-                     .ne. 0) then
-              line = efcol2(iicmpu,";",ier)
-              if ( ier .ne. 0 ) then
-                write(iprint,*)"ERROR> INPCLS"
-                write(iprint,*)"LAMBDA_TEMP_CONTROL is inappropriate"
-                return
-              endif
-              if ( line(1:1).eq."Y" .or. line(1:1).eq."y" )            &
-                l_temp_control = .true.
+              ia = i+1
             endif
+            ib = i+1
+          enddo
+          !! final loop provision
+          if ( resflg(n) ) then
+            ncmmres = ncmmres + 1
+            Ticmmres(1:2,ncmmres) = (/ia,ib/)
+          else
+            ncmmatm = ncmmatm + 1
+            Ticmmatm(1:2,ncmmatm) = (/ixrstr(ia),ixrend(ib)/)
           endif
+
+          deallocate(icmmatm)
+          allocate(icmmatm(2,ncmmatm),icmmres(2,ncmmres))
+          icmmatm(1:2,1:ncmmatm) = Ticmmatm(1:2,1:ncmmatm)
+          icmmres(1:2,1:ncmmres) = Ticmmres(1:2,1:ncmmres)
+          deallocate(Ticmmatm,Ticmmres)
+        endif
+      endif
+
+      ! CLUSTER A
+      if ( len(trim(clusta)) .ne. 0 ) then
+        call atom_specifier(len(trim(clusta)),trim(clusta),ixnatm,     &
+          ilist,cxatmn,absres,cxresn,tnCHN,tCHN,cord,ncou,tlist)
+        write(iprint,'(a)')"  Region A enhanced the conf. search : "// &
+          trim(clusta)
+        call output_specifier_log(ncou,"s",ixnatm,ilist,cxatmn,absres, &
+          cxresn,tnCHN,tCHN,tlist)
+        do i = 1,ncou
+          icls(tlist(i)) = 4
         enddo
       endif
-800   call flclos(iicmpu,10,ier)
+      ! CLUSTER B
+      if ( len(trim(clustb)) .ne. 0 ) then
+        call atom_specifier(len(trim(clustb)),trim(clustb),ixnatm,     &
+          ilist,cxatmn,absres,cxresn,tnCHN,tCHN,cord,ncou,tlist)
+        write(iprint,'(a)')"  Region B enhanced the conf. search : "// &
+          trim(clustb)
+        call output_specifier_log(ncou,"s",ixnatm,ilist,cxatmn,absres, &
+          cxresn,tnCHN,tCHN,tlist)
+        do i = 1,ncou
+          icls(tlist(i)) = 5
+        enddo
+      endif
+      deallocate(tlist,ilist,tnCHN,tCHN)
+
+      ! GEPS METHOD
+      if ( cluster_method(1:3).ne."LMD" .and.                          &
+           cluster_method.ne."AND" .and.                               &
+           cluster_method.ne."OR"  .and.                               &
+           cluster_method.ne."XOR" ) then
+         write(iprint,*)" !! CAUTION !!"
+         write(iprint,*)" GEPSME you input is strange."
+         write(iprint,*)" GEPSME is changed to 'LMD'"
+         cluster_method = "LMD"
+       endif
+
+       ! SCALED_TERM
+       if ( scaleterm(1:1) .eq. "0" ) scale_bond = 0
+       if ( scaleterm(1:1) .eq. "1" ) scale_bond = 1
+       if ( scaleterm(2:2) .eq. "0" ) scale_angle = 0
+       if ( scaleterm(2:2) .eq. "1" ) scale_angle = 1
+       if ( scaleterm(3:3) .eq. "0" ) scale_tor = 0
+       if ( scaleterm(3:3) .eq. "1" ) scale_tor = 1
+       if ( scaleterm(3:3) .eq. "2" ) scale_tor = 2
+       if ( scaleterm(3:3) .eq. "3" ) scale_tor = 3
+       if ( scaleterm(4:4) .eq. "0" ) scale_imp = 0
+       if ( scaleterm(4:4) .eq. "1" ) scale_imp = 1
+
+       ! lambda weight
+       if ( lambda_m .lt. 0.d0 ) lambda_m = 0.d0
 
 !**********************
 !     3) Set variables

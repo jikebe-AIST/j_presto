@@ -21,7 +21,7 @@ OBJS = 	bstft.o calcm.o  caldih.o calrsf.o caltmp.o chklin.o chkpha.o \
 	enear_ACT_redu_CB.o enear_ACT_high_CB.o enear_ACT_doub_CB.o \
 	enear_ZD_redu_PB.o enear_ZD_high_PB.o enear_ZD_doub_PB.o \
 	enear_ZD_redu_CB.o enear_ZD_high_CB.o enear_ZD_doub_CB.o \
-        enear_extCMM.o setextCMM.o PBcord.o SIMD_check.o
+        enear_extCMM.o setextCMM.o PBcord.o SIMD_check.o atom_specifier.o
 
 COBJS =	flopen.o flclos.o efcol.o  rdfree.o
 
@@ -29,10 +29,11 @@ COBJS =	flopen.o flclos.o efcol.o  rdfree.o
 FC = ifort
 
 ifeq ($(FC), ifort)
-    LFLAGS = -O2 -ipo -no-prec-div -no-prec-sqrt -xHost -qopenmp
-#    LFLAGS = -CB -traceback -pg -O2 -ipo -no-prec-div -xHost -qopenmp
+    LFLAGS = -O2 -fpp -ipo -no-prec-div -no-prec-sqrt -xHost -qopenmp
+#    LFLAGS = -CB -fpp -traceback -pg -O2 -ipo -no-prec-div -xHost -qopenmp
+#    LFLAGS = -check all -fpp -traceback -pg -O2 -ipo -no-prec-div -xHost -qmkl=sequential -qopenmp
 else ifeq ($(FC), gfortran)
-    LFLAGS = -O2 -march=native -fopenmp
+    LFLAGS = -O2 -cpp -march=native -fopenmp
 else
     $(error Unsupported compiler: $(FC))
 endif
@@ -188,7 +189,7 @@ inpbou.o : inpbou.f90 COMPAR.f90 COMBAS.f90 COMMIS.f90 COMCMM.f90 COMCMMC.f90
 inpcrb.o : inpcrb.f90
 	$(FC) $(CFLAGS) inpcrb.f90 $(LIB)
 
-inpinp.o : inpinp.f90 COMERG.f90
+inpinp.o : inpinp.f90 COMCMM.f90 COMERG.f90
 	$(FC) $(CFLAGS) inpinp.f90 $(LIB)
 
 inpmd.o : inpmd.f90 COMPAR.f90 COMBAS.f90 COMERG.f90 COMMIS.f90 \
@@ -455,3 +456,7 @@ PBcord.o : PBcord.f90 COMBAS.f90 COMCMMC.f90
 
 SIMD_check.o : SIMD_check.f90 COMCMM.f90
 	$(FC) $(CFLAGS) SIMD_check.f90 $(LIB)
+
+atom_specifier.o : atom_specifier.f90
+	$(FC) $(CFLAGS) atom_specifier.f90
+

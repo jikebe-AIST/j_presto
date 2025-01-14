@@ -17,7 +17,7 @@
       implicit none
 
       ! Max number of elements
-        integer(4),parameter:: nELM = 33
+        integer(4),parameter:: nELM = 34
 
       ! Control parameter for calc.
         character(130),save:: ELEMNT(nELM) = (/                   &
@@ -40,7 +40,7 @@
         ! lambda and the square for reweighting
                     "1.d0","1.d0",                                &
         ! min & max values for reweighting
-                    "","","","","","",                            &
+                    "","","-1.0","1.0","-1.0","1.0",              &
         ! acceleration & the rate
                     "N","1.d0","N","1.d0","N","1.d0","1.5d0",     &
         ! flag of neglect out of the range
@@ -48,6 +48,8 @@
         ! force size for out of the range for ALSD
                     "1000.d0","","",                              &
         ! ignore nodata bin flag
+                    "N",                                          &
+        ! adjust energy flag for ALSD simulation
                     "N"/)
 
       ! Control data flag NAMe of ELeMents
@@ -81,7 +83,9 @@
         ! force size for out of the range for ALSD
                      "FORCES","FORCEL","FORCEH",                  &
         ! ignore nodata bin flag
-                     "IGNDAT"/)
+                     "IGNDAT",                                    &
+        ! adjust energy flag for ALSD simulation
+                     "ADJENE"/)
 
       end module COMINP
 
@@ -134,6 +138,8 @@
         real(8):: forces,forcel,forceh
       ! ignore nodata bins for the dlnN fitting
         logical(4):: igndat
+      ! adjust energy for ALSD simulation
+        logical(4):: adjene = .false.
 
 !**********************************
 

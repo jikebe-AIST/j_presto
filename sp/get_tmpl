@@ -58,7 +58,6 @@ def main():
         "min.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "min.inp"),
         "md.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "md.inp"),
         "CAPbound.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "CAPbound.inp"),
-        "cluster.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "cluster.inp"),
         "psr.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "psr.inp"),
         "dsr.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "dsr.inp"),
         "dhr.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "dhr.inp"),
@@ -66,6 +65,8 @@ def main():
         "batch_set.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "batch_set.inp"),
         "batch_set_ALSD.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "batch_set_ALSD.inp"),
         "md_multi": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "md_multi.exe"),
+        "Ens_Ana.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "Ens_Ana.inp"),
+        "Ens_Ana": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "Ens_Ana.exe"),
     }
 
     # Check if input type is "all" to copy all files
@@ -79,7 +80,9 @@ def main():
         dest_file = os.path.basename(src_file)  # Set destination to current directory with the same name
         copy_file(src_file, dest_file)
     else:
-        print(f"Error: Unknown input type '{input_type}'.") ; sys.exit()
+        print(f"Error: Unknown input type '{input_type}'.")
+        valid_inputs = ", ".join(file_mapping.keys())
+        print(f"Valid input types are: {valid_inputs}") ; sys.exit()
 
     etime = time.perf_counter()
     print(f"\nExecution time : {etime - stime} (S)")

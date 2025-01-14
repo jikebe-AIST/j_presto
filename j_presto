@@ -4,21 +4,17 @@ import subprocess
 import sys, os
 
 def run_program(program_name, args):
+    program_dict = {"md_run", "GEprep", "Ens_Ana"}
     try:
         sys.stdout.flush()
         program_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "sp", program_name)
-        if program_name == "md_run" and len(args) > 1 and args[1] == "-h":
-            print("To check the how to use 'md_run', please execute 'j_presto manual'.")
-            sys.exit(0)
-        elif program_name == "md_run" and len(args) > 1 and os.path.isfile(args[1]):
-            with open(args[1], 'r') as input_file:
-                subprocess.run([program_path], stdin=input_file, check=True)
-        elif program_name == "GEprep" and len(args) > 1 and args[1] == "-h":
-            print("To check the how to use 'GEprep', please execute 'j_presto manual'.")
-            sys.exit(0)
-        elif program_name == "GEprep" and len(args) > 1 and os.path.isfile(args[1]):
-            with open(args[1], 'r') as input_file:
-                subprocess.run([program_path], stdin=input_file, check=True)
+        if program_name in program_dict:
+            if len(args) > 1:
+                if args[1] == "-h":
+                    print(f"To check how to use '{program_name}', please execute 'j_presto manual'.") ; sys.exit(0)
+                elif os.path.isfile(args[1]):
+                    with open(args[1], 'r') as input_file:
+                        subprocess.run([program_path], stdin=input_file, check=True)
         else:
             subprocess.run([program_path] + args, check=True)
     except subprocess.CalledProcessError as e:

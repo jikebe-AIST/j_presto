@@ -329,7 +329,7 @@ def input_in(ifil, filename):
                             sys.exit()
                         Tiopt_imp.append([item.ljust(4)[:4] for item in data])
                 elif keyword == "LOOP":
-                    cmt_iopt[2]= value
+                    Tcmt_iopt[2]= value
                     lines = read_datablock(file, True, True)
                     for line in lines:
                         data = line.split()
@@ -801,8 +801,8 @@ def check_consistency():
                 atmtyp[n] = atmtyp[i] ; tree[n] = tree[i] ; atmnum_bd[n] = atmnum_bd[i] ; atmnum_ag[n] = atmnum_ag[i]
                 atmnum_tor[n] = atmnum_tor[i] ; blen_i[n] = blen_i[i] ; angl_i[n] = angl_i[i] ; phi_i[n] = phi_i[i]
                 chg[n] = chg[i] ; cmt_iopt[n] = cmt_iopt[i] ; iopt_chg[n] = iopt_chg[i] ; iopt_imp[n] = iopt_imp[i]
-                iopt_loop[n] = iopt_loop[i] ; IFRres_nam[n] = IFRres_nam[i]
-    n = n + 1
+                iopt_loop[n] = iopt_loop[i] ; IFRres_nam[n] = IFRres_nam[i] ; res_nam[n] = res_nam[i] ; Rres_nam[n] = Rres_nam[i]
+    n += 1
     res_titl = res_titl[:n] ; outfilnm = outfilnm[:n] ; typcod = typcod[:n] ; out_fmt = out_fmt[:n]
     typintcod = typintcod[:n] ; dumatm_omit = dumatm_omit[:n] ; sym_dumatm = sym_dumatm[:n]
     pos_delete_dumatm = pos_delete_dumatm[:n] ; cut_dist = cut_dist[:n] ; atmnm = atmnm[:n]

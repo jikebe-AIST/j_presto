@@ -1,0 +1,59 @@
+
+#overwrite_flag = YES
+project_name = test
+log_level = no
+template_PDB = test.pdb
+#input_topology = test.tpl
+
+#input_PDB_list = test.list
+#PDB_consistency_check = NO
+input_binary_list = test.list
+#output_PDB_flag = YES
+#output_binary_flag = YES
+
+reference_PDB = test.pdb
+#input_reference_PDB_list = refpdb.list
+#input_reference_binary_list = test.list
+
+#atom_spec_output = *
+
+#interval = 1
+input_prob_file = test.prob
+weight_method = WEIGHT
+#weight_threshold =
+#random_seed = 123456
+#input_energy_file = test.ene
+
+#periodic_boundary = [xmin:xmax,ymin:ymax,zmin:zmax]
+
+#DSSP_flag =                   YES
+
+#atom_spec_Rg = !H*,h*
+
+atom_spec_RMSD = CA
+#atom_spec_RMSD_fit = 
+#atom_spec_RMSD_ref = 
+#atom_spec_RMSD_reffit =
+#RMSD_mode = average
+#interval_for_timeseries_RMSD = 1
+#RMSF_flag = YES
+
+#PCA_method = cord
+#atom_spec_PCA = !H*,h*
+#neighbor_residue_PCA = 3
+#tolerance_PCA = 6.d0
+
+#atom_spec_Qvalue = *&!H*,h*
+#neighbor_residue_Qvalue = 3
+#tolerance_Qvalue = 6.d0
+#tolerance_NCP = 1.0
+#NCP_rate = 0.7
+
+#cell_boundary = [xmin:xmax,ymin:ymax,zmin:zmax]
+#atom_spec_distribution = !H*,h*
+#distribution_cell_size = 3.d0
+
+#atom_spec_contact = 
+#tolerance_contact = 2.8d0
+
+#measurements = dist1_dist2;angle1_angle2_angle3;dih1_dih2_dih3_dih4

@@ -37,6 +37,7 @@
 
       character(23):: curtim
       character(80):: userna
+      character(1):: a1
       integer(4):: len,icom,iatm
  
 !*****************************************************
@@ -78,33 +79,34 @@
       enddo
  
       do iatm = 1,numatm
+        a1 = adjustl(atty(iatm))
         if( atty(iatm)(4:4) .eq. ' ' ) then
           if ( resnum(iatm) .lt. 100000 ) then
             write(iwrite,8100,err=9200)                                &
                   iatm,atty(iatm)(1:3),resty(iatm)(1:4),resnum(iatm),  &
-                  cord(1:3,iatm),occupy(iatm),bfact(iatm)
+                  cord(1:3,iatm),occupy(iatm),bfact(iatm),a1
           else
             write(iwrite,8101,err=9200)                                &
                   iatm,atty(iatm)(1:3),resty(iatm)(1:4),resnum(iatm),  &
-                  cord(1:3,iatm),occupy(iatm),bfact(iatm)
+                  cord(1:3,iatm),occupy(iatm),bfact(iatm),a1
           endif
         else
           if ( resnum(iatm) .lt. 100000 ) then
             write(iwrite,8200,err=9200)                                &
                   iatm,atty(iatm)(1:4),resty(iatm)(1:4),resnum(iatm),  &
-                  cord(1:3,iatm),occupy(iatm),bfact(iatm)
+                  cord(1:3,iatm),occupy(iatm),bfact(iatm),a1
           else
             write(iwrite,8201,err=9200)                                &
                   iatm,atty(iatm)(1:4),resty(iatm)(1:4),resnum(iatm),  &
-                  cord(1:3,iatm),occupy(iatm),bfact(iatm)
+                  cord(1:3,iatm),occupy(iatm),bfact(iatm),a1
           endif
         endif
       enddo
 
-8100  format('ATOM',i7,2x,a3,1x,a4,i5,4x,3f8.3,2f6.2)
-8101  format('ATOM',i7,2x,a3,1x,a4,i6,3x,3f8.3,2f6.2)
-8200  format('ATOM',i7,1x,a4,1x,a4,i5,4x,3f8.3,2f6.2)
-8201  format('ATOM',i7,1x,a4,1x,a4,i6,3x,3f8.3,2f6.2)
+8100  format('ATOM',i7,2x,a3,1x,a4,i5,4x,3f8.3,2f6.2,11x,a1,"  ")
+8101  format('ATOM',i7,2x,a3,1x,a4,i6,3x,3f8.3,2f6.2,11x,a1,"  ")
+8200  format('ATOM',i7,1x,a4,1x,a4,i5,4x,3f8.3,2f6.2,11x,a1,"  ")
+8201  format('ATOM',i7,1x,a4,1x,a4,i6,3x,3f8.3,2f6.2,11x,a1,"  ")
 
       call flclos(iwrite,10,ier)
       if ( ier .ne. 0 ) then 

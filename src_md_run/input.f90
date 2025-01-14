@@ -22,7 +22,7 @@
 
       integer(4):: iitplf,iicrdf,iifsor
       character(80):: citpln,cicrdn,cishkn,civarn,ciboun,cirefn,cipscn,&
-                      cidscn,cidhcn,cimntn,cicmpn,cieCMn,cirep
+                      cidscn,cidhcn,cimntn,cieCMn,cirep
 
       integer(4),allocatable:: iwork(:)
       real(8),allocatable:: rwork(:)
@@ -47,7 +47,7 @@
       ! 0) READ INPUT CONTROL DATA
       call inpinp(iread,iprint,ier,onend,iitplf,iicrdf,iifsor,citpln,  &
                   cicrdn,cishkn,civarn,ciboun,cirefn,cipscn,cidscn,    &
-                  cidhcn,cimntn,cicmpn,cieCMn,cirep)
+                  cidhcn,cimntn,cieCMn,cirep)
       if ( ier .ne. 0 ) return
 
       ! 1) READ TOPOLOGY FILE
@@ -145,8 +145,8 @@
         iyndtr = 0 ; iyndip = 0
       endif
 
-      ! 9) READ CELL and CLUSTER PARAMETER FILE
-      call inpcls(iprint,1,cicmpn,ier)
+      ! 9) For READ CELL and CLUSTER PARAMETER
+      call inpcls(iprint,ier)
       if ( ier .ne. 0 ) return
 
       ! 10) READ A FILE TO SPECIFY ITEMS TO BE MONITORED

@@ -17,8 +17,10 @@
       logical(4):: SIMD_chk
 
       ! General quantities for cells. (INPUT)
-      integer(4):: nlev = 0             ! The deepest level to be sellected.
+      integer(4):: nlev                 ! The deepest level to be sellected.
       real(8):: cminsiz                 ! minimum cell size
+      character(999):: celres,clusta,clustb
+      character(4)::scaleterm
       real(8),allocatable:: siz(:)      ! The cell-size (1D) of each level
       integer(4),allocatable:: nv(:)    ! N of cells (1D) of each level in the full field
 
@@ -172,17 +174,14 @@
 
       ! For lambda dynamics
       real(8):: lambda,lambda_v,i_lambda_m
-      real(8):: lambda_m = 0.d0
+      real(8):: lambda_m
       character(4):: cluster_method
 
       ! No scale energy term flags
-      integer(4):: scale_bond = 0
-      integer(4):: scale_angle = 0
-      integer(4):: scale_tor = 3
-      integer(4):: scale_imp = 0
+      integer(4):: scale_bond,scale_angle,scale_tor,scale_imp
 
       ! lambda temperature control
-      logical(4):: l_temp_control = .false.
+      logical(4):: l_temp_control
 
 !************************************
 
