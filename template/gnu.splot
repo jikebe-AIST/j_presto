@@ -1,0 +1,38 @@
+reset
+  
+set grid
+unset key
+set pm3d map corners2color c1
+#set xrange [:]
+#set yrange [:]
+set cbrange [0:6]
+set zrange [0:6]
+#set xtics -1.0, 0.2, 1.0
+#set ytics -1.0, 0.2, 1.0
+set cbtics 0, 2, 6
+set size 0.6
+set size square
+set palette defined (0 "blue", 1.5 "green", 3 "yellow", 4.5 "orange", 6 "red")
+#set lmargin 5
+#set rmargin 10
+set xlabel "x label"
+set ylabel "y label"
+set cblabel "Free energy (Kcal/mol)" rotate by 270
+#set format x "%5.2f"
+#set format y "%5.2f"
+set format cb "%3.1f"
+splot "test.distp" u 1:2:3
+#splot "test.edistp" u 1:2:3
+
+set terminal postscript color eps enhanced
+set encoding iso_8859_1
+set output "a.eps"
+replot
+set terminal X11
+!eps2eps a.eps b.eps
+!convert -density 300 b.eps Fig.tif
+!rm a.eps b.eps
+
+## MEMO
+# lambda = "/Symbol l"
+# angstrom = "{\305}"

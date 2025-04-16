@@ -4,17 +4,21 @@ import subprocess
 import sys, os
 
 def run_program(program_name, args):
-    program_dict = {"md_run", "GEprep", "Ens_Ana"}
+    program_dict = {"md_run", "GEprep", "Ens_Ana", "PCAaxis", "PCAproj", "distrib"}
+    program_dict_nohelp = {"md_run", "GEprep", "Ens_Ana"}
     try:
         sys.stdout.flush()
         program_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "sp", program_name)
         if program_name in program_dict:
             if len(args) > 1:
-                if args[1] == "-h":
-                    print(f"To check how to use '{program_name}', please execute 'j_presto manual'.") ; sys.exit(0)
-                elif os.path.isfile(args[1]):
-                    with open(args[1], 'r') as input_file:
-                        subprocess.run([program_path], stdin=input_file, check=True)
+                if program_name in program_dict_nohelp:
+                    if args[1] == "-h":
+                        print(f"To check how to use '{program_name}', please execute 'j_presto manual'.") ; sys.exit(0)
+                    elif os.path.isfile(args[1]):
+                        with open(args[1], 'r') as input_file:
+                            subprocess.run([program_path], stdin=input_file, check=True)
+                else:
+                    subprocess.run([program_path] + args, check=True)
         else:
             subprocess.run([program_path] + args, check=True)
     except subprocess.CalledProcessError as e:
@@ -23,9 +27,9 @@ def run_program(program_name, args):
 def display_credits():
     program_name = "j_presto"
     author = "Jinzen Ikebe"
-    version = "1.0.0"
+    version = "1.0.1"
     first_release_date = "2024-11-11"
-    current_release_date = "2024-11-11"
+    current_release_date = "2025-04-16"
     license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     print("*" * 50)
     print("*")
@@ -62,6 +66,9 @@ def main():
         print("      mpi_run :  mpi_run executes multiple MD simulation runs as a single MPI job using an embarrassingly parallel approach.")
         print("   mpi_master :  mpi_master executes multiple MD simulation runs as a single MPI job using a master-slave approach.")
         print("      Ens_Ana :  Ens_Ana performs analysis of conformational ensembles obtained from simulation results. (Scheduled to be added in the next update)")
+#        print("      PCAaxis :  Construct axes for Principle Component Analysis (PCA).")
+#        print("      PCAproj :  Project data on Principle Component Analysis (PCA) axes.")
+#        print("      distrib :  Create a distribution plot.")
         print("       manual :  manual shows how to use options for j_prest. ")
         print("\n")
         sys.exit(1)
@@ -71,7 +78,7 @@ def main():
 
     display_credits()
     if program_name == "manual":
-        args = [args[0], os.path.join(os.environ.get("J_PRESTO_PATH"), "manual.txt")]
+        args = [args[0], os.path.join(os.environ.get("J_PRESTO_PATH"), "manual.txt")] + sys.argv[2:]
     run_program(program_name, args)
 
 if __name__ == "__main__":

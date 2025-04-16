@@ -145,6 +145,9 @@ if [ $? -eq 0 ]; then
     build_and_copy "src_md_run" "md_run mkshkl"
     build_and_copy "src_GEprep" "GEprep"
     build_and_copy "src_Ens_Ana" "Ens_Ana"
+    build_and_copy "src_PCAaxis" "PCAaxis"
+    build_and_copy "src_PCAproj" "PCAproj"
+    build_and_copy "src_distrib" "distrib"
 
     # Move the J_PRESTO directory to the specified destination
     # Check if the destination already has a J_PRESTO directory

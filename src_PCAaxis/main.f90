@@ -1,24 +1,25 @@
 
       program main
 
-!*************************************
-
-      use COMIFN,only: METHOD
+!**********************************************
+!
+!     MAIN program for making PCA axis
+!
+!**********************************************
 
       implicit none 
 
-      integer(4):: time0,time1,time2,system,count_rate
-      character(130):: work
+      integer(4):: time0,time1,time2,system,iERR,count_rate
  
 !**************************
 
      write(6,*)'**************************************************'
      write(6,*)'*'
-     write(6,*)'*    GEprep (Version 1.0.1)'
+     write(6,*)'*    PCAaxis (Version 1.0.1)'
      write(6,*)'*'
      write(6,*)'*                         Author : Jinzen Ikebe'
-     write(6,*)'*             First Release Date : 2024-11-11'
-     write(6,*)'*  Release Date for Current ver. : 2025-01-14'
+     write(6,*)'*             First Release Date : 2025-01-28'
+     write(6,*)'*  Release Date for Current ver. : 2025-01-28'
      write(6,*)'*'
      write(6,*)'**************************************************'
      write(6,*)''
@@ -33,9 +34,6 @@
       write(6,'(a)')"  INPUT phase ---------------------"
       write(6,'(a)')""
 
-      ! Input parameters
-      call inp  ! ( inpinp.f90 )
-      ! Assign parameters
       call store_element ! ( store_element.f90 )
 
       call system_clock(time2)
@@ -43,27 +41,19 @@
       call output_time(6,time1,time2,count_rate,"INPUT")
 
 !***************************
-!     distribution phase
+!     Make PCA axis phase
 
       call system_clock(time1)
       write(6,'(a)')""
       write(6,'(a)')""
-      write(6,'(a)')"  DISTRIBUTION phase ----------------"
+      write(6,'(a)')"  Make PCA axis phase ----------------"
       write(6,'(a)')""
 
-      if ( METHOD .eq. "CANO" ) then
-        call distrib_CANO
-      elseif ( METHOD .eq. "MULT" ) then
-        call distrib_MULT
-      elseif ( METHOD(1:4) .eq. "CLMD" ) then
-        call distrib_CLMD
-      elseif ( METHOD(1:4) .eq. "ALSD" ) then
-        call distrib_ALSD
-      endif
+      call mkaxis
 
       call system_clock(time2)
       write(6,*)""
-      call output_time(6,time1,time2,count_rate,"DISTRIBUTION")
+      call output_time(6,time1,time2,count_rate,"MAKE PCA AXIS")
 
 !***************************
 
@@ -72,7 +62,7 @@
       call output_time(6,time0,time2,count_rate,"TOTAL")
 
       write(6,'(a)')""
-      write(6,'(a)')" +++  Program GEprep Normally Ended  +++"
+      write(6,'(a)')" +++  Program PCAaxis Normally Ended  +++"
       write(6,'(a)')""
 
 !*****************

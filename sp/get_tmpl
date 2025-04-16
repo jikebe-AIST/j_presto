@@ -5,9 +5,9 @@ import argparse, os, sys, time, shutil
 def display_credits():
     program_name = "get_tmpl"
     author = "Jinzen Ikebe"
-    version = "1.0.0"
+    version = "1.0.2"
     first_release_date = "2024-11-11"
-    current_release_date = "2024-11-11"
+    current_release_date = "2025-04-16"
     license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     print("*" * 50)
     print("*")
@@ -27,6 +27,9 @@ def display_credits():
         sys.exit()
 
 def copy_file(src, dest):
+    # For unlock files
+    if dest.endswith("_ul"):
+        dest = dest[:-3]
     # If the destination file already exists, modify the filename
     if os.path.exists(dest):
         old_dest = dest
@@ -41,12 +44,16 @@ def copy_file(src, dest):
 def main():
     stime = time.perf_counter()
     parser = argparse.ArgumentParser(description='j_presto get_tmpl gives you templates of input files and scripts for executing j_presto.')
-    parser.add_argument('access_key')
-    parser.add_argument('input')
+    parser.add_argument('access_key', help=argparse.SUPPRESS)
+    parser.add_argument('inputs', nargs='*', default=None, help="The input types to specify the template files. Multiple input types can be specified.")
+    parser.add_argument('-l', '--list', action='store_true', help="List all valid input types.")
+    parser.add_argument('-u', '--unlock', action='store_true', help=argparse.SUPPRESS)
 
-    args = parser.parse_args()
+    args, unknown_args = parser.parse_known_args()
+#    args = parser.parse_args()
     access_key = args.access_key
-    input_type = args.input
+#    input_types = args.inputs
+    input_types = args.inputs + unknown_args
     if access_key != "j_presto":
         sys.exit()
     display_credits()
@@ -67,22 +74,40 @@ def main():
         "md_multi": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "md_multi.exe"),
         "Ens_Ana.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "Ens_Ana.inp"),
         "Ens_Ana": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "Ens_Ana.exe"),
+        "distrib.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "distrib.inp"),
+        "gnu.splot": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "gnu.splot"),
+        "gnu.plot": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "gnu.plot"),
     }
 
+    if args.unlock:
+        unlocked_files = {
+            "md_multi": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "md_multi.exe_ul"),
+        }
+        file_mapping.update(unlocked_files)
+
+    # Handle --list option
+    if args.list:
+        print("Valid input types:")
+        for key in file_mapping.keys():
+            print(f"  {key}")
+        sys.exit()
+
     # Check if input type is "all" to copy all files
-    if input_type == "all":
+    if "all" in input_types:
         for input_type in file_mapping.keys():
             src_file = file_mapping[input_type]
             dest_file = os.path.basename(src_file)  # Set destination to current directory with the same name
             copy_file(src_file, dest_file)
-    elif input_type in file_mapping:
-        src_file = file_mapping[input_type]
-        dest_file = os.path.basename(src_file)  # Set destination to current directory with the same name
-        copy_file(src_file, dest_file)
     else:
-        print(f"Error: Unknown input type '{input_type}'.")
-        valid_inputs = ", ".join(file_mapping.keys())
-        print(f"Valid input types are: {valid_inputs}") ; sys.exit()
+        for input_type in input_types:
+            if input_type in file_mapping:
+                src_file = file_mapping[input_type]
+                dest_file = os.path.basename(src_file)
+                copy_file(src_file, dest_file)
+            else:
+                print(f"Error: Unknown input type '{input_type}'.")
+                valid_inputs = ", ".join(file_mapping.keys())
+                print(f"Valid input types are: {valid_inputs}") ; sys.exit()
 
     etime = time.perf_counter()
     print(f"\nExecution time : {etime - stime} (S)")

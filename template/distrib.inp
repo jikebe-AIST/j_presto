@@ -1,0 +1,28 @@
+PROJNM = test
+FIGTYP = FEL
+;X-NORM = YES
+INPLST = file.list
+;WEIGHT = test.prob
+
+X-AXIS = 5
+;Y-AXIS =
+;Z-AXIS =
+WEIAX1 = 2
+WEIAX2 = 3
+
+X-MINV = 0.0
+X-MAXV = 35.0
+;Y-MINV = 
+;Y-MAXV =
+
+X-NBIN = 50
+;Y-NBIN = 
+;XBINSZ =
+;YBINSZ =
+
+TEMPER = 300.0
+
+;NGROUP = TTPNCF
+;SGAXIS = 3
+;MAXNSG = 64
+;TTPNCF = ../aaa.TTPncnf

@@ -1,0 +1,190 @@
+#!/usr/bin/env python3
+
+import sys
+import shutil
+import argparse
+import os
+from collections import defaultdict
+from Bio import SeqIO, AlignIO, Entrez
+from Bio.Align.Applications import ClustalwCommandline, MafftCommandline
+from Bio.Blast import NCBIWWW, NCBIXML
+from Bio import Align
+from html import escape
+
+# --- 必須モジュールチェック ---
+required_modules = ["Bio"]
+for module in required_modules:
+    try:
+        __import__(module)
+    except ImportError:
+        print(f"モジュール '{module}' が見つかりません。pipでインストールしてください。")
+        sys.exit(1)
+
+# --- ClustalW2, MAFFT, ペアワイズアラインメントのインストールチェック ---
+def check_tools_installed():
+    tools = {
+        "ClustalW2": "clustalw2",
+        "MAFFT": "mafft"
+    }
+
+    for tool, cmd in tools.items():
+        if not shutil.which(cmd):
+            print(f"{tool} がインストールされていません。インストールを試みてください。")
+            sys.exit(1)
+
+    # ペアワイズアラインメントの場合、Biopython内のAlignPairwiseを使うので問題なし
+    print("ClustalW2, MAFFTが正常にインストールされています。")
+
+# --- 引数のパース ---
+def parse_args():
+    parser = argparse.ArgumentParser(description="コンセンサス法による酵素配列設計ツール")
+    parser.add_argument("--input", "-i", required=True, help="ターゲット配列（FASTA形式）")
+    parser.add_argument("--family", "-f", help="ファミリー配列（FASTA形式）。指定しない場合はBLAST検索で取得")
+    parser.add_argument("--msa_tool", choices=["clustalw", "mafft", "pairwise"], default="clustalw", help="MSAまたはペアワイズアラインメントに使うツール")
+    parser.add_argument("--email", help="NCBI BLAST使用時のメールアドレス（--familyを省略したとき必須）")
+    parser.add_argument("--out", "-o", default="consensus_result.txt", help="出力ファイル名")
+    parser.add_argument("--html", default="consensus_result.html", help="色付きHTML出力ファイル名")
+    return parser.parse_args()
+
+# --- BLAST検索してファミリー配列を取得 ---
+def fetch_family_by_blast(target_seq_record, email, top=10):
+    print("BLAST検索を開始します...")
+    Entrez.email = email
+    result_handle = NCBIWWW.qblast("blastp", "nr", target_seq_record.format("fasta"))
+    blast_records = NCBIXML.read(result_handle)
+
+    hit_ids = [alignment.accession for alignment in blast_records.alignments[:top]]
+    handle = Entrez.efetch(db="protein", id=",".join(hit_ids), rettype="fasta", retmode="text")
+    records = list(SeqIO.parse(handle, "fasta"))
+    handle.close()
+    print(f"{len(records)} 配列を取得しました。")
+    return records
+
+# --- ClustalWによるアラインメント実行 ---
+def run_clustalw(input_fasta):
+    clustalw_cline = ClustalwCommandline("clustalw2", infile=input_fasta)
+    stdout, stderr = clustalw_cline()
+    aln_file = os.path.splitext(input_fasta)[0] + ".clustal.fasta"
+    AlignIO.convert(os.path.splitext(input_fasta)[0] + ".aln", "clustal", aln_file, "fasta")
+    return aln_file
+
+# --- MAFFTによるアラインメント実行 ---
+def run_mafft(input_fasta):
+    mafft_cline = MafftCommandline(input=input_fasta)
+    stdout, stderr = mafft_cline()
+    aln_file = os.path.splitext(input_fasta)[0] + ".mafft.fasta"
+    with open(aln_file, 'w') as f:
+        f.write(stdout)
+    return aln_file
+
+# --- ペアワイズアラインメントの実行 ---
+def pairwise_alignment(seq1, seq2, mode="global", matrix="BLOSUM62", open_gap_score=-10, extend_gap_score=-0.5):
+    aligner = Align.PairwiseAligner()
+    aligner.mode = mode
+    aligner.open_gap_score = open_gap_score
+    aligner.extend_gap_score = extend_gap_score
+    aligner.substitution_matrix = Align.substitution_matrices.load(matrix)
+
+    alignments = aligner.align(seq1, seq2)
+    best_alignment = max(alignments, key=lambda x: x.score)
+    return best_alignment
+
+# --- 種名ごとの重み付けを考慮したコンセンサス配列作成 ---
+def compute_weighted_consensus(alignment):
+    species_seq_dict = defaultdict(list)
+    for record in alignment:
+        species = record.id.split("|")[0]
+        species_seq_dict[species].append(record.seq)
+
+    species_weights = {s: 1/len(v) for s, v in species_seq_dict.items() for _ in v}
+    position_counts = [defaultdict(float) for _ in range(alignment.get_alignment_length())]
+
+    for record in alignment:
+        species = record.id.split("|")[0]
+        weight = species_weights[species]
+        for i, res in enumerate(record.seq):
+            position_counts[i][res] += weight
+
+    consensus = ''.join([max(pos.items(), key=lambda x: x[1])[0] for pos in position_counts])
+    return consensus
+
+# --- テキストによる視覚的表示 ---
+def visualize_consensus(target_seq, consensus_seq):
+    output = []
+    output.append("Target:   " + target_seq)
+    output.append("Consensus:" + consensus_seq)
+    output.append("          " + ''.join(["*" if t != c else " " for t, c in zip(target_seq, consensus_seq)]))
+    return '\n'.join(output)
+
+# --- HTMLによる色付き出力 ---
+def html_visualize(target_seq, consensus_seq, html_path):
+    html = ["<html><head><meta charset='UTF-8'><style>",
+            "body { font-family: monospace; }",
+            ".diff { background-color: yellow; font-weight: bold; }",
+            "</style></head><body>",
+            "<h2>ターゲットとコンセンサス配列の比較</h2>",
+            "<p><b>Target:</b><br>"]
+    for t, c in zip(target_seq, consensus_seq):
+        if t != c:
+            html.append(f"<span class='diff'>{escape(t)}</span>")
+        else:
+            html.append(escape(t))
+    html.append("</p><p><b>Consensus:</b><br>")
+    for t, c in zip(target_seq, consensus_seq):
+        if t != c:
+            html.append(f"<span class='diff'>{escape(c)}</span>")
+        else:
+            html.append(escape(c))
+    html.append("</p></body></html>")
+    with open(html_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(html))
+
+# --- メイン関数 ---
+def main():
+    args = parse_args()
+
+    # ツールのインストールチェック
+    check_tools_installed()
+
+    target_seq_record = list(SeqIO.parse(args.input, "fasta"))[0]
+    target_id = target_seq_record.id
+
+    if args.family:
+        family_records = list(SeqIO.parse(args.family, "fasta"))
+    else:
+        if not args.email:
+            print("BLASTによる自動取得を使うには --email を指定してください。")
+            sys.exit(1)
+        family_records = fetch_family_by_blast(target_seq_record, args.email)
+
+    all_records = [target_seq_record] + family_records
+    combined_fasta = "_combined_input.fasta"
+    SeqIO.write(all_records, combined_fasta, "fasta")
+
+    if args.msa_tool == "clustalw":
+        aln_file = run_clustalw(combined_fasta)
+    elif args.msa_tool == "mafft":
+        aln_file = run_mafft(combined_fasta)
+    elif args.msa_tool == "pairwise":
+        # ペアワイズアラインメント
+        seq2 = list(SeqIO.parse(args.family, "fasta"))[0].seq  # 1つのファミリー配列を使う例
+        aln = pairwise_alignment(target_seq_record.seq, seq2)
+        print(f"アライメント結果:\n{aln}")
+        return
+
+    alignment = AlignIO.read(aln_file, "fasta")
+
+    consensus_seq = compute_weighted_consensus(alignment)
+    result_view = visualize_consensus(str(alignment[0].seq), consensus_seq)
+
+    with open(args.out, 'w') as out_f:
+        out_f.write("コンセンサス法による解析結果\n")
+        out_f.write(f"ターゲットID: {target_id}\n\n")
+        out_f.write(result_view)
+
+    html_visualize(str(alignment[0].seq), consensus_seq, args.html)
+    print(f"完了：テキスト結果を {args.out} に保存、HTML結果を {args.html} に保存しました。")
+
+if __name__ == "__main__":
+    main()
+

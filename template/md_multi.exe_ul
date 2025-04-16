@@ -1,0 +1,51 @@
+#!/bin/bash
+
+#
+#  !! Please describe the options necessary to execute the MPI job here !!
+#
+
+# Please adjust the following values as necessary
+export OMP_NUM_THREADS=8
+ulimit -s 16384
+export OMP_STACKSIZE=16M
+export KMP_AFFINITY=disabled
+
+#
+#  !! Please modify the command (mpirun, mpiexec, mpiexec.hydra, etc.) for !!
+#  !! executing the following MPI job to fit your environment              !!
+#
+#  For a parallel job
+mpiexec.hydra j_presto_mpi #CMD #NRUN #NMPI
+
+#  For a master_slave job
+#mpiexec.hydra j_presto_master #CMD #NRUN #NMPI
+
+# For GE simulation
+if [ -f "md#CMD/GEprep.inp" ]; then
+    (cd md#CMD && j_presto GEprep GEprep.inp | tee GEprep.log)
+fi
+
+# For PCA Analysis
+# Prepare below files in advance
+#  PCA.inp
+if [ #CMD -ge 3 ]; then
+    (
+        cd md#CMD
+        cp ../PCA.inp .
+        rm PCA.list
+        for ((i=1; i<=#NRUN; i++)); do
+            {
+                echo "n${i}/md.cod"
+                echo "1 9999999"
+            } >> PCA.list
+        done
+        j_presto Ens_Ana PCA.inp && \
+        mv Ens_Ana_test/test.PCAcod . && \
+        mv Ens_Ana_test/test.TTPncnf . && \
+        rm -r Ens_Ana_test
+
+        j_presto PCAaxis -i test.PCAcod
+        j_presto PCAproj -i test.PCAcod -a test.axis -n 2 -o PCA
+	j_presto distrib -f FEL -i PCA.proj -a 2 3 -w 1 -s test.TTPncnf
+    )
+fi

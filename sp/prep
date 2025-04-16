@@ -1528,9 +1528,9 @@ def exe_shake():
 def display_credits():
     program_name = "prep"
     author = "Jinzen Ikebe"
-    version = "1.0.0"
+    version = "1.0.1"
     first_release_date = "2024-11-11"
-    current_release_date = "2024-11-11"
+    current_release_date = "2025-01-14"
     license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     print("*" * 50)
     print("*")
@@ -1553,7 +1553,7 @@ def display_credits():
 if __name__ == "__main__":
     stime = time.perf_counter()
     parser = argparse.ArgumentParser(description="j_presto prep makes a pdb file and the corresponding topology file (*.tpl), and optionally input file for SHAKE (*.shk) for j_presto")
-    parser.add_argument("access_key")
+    parser.add_argument("access_key", help=argparse.SUPPRESS)
     parser.add_argument("-o", "--output", default="test", help='Output file name. The default is "test".')
     parser.add_argument("-i", "--input", help="Input PDB file name")
     parser.add_argument("-db", "--tpldb", help="Topology database file name (*.tpldb)")

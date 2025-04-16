@@ -1,35 +1,58 @@
 #!/usr/bin/env python3
 
-import sys, os, re, readline
+import sys, os, re, readline, argparse
 
-def read_manual_file(filename):
-    data = {}
-    key = None
-    value_lines = []
+def read_manual_file(filename, unlock_mode=False):
+    data = {} ; links = {} ; key = None ; value_lines = []
+    link = {"n": None, "p": None, "u": None}
     with open(filename, 'r') as file:
         for line in file:
             line = line.rstrip()
+            if line.startswith('#'):
+                if unlock_mode:
+                    line = line[1:]
+                else:
+                    continue
             if line.startswith('>'):
                 if key is not None:
                     data[key] = '\n'.join(value_lines)
+                    links[key] = link
+                    link = {"n": None, "p": None, "u": None}
                     value_lines = []
                 key = line[1:].strip() if line[1:].strip() else ""
+            elif line.startswith('@'):
+                for part in line[1:].split(','):
+                    if ':' in part:
+                        tag, val = part.split(':', 1)
+                        tag, val = tag.strip(), val.strip()
+                        if tag in link and val:
+                            link[tag] = val
             else:
                 value_lines.append(line)
         if key is not None:  # Capture the last block if exists
             data[key] = '\n'.join(value_lines)
-    return data
+            links[key] = link
+    return data, links
 
 def highlight_text(text, search_term):
-    highlighted = re.sub(f"({re.escape(search_term)})", r"\033[1;31m\1\033[0m", text, flags=re.IGNORECASE)
-    return highlighted
+    return re.sub(f"({re.escape(search_term)})", r"\033[1;31m\1\033[0m", text, flags=re.IGNORECASE)
 
 def complete_input(text, state):
     options = [key for key in manual_data if key.startswith(text)]
-    if state < len(options):
-        return options[state]
-    else:
-        return None
+    return options[state] if state < len(options) else None
+
+def print_manual_entry(key):
+    print(f"\n{key}\n\n{manual_data[key]}\n")
+    link_info = manual_link.get(key, {})
+    navigation = []
+    if link_info.get('p'):
+        navigation.append(f"p(previous): {link_info['p']}")
+    if link_info.get('n'):
+        navigation.append(f"n(next): {link_info['n']}")
+    if link_info.get('u'):
+        navigation.append(f"u(up): {link_info['u']}")
+    if navigation:
+        print("   [ " + " / ".join(navigation) + " ]")
 
 def main():
     license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
@@ -40,16 +63,20 @@ def main():
         print("Error: License file not found.")
         sys.exit()
 
-    access_key = sys.argv[1]
-    filename = sys.argv[2]
-    if len(sys.argv) != 3 or access_key != "j_presto":
+    parser = argparse.ArgumentParser(description="Manual reader program.")
+    parser.add_argument('access_key', help=argparse.SUPPRESS)
+    parser.add_argument('filename', help=argparse.SUPPRESS)
+    parser.add_argument('--unlock', '-u', action='store_true', help=argparse.SUPPRESS)
+    args = parser.parse_args()
+
+    if args.access_key != "j_presto":
         sys.exit(1)
 
+    global manual_data, manual_link
     try:
-        global manual_data
-        manual_data = read_manual_file(filename)
+        manual_data, manual_link = read_manual_file(args.filename, unlock_mode=args.unlock)
     except FileNotFoundError:
-        print(f"Error: File '{filename}' not found.")
+        print(f"Error: File '{args.filename}' not found.")
         sys.exit(1)
 
     readline.set_startup_hook(lambda: readline.insert_text(''))
@@ -57,24 +84,16 @@ def main():
     readline.parse_and_bind('tab: complete')
 
     # Start the interactive part
+    current_key = ''
     print(f"\n\n\n{manual_data['']}")
     
     while True:
-        user_input = input("\nWhat would you like to ask about? (type 'show_list' for available words, 'q' to quit, 'search' to search the manual): ").strip()
+        user_input = input("\n*** What would you like to ask about? (type 'q' to quit): ").strip()
 
         if user_input.lower() in ['q', 'quit']:
             print(f"\nExiting the manual program.")
             break
-        elif user_input.lower() == 'show_list':
-            print("\nAvailable keys in the manual:")
-            count = 0
-            for key in manual_data:
-                print(key, end=' | ')
-                count += 1
-                if count % 10 == 0:
-                    print()
-            print()
-        elif user_input.lower() == 'search':
+        elif user_input.lower() in ['s', 'search']:
             search_term = input("Enter the search term: ").strip()
             found = False
             for key, content in manual_data.items():
@@ -85,8 +104,16 @@ def main():
                     print(f"\n{highlighted_content}\n")
             if not found:
                 print(f"'{search_term}' not found in the manual.")
+        elif user_input.lower() in ['f', 'faq']:
+            current_key = 'FAQ' ; print_manual_entry(current_key)
+        elif user_input.lower() in ['t', 'tutorial']:
+            current_key = 'tutorial' ; print_manual_entry(current_key)
+        elif user_input in ['n', 'p', 'u']:
+            link = manual_link[current_key][user_input]
+            if link and link in manual_data:
+                current_key = link ; print_manual_entry(current_key)
         elif user_input in manual_data:
-            print(f"\n{user_input}\n\n{manual_data[user_input]}\n")
+            current_key = user_input ; print_manual_entry(current_key)
         else:
             print(f"'{user_input}' not found in the manual. Please try another word.")
 

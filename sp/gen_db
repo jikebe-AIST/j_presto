@@ -1325,9 +1325,9 @@ def output_tpl(ofile):
 def display_credits():
     program_name = "gen_db"
     author = "Jinzen Ikebe"
-    version = "1.0.0"
+    version = "1.0.1"
     first_release_date = "2024-11-11"
-    current_release_date = "2024-11-11"
+    current_release_date = "2025-01-14"
     license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     print("*" * 50)
     print("*")
@@ -1351,7 +1351,7 @@ def main():
     stime = time.perf_counter()
     global input_files, solvent_box, residue_name_translator
     parser = argparse.ArgumentParser(description='j_presto gen_db generates a *.tpldb file, which is a database used for creating j_presto topology files (*.tpl).')
-    parser.add_argument('access_key')
+    parser.add_argument('access_key', help=argparse.SUPPRESS)
     parser.add_argument('-i','--input', nargs='+', action="append", help='Input AMBER format files. This includes dat, in, prep, lib, frcmod, and leaprc files. If multiple sets of parameters for the same topology are provided in the input files, the parameters from the later inputs take precedence.')
     parser.add_argument('-o','--output', default='test', help='Output file name. The default is "test"')
     parser.add_argument("-rr","--residue_rename", nargs='+', help='If you need to rename residue names, specify pairs of old and new residue names using this option. For example, to change "TP3" to "WAT", use -rr TP3:WAT.')

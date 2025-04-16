@@ -197,9 +197,9 @@ def read_batch_set(batch_set, md_run, md_multi, rseed):
 def display_credits():
     program_name = "batch_set"
     author = "Jinzen Ikebe"
-    version = "1.0.0"
+    version = "1.0.1"
     first_release_date = "2024-11-11"
-    current_release_date = "2024-11-11"
+    current_release_date = "2025-01-14"
     license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     print("*" * 50)
     print("*")
@@ -221,7 +221,7 @@ def display_credits():
 def main():
     stime = time.perf_counter()
     parser = argparse.ArgumentParser(description='j_presto batch_set prepares input files for multiple MD simulations in bulk.')
-    parser.add_argument('access_key')
+    parser.add_argument('access_key', help=argparse.SUPPRESS)
     parser.add_argument('-b','--batch_set', default='batch_set.inp', help='Input file of MD setting schedule for multiple MD runs. (The default is "batch_set.inp")')
     parser.add_argument('-r','--md_run', default='md_run.exe', help='Script file for running a single MD simulation.')
     parser.add_argument('-m','--md_multi', default='md_multi.exe', help='Script file for running multiple MD simulations as a single MPI job.')
