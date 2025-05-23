@@ -4,7 +4,7 @@ import subprocess
 import sys, os
 
 def run_program(program_name, args):
-    program_dict = {"md_run", "GEprep", "Ens_Ana", "PCAaxis", "PCAproj", "distrib"}
+    program_dict = {"md_run", "GEprep", "Ens_Ana", "PCAaxis", "PCAproj", "distrib", "pdb_alignfit", "nt_gen", "nt_conv", "conmut", "pick_conf", "ttp_se"}
     program_dict_nohelp = {"md_run", "GEprep", "Ens_Ana"}
     try:
         sys.stdout.flush()
@@ -27,9 +27,9 @@ def run_program(program_name, args):
 def display_credits():
     program_name = "j_presto"
     author = "Jinzen Ikebe"
-    version = "1.0.1"
+    version = "1.1.0"
     first_release_date = "2024-11-11"
-    current_release_date = "2025-04-16"
+    current_release_date = "2025-05-23"
     license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     print("*" * 50)
     print("*")
@@ -57,19 +57,24 @@ def main():
     if sys.argv[1] == "-h":
         print("Usage: j_presto <function> <arguments>\n")
         print("functions:")
-        print("       gen_db :  gen_db generates a *.tpldb file, which is database for creating J-PRESTO topology files (*.tpl).")
-        print("         prep :  prep creates coordinate file (*.pdb), topology file (*.tpl), and SHAKE file (*.shk) for simulation.")
-        print("       md_run :  md_run execute MD simulation. ")
-        print("     get_tmpl :  get_tmpl give you templates of input files and scripts for executing j_presto. ")
-        print("    batch_set :  batch_set sets up all the necessary files and directories required to run multiple MD simulations efficiently.")
-        print("       GEprep :  GEprep prepares a parameter file (*.nf) for Generalized Ensemble MD simulation.")
-        print("      mpi_run :  mpi_run executes multiple MD simulation runs as a single MPI job using an embarrassingly parallel approach.")
-        print("   mpi_master :  mpi_master executes multiple MD simulation runs as a single MPI job using a master-slave approach.")
-        print("      Ens_Ana :  Ens_Ana performs analysis of conformational ensembles obtained from simulation results. (Scheduled to be added in the next update)")
-#        print("      PCAaxis :  Construct axes for Principle Component Analysis (PCA).")
-#        print("      PCAproj :  Project data on Principle Component Analysis (PCA) axes.")
-#        print("      distrib :  Create a distribution plot.")
-        print("       manual :  manual shows how to use options for j_prest. ")
+        print("")
+        print("pdb_alignfit    : Superimposition of query structure to target one based on sequence alignment.")
+        print("nt_gen          : Generation of atomic name correspondence table from a PREP and a PDB file.")
+        print("nt_conv         : Convert residue and atom names in a PREP and a PDB file based on a name table.")
+        print("gen_db          : Generation of a database file (*.tpldb) for creating j_presto topology files (*.tpl).")
+        print("prep            : Preparation of input files (*.pdb, *.tpl, and *.shk files) for MD simulations.")
+        print("md_run          : Execution of MD simulation or energy minimization calculation.")
+        print("batch_set       : Setting up all the necessary files and directories required to run multiple MD simulations efficiently.")
+        print("GEprep          : Preparation of a parameter file (*.nf) for Generalized Ensemble MD simulations such as McMD and ALSD.")
+        print("Ens_Ana         : Performing analysis of conformational ensembles obtained from simulation results.")
+        print("PCAaxis         : Calculating axes for principal component analysis (PCA) through diagonalization.")
+        print("PCAproj         : Projecting each structure onto PCA subspace.")
+        print("distrib         : Generation of statistical distribution data from weighted input values for one- or two-dimensional variables.")
+        print("pick_conf       : Extraction and ranking structures based on user-defined conditions and event timings.")
+        print("ttp_se          : Calculation of weighted averages and standard errors of the data.")
+        print("conmut          : Propose mutations to improve enzyme stability from input amino acid sequences using the consensus method.")
+        print("get_tmpl        : Obtaining templates of input files and scripts for excuting j_presto.")
+        print("manual          : Viewing the manual.")
         print("\n")
         sys.exit(1)
 

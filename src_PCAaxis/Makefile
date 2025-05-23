@@ -3,7 +3,7 @@ all : install
 install : PCAaxis
 
 clean : 
-	rm *.o PCAaxis
+	rm *.o *.mod PCAaxis
 
 OBJS = main.o error.o output_time.o store_element.o mkaxis.o eigen2.o
 

@@ -149,57 +149,63 @@ def read_batch_set(batch_set, md_run, md_multi, rseed):
                         batch_set_txt += f"{key}= {ELEMNT[key]}\n"
                     batch_set_txt += "QUIT\n"
 
-        if imd < ist:
-            continue
-        if not os.path.exists(cdir):
-            os.makedirs(cdir)
-        filelist_txt = ""
-        for irun in range(1, nrun + 1):
-            run = str(irun) ; cdir2 = os.path.join(cdir, f"n{run}")
-            if not os.path.exists(cdir2):
-                os.makedirs(cdir2)
-            l = min_lambda + (max_lambda - min_lambda) * (irun - 1) / (nrun - 1)
-            t = min_temper + (max_temper - min_temper) * (irun - 1) / (nrun - 1)
+        if imd >= ist:
+            if not os.path.exists(cdir):
+                os.makedirs(cdir)
+            filelist_txt = ""
+            for irun in range(1, nrun + 1):
+                run = str(irun) ; cdir2 = os.path.join(cdir, f"n{run}")
+                if not os.path.exists(cdir2):
+                    os.makedirs(cdir2)
+                l = min_lambda + (max_lambda - min_lambda) * (irun - 1) / (nrun - 1)
+                t = min_temper + (max_temper - min_temper) * (irun - 1) / (nrun - 1)
 
-            replacements.update({"#RUN": run, "#LAMBDA": str(l), "#TEMPER": str(t), "#RNDSED": str(irun + rseed)})
-            txt = replace_placeholders(batch_set_txt, replacements)
-            with open(os.path.join(cdir2, "md.inp"), 'w') as out:
-                out.write(txt)
-            if ELEMNT["INPENE"]:
-                txt = replace_placeholders(ELEMNT["INPENE"], replacements)
-                if ELEMNT["SIMTYP"] != "CANO":
-                    filelist_txt += f'{txt}\n{ELEMNT["NFIRST"]} {ELEMNT["NFINAL"]}\n'
-                elif ELEMNT["SIMTYP"]:
-                    filelist_txt += f'{txt}\n{ELEMNT["NFIRST"]} {ELEMNT["NFINAL"]} {t}\n'
-            destination = os.path.join(cdir2, md_run)
-            os.system(f"cp {md_run} {destination}")
-            os.chmod(destination, 0o755)
-            print(f"md{imd}/n{irun}")
+                replacements.update({"#RUN": run, "#LAMBDA": str(l), "#TEMPER": str(t), "#RNDSED": str(irun + rseed)})
+                txt = replace_placeholders(batch_set_txt, replacements)
+                with open(os.path.join(cdir2, "md.inp"), 'w') as out:
+                    out.write(txt)
+                if ELEMNT["INPENE"]:
+                    txt = replace_placeholders(ELEMNT["INPENE"], replacements)
+                    if ELEMNT["SIMTYP"] != "CANO":
+                        filelist_txt += f'{txt}\n{ELEMNT["NFIRST"]} {ELEMNT["NFINAL"]}\n'
+                    elif ELEMNT["SIMTYP"]:
+                        filelist_txt += f'{txt}\n{ELEMNT["NFIRST"]} {ELEMNT["NFINAL"]} {t}\n'
+                destination = os.path.join(cdir2, md_run)
+                os.system(f"cp {md_run} {destination}")
+                os.chmod(destination, 0o755)
+                print(f"md{imd}/n{irun}")
 
-        filename, ext = os.path.splitext(md_multi)
-        filename = f"{filename}_{imd}{ext}"
-        txt = replace_placeholders(md_multi_txt, replacements)
-        with open(filename, 'w') as fil:
-            fil.write(txt)
-        os.chmod(filename, 0o755)
-
-        active = [key for key in namELM["GE"] if ELEMNT[key]]
-        if active:
-            txt = "\n".join(f"{key} = {ELEMNT[key]}" for key in active)
-            txt = replace_placeholders(txt, replacements)
-            with open(os.path.join(cdir, "GEprep.inp"), 'w') as fil:
+            filename, ext = os.path.splitext(md_multi)
+            filename = f"{filename}_{imd}{ext}"
+            txt = replace_placeholders(md_multi_txt, replacements)
+            with open(filename, 'w') as fil:
                 fil.write(txt)
-        active = [key for key in namELM["filelist"] if ELEMNT[key]]
-        if active:
-            with open(os.path.join(cdir, "file.list"), 'w') as fil:
-                fil.write(filelist_txt)
+            os.chmod(filename, 0o755)
+
+            active = [key for key in namELM["GE"] if ELEMNT[key]]
+            if active:
+                txt = "\n".join(f"{key} = {ELEMNT[key]}" for key in active)
+                txt = replace_placeholders(txt, replacements)
+                with open(os.path.join(cdir, "GEprep.inp"), 'w') as fil:
+                    fil.write(txt)
+            active = [key for key in namELM["filelist"] if ELEMNT[key]]
+            if active:
+                with open(os.path.join(cdir, "file.list"), 'w') as fil:
+                    fil.write(filelist_txt)
+
+        if ELEMNT["NXMINV"]:
+            ELEMNT["MINVAL"] = ELEMNT["NXMINV"] ; ELEMNT["NXMINV"] = False
+        if ELEMNT["NXMAXV"]:
+            ELEMNT["MAXVAL"] = ELEMNT["NXMAXV"] ; ELEMNT["NXMAXV"] = False
+        if ELEMNT["NXTEMP"]:
+            ELEMNT["TEMPER"] = ELEMNT["NXTEMP"] ; ELEMNT["NXTEMP"] = False
 
 def display_credits():
     program_name = "batch_set"
     author = "Jinzen Ikebe"
-    version = "1.0.1"
+    version = "1.0.2"
     first_release_date = "2024-11-11"
-    current_release_date = "2025-01-14"
+    current_release_date = "2025-05-23"
     license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     print("*" * 50)
     print("*")

@@ -1,0 +1,206 @@
+#!/usr/bin/env python3
+
+import argparse, time, os
+from Bio import PDB, Align
+from Bio.PDB import Superimposer
+
+def display_credits():
+    program_name = "pdb_alignfit"
+    author = "Jinzen Ikebe"
+    version = "1.0.0"
+    first_release_date = "2025-05-23"
+    current_release_date = "2025-05-23"
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    print("*" * 50)
+    print("*")
+    print(f"*    {program_name} (Version {version})")
+    print("*")
+    print(f"*                         Author : {author}")
+    print(f"*             First Release Date : {first_release_date}")
+    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print("*")
+    print(f"*" * 50)
+    print()
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+    except FileNotFoundError:
+        print("Error: License file not found.")
+        sys.exit()
+
+def parse_pdb(file_path):
+    parser = PDB.PDBParser(QUIET=True)
+    structure = parser.get_structure('protein', file_path)
+
+    # Extract amino acid sequences for all chains
+    sequences = {} ; seq_resnum = {}
+    for model in structure:
+        for chain in model:
+            seq = '' ; resnum = []
+            for residue in chain:
+                if PDB.is_aa(residue):
+                    seq += PDB.Polypeptide.protein_letters_3to1.get(residue.get_resname(), 'X')
+                    resnum.append(residue.id[1])
+            sequences[(model.id, chain.id)] = seq
+            seq_resnum[(model.id, chain.id)] = resnum
+
+    return structure, sequences, seq_resnum
+
+def align_sequences(seq1, seq2, mode, matrix, open_gap_score, extend_gap_score):
+    aligner = Align.PairwiseAligner()
+    aligner.mode = mode
+    aligner.open_gap_score = open_gap_score
+    aligner.extend_gap_score = extend_gap_score
+    aligner.substitution_matrix = Align.substitution_matrices.load(matrix)
+
+    alignments = aligner.align(seq1, seq2)
+    best_alignment = max(alignments, key=lambda x: x.score)
+
+    return best_alignment
+
+def superimpose_structures(structure1, structure2, seq_resnum1, seq_resnum2, best_alignment_info, simp, output_structure_path):
+    best_alignment = best_alignment_info['alignment_result']
+    aligned_seq1, aligned_seq2 = best_alignment.aligned
+    sr1 = seq_resnum1[(best_alignment_info['model_id1'], best_alignment_info['chain_id1'])]
+    sr2 = seq_resnum2[(best_alignment_info['model_id2'], best_alignment_info['chain_id2'])]
+    res_num1 = [i for istart, iend in aligned_seq1 for i in range(istart, iend)]
+    res_num2 = [i for istart, iend in aligned_seq2 for i in range(istart, iend)]
+
+    seqres1 = [sr1[i] for i in res_num1 if i < len(sr1)]
+    seqres2 = [sr2[i] for i in res_num2 if i < len(sr2)]
+
+    st1 = structure1[best_alignment_info['model_id1']][best_alignment_info['chain_id1']]
+    st2 = structure2[best_alignment_info['model_id2']][best_alignment_info['chain_id2']]
+
+    atoms1 = [] ; atoms2 = [] ; i = 0
+    for res1, res2 in zip(best_alignment[0], best_alignment[1]):
+        if res1 != '-' and res2 != '-':
+            try:
+                res_id1 = seqres1[i] ; res_id2 = seqres2[i]
+                atoms1.append(st1[(' ', res_id1, ' ')]['CA'])
+                atoms2.append(st2[(' ', res_id2, ' ')]['CA'])
+                if "backbone" in simp:
+                    atoms1.append(st1[(' ', res_id1, ' ')]['N'])
+                    atoms2.append(st2[(' ', res_id2, ' ')]['N'])
+                    atoms1.append(st1[(' ', res_id1, ' ')]['C'])
+                    atoms2.append(st2[(' ', res_id2, ' ')]['C'])
+                    atoms1.append(st1[(' ', res_id1, ' ')]['O'])
+                    atoms2.append(st2[(' ', res_id2, ' ')]['O'])
+            except IndexError:
+                print(f"Warning: Index {i} out of range for sequence-residue mapping.")
+            except KeyError as e:
+                print(f"Warning: Residue {res_id1} or atom {e} not found in one of the structures.")
+            i += 1
+
+    if not atoms1 or not atoms2:
+        print("Error: No atoms collected for superimposition. Exiting.")
+        return
+
+    superimposer = Superimposer()
+    superimposer.set_atoms(atoms1, atoms2)
+    superimposer.apply(structure2[best_alignment_info['model_id2']].get_atoms())
+
+    rmsd_value = superimposer.rms
+    print(f"RMSD : {rmsd_value:.2f} Å")
+
+    io2 = PDB.PDBIO()
+    io2.set_structure(structure2[best_alignment_info['model_id2']])
+    io2.save(output_structure_path)
+
+def main():
+    start_time = time.time()
+    parser = argparse.ArgumentParser(description='j_presto alignfit aligns amino acid sequences from PDB files and output the pdb file of the query structure superimposed on the reference structure.')
+    parser.add_argument('access_key', help=argparse.SUPPRESS)
+    parser.add_argument('reference_pdb_file', help='PDB file of the alignment target and the reference for the superimposition.')
+    parser.add_argument('query_pdb_file', help='PDB file of the alignment query and the structure to be superimposed.')
+    parser.add_argument('--align_mode', '-a', choices=['global', 'local'], default='local', help='Alignment mode (local or global). Default: local')
+    parser.add_argument('--superimposition', '-s', choices=['ca', 'backbone'], default='ca', help='Atoms for superimposition (ca or backbone). Default: ca')
+    parser.add_argument('--open_gap_score', '-ogs', type=float, default=-10, help='Gap opening score. Default: -10')
+    parser.add_argument('--extend_gap_score', '-egs', type=float, default=-0.2, help='Gap extension score. Default: -0.2')
+    # aligner.open_gap_score = -11: BLAST(blastp), -10: clustalW
+    # aligner.extend_gap_score = -1: BLAST(blastp), -0.2: clustalW
+    parser.add_argument('--substitution_matrix', '-sm', default='BLOSUM62', help='Substitution matrix used. Default: BLOSUM62')
+    parser.add_argument('--output', '-o', default='superimposed_structure.pdb', help='Output PDB file name for the superimposed structure. Default: superimposed_structure.pdb')
+
+    args = parser.parse_args()
+    access_key = args.access_key
+    if access_key != "j_presto":
+        sys.exit()
+    display_credits()
+
+    print("\nInput arguments:")
+    print(f"         Reference PDB file : {args.reference_pdb_file}")
+    print(f"             Query PDB file : {args.query_pdb_file}")
+    print(f"             Alignment mode : {args.align_mode}")
+    print(f"             Open gap score : {args.open_gap_score}")
+    print(f"           Extend_gap_score : {args.extend_gap_score}")
+    print(f"  Atoms for superimposition : {args.superimposition}")
+    print(f"      Superimposed pdb file : {args.output}")
+    print(f"        Substitution matrix : {args.substitution_matrix}")
+
+    structure1, sequences1, seq_resnum1 = parse_pdb(args.reference_pdb_file)
+    structure2, sequences2, seq_resnum2 = parse_pdb(args.query_pdb_file)
+
+    max_identity = 0
+    best_alignment_info = None
+    for (model_id1, chain_id1) in sequences1.keys():
+        for (model_id2, chain_id2) in sequences2.keys():
+            seq1 = sequences1.get((model_id1, chain_id1), '')
+            seq2 = sequences2.get((model_id2, chain_id2), '')
+
+            if not seq1 or not seq2:
+                print(f"Warning: No sequence found for chain ID '{chain_id1}' in one or both PDB files.")
+                continue
+
+            print(f"\n * Comparing sequences")
+            print(f"     for Chain {chain_id1} in Model {model_id1} in {args.reference_pdb_file} and")
+#            print(f"  seq1 (#res{len(seq1)}): {seq1}")
+            print(f"         Chain {chain_id2} in Model {model_id2} in {args.query_pdb_file}")
+#            print(f"  seq2 (#res{len(seq2)}): {seq2}")
+
+            alignment_result = align_sequences(seq1, seq2, args.align_mode, args.substitution_matrix, args.open_gap_score, args.extend_gap_score)
+
+            aligned_seq1, aligned_seq2 = alignment_result[:2]
+
+            identical_positions = sum(a == b for a, b in zip(aligned_seq1, aligned_seq2))
+            total_seq1 = len(aligned_seq1)
+            identity = identical_positions / total_seq1
+#            print(f"\n  Identity: {identity:.2%} ({identical_positions}/{total_seq1})")
+#            print(f"  Alignment Score: {alignment_result.score}\n")
+#            print(alignment_result)
+
+            if identity > max_identity:
+                max_identity = identity
+                best_alignment_info = {
+                    'model_id1': model_id1,
+                    'chain_id1': chain_id1,
+                    'model_id2': model_id2,
+                    'chain_id2': chain_id2,
+                    'identity': identity,
+                    'alignment_score': alignment_result.score,
+                    'alignment_result': alignment_result,
+                    'seq1': seq1,
+                    'seq2': seq2,
+                    'identical_positions': identical_positions,
+                    'total_seq1': total_seq1
+                }
+
+    if best_alignment_info:
+        best_alignment = best_alignment_info['alignment_result']
+        print("\nBest Alignment:")
+        print(f"  {args.reference_pdb_file}  Model {best_alignment_info['model_id1']} Chain {best_alignment_info['chain_id1']} (#res{len(best_alignment_info['seq1'])}) : ")
+        print(best_alignment_info['seq1'])
+        print(f"\n  {args.query_pdb_file}  Model {best_alignment_info['model_id2']} Chain {best_alignment_info['chain_id2']} (#res{len(best_alignment_info['seq2'])}) : ")
+        print(best_alignment_info['seq2'])
+        print(f"\nIdentity: {best_alignment_info['identity']:.2%} ({best_alignment_info['identical_positions']}/{best_alignment_info['total_seq1']})")
+        print(f"Alignment Score: {best_alignment_info['alignment_score']}\n")
+        print(best_alignment)
+        superimpose_structures(structure1, structure2, seq_resnum1, seq_resnum2, best_alignment_info, args.superimposition, args.output)
+
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"\nTotal elapsed time: {elapsed_time:.2f} seconds\n")
+
+if __name__ == "__main__":
+    main()
+

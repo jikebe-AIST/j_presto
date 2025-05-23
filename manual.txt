@@ -1,10 +1,10 @@
 >
    #####  What is the content you would like to ask about?  #####
    #                                                            #
-   #  j_presto manual (Version 1.0.2)                           #
+   #  j_presto manual (Version 1.1.0)                           #
    #	                       Author : Jinzen Ikebe            #
    #  	           First Release Date : 2024-11-11              #
-   #	Release Date for Current ver. : 2025-04-16              #
+   #	Release Date for Current ver. : 2025-05-23              #
    #                                                            #
    ##############################################################
 
@@ -35,23 +35,213 @@ With j_presto, you can execute the following sub-programs using the command:
 If you would like to know more about a specific sub-program, please enter its name.
 
 Sub-program name list:
-	gen_db     : Generation of a database file (*.tpldb) for creating j_presto topology files (*.tpl).
-	prep       : Preparation of input files (*.pdb, *.tpl, and *.shk files) for j_presto.
-	md_run     : Execution of MD simulation or energy minimization calculation.
-	get_tmpl   : Obtaining templates of input files and scripts for excuting j_presto.
-	batch_set  : Setting up all the necessary files and directories required to run multiple MD simulations efficiently
-	GEprep     : Preparation of a parameter file (*.nf) for Generalized Ensemble MD simulations such as McMD and ALSD.
-	Ens_Ana    : Performing analysis of conformational ensembles obtained from simulation results
-	PCAaxis    : Calculating axes for principal component analysis (PCA) through diagonalization
-	PCAproj    : Projecting each structure onto PCA subspace
-	distrib    : Generation of statistical distribution data from weighted input values for one- or two-dimensional variables
-	manual     : Viewing the manual.
+    For MD simulation,
+	pdb_alignfit	: Superimposition of query structure to target one based on sequence alignment.
+	nt_gen		: Generation of atomic name correspondence table from a PREP and a PDB file.
+	nt_conv		: Convert residue and atom names in a PREP and a PDB file based on a name table.
+	gen_db     	: Generation of a database file (*.tpldb) for creating j_presto topology files (*.tpl).
+	prep       	: Preparation of input files (*.pdb, *.tpl, and *.shk files) for MD simulations.
+	md_run     	: Execution of MD simulation or energy minimization calculation.
+	batch_set  	: Setting up all the necessary files and directories required to run multiple MD simulations efficiently.
+	GEprep     	: Preparation of a parameter file (*.nf) for Generalized Ensemble MD simulations such as McMD and ALSD.
+
+    For Analysis,
+	Ens_Ana    	: Performing analysis of conformational ensembles obtained from simulation results.
+	PCAaxis    	: Calculating axes for principal component analysis (PCA) through diagonalization.
+	PCAproj    	: Projecting each structure onto PCA subspace.
+	distrib    	: Generation of statistical distribution data from weighted input values for one- or two-dimensional variables.
+	pick_conf	: Extraction and ranking structures based on user-defined conditions and event timings.
+	ttp_se		: Calculation of weighted averages and standard errors of the data.
+
+    For Enzyme development,
+#	MSPER		:
+	conmut		: Propose mutations to improve enzyme stability from input amino acid sequences using the consensus method.
+
+    For user guidance,
+	get_tmpl   	: Obtaining templates of input files and scripts for excuting j_presto.
+	manual     	: Viewing the manual.
+
 The simulations performed by j_presto support parallelization using OpenMP, but currently do not support parallelization via MPI or GPU.
 However, you can use the programs j_presto_mpi and j_presto_master, which allow you to bundle multiple OpenMP-parallelized MD simulation runs and execute them as a single MPI job.
 	j_presto_mpi    : Execute multiple MD simulation runs as a single MPI job using an embarrassingly parallel approach.
 	j_presto_master : Execute multiple MD simulation runs as a single MPI job using a master-slave approach.
+>pdb_alignfit
+@u:j_presto,n:nt_gen
+The command "j_presto pdb_alignfit" aligns amino acid sequences from two PDB files and superimposes their structure based on the alignment.
+It compares the sequences of the reference and query structures, calculates the identify percentage, and outputs a new PDB file where the query structure is superimposed onto the reference structure.
+Structure superimposition can also be performed with the "j_presto Ens_Ana" command, but pdb_alignfit was specifically developed for aligning two protein structures with low sequence homology.
+For example, let's consider the structure of protein A, which is of interest to you, and its homologous protein B.
+Protein A is a standalone structure, while protein B is a complex with a ligand.
+In this case, A would be used as the reference structure, and B would be the query structure for alignment.
+By superimposing B onto A, you can align the ligand in B with the structure of A, thereby creating a model of the complex between A and the ligand.
+
+This program does not require an internet connection and performs all processing locally.
+It allows you to carry out alignments and structural superimpositions securely, without uploading any sequence data externally, making it suitable for handling confidential information.
+
+How to use: j_presto pdb_alignfit REFERENCE_PDB_FILE QUERY_PDB_FILE [options]
+
+The REFERENCE_PDB_FILE and QUERY_PDB_FILE are required arguments.
+	REFERENCE_PDB_FILE 	: The PDB file of the reference structure that will be used for alignment and superimposition.
+	QUERY_PDB_FILE		: The PDB file of the query structure that will be aligned to the reference structure.
+
+Option list:
+	pdb_alignfit -a		: Alignment mode
+	pdb_alignfit -s		: Specifies the atoms to use for superimposition (ca or backbone).
+	pdb_alignfit -ogs	: Open gap score used in the sequence alignment.
+	pdb_alignfit -egs	: Extension gap score used in the sequence alignment.
+	pdb_alignfit -sm	: Substitution matrix used for sequence alignment.
+	pdb_alignfit -o		: The name of output PDB file where the superimposed query structure will be saved.
+
+If you would like to know how to use the arguments, please enter them such as "pdb_alignfit -a".
+>pdb_alignfit -a
+@u:pdb_alignfit,n:pdb_alignfit -s
+How to use: j_presto pdb_alignfit -a {global, local}
+
+This option sets alignment mode to "global" or "local".
+Global alignment attempts to align the entire sequence.
+Local alignment focuses on finding the best matching sub-sequence.
+The default setting is local.
+Note that the global alignment mode might be more computationally expensive than local one, especially for long sequence.
+>pdb_alignfit -s
+@u:pdb_alignfit,p:pdb_alignfit -a,n:pdb_alignfit -ogs
+How to use: j_presto pdb_alignfit -s {ca, backbone}
+
+This option specifies the atoms to use for superimposition.
+Can be either "ca" (C-alpha atoms) or "backbone" (backbone atoms (Ca, C, N, and O))
+The default is "ca".
+>pdb_alignfit -ogs
+@u:pdb_alignfit,p:pdb_alignfit -s,n:pdb_alignfit -egs
+How to use: j_presto pdb_alignfit -ogs OPEN_GAP_SCORE
+
+The open gap score used in the sequence alignment.
+This score determines the penalty for introducing gaps in the alignment.
+The default is -10.
+>pdb_alignfit -egs
+@u:pdb_alignfit,p:pdb_alignfit -ogs,n:pdb_alignfit -sm
+How to use: j_presto pdb_alignfit -egs EXTEND_GAP_SCORE
+
+The extend gap score used in the sequence alignment.
+This score determines the penalty for extending gaps in the alignment.
+The default is -0.2.
+>pdb_alignfit -sm
+@u:pdb_alignfit,p:pdb_alignfit -egs,n:pdb_alignfit -o
+How to use: j_presto pdb_alignfit -sm MATRIX_NAME
+
+This option specifies the substitution matrix used for sequence alignment.
+It determines the scores for aligning defferent amino acids.
+The default is "BLOSUM62".
+>pdb_alignfit -o
+@u:pdb_alignfit,p:pdb_alignfit -sm
+How to use: j_presto pdb_alignfit -o OUTPUT_PDB_FILE_NAME
+
+This option specifies the name of the output PDB file where the superimposed query structure will be saved.
+The default is "superimposed_structure.pdb"
+>nt_gen
+@u:j_presto,p:pdb_alignfit,n:nt_conv
+Simulation parameters for the 20 common amino acids and nucleic acid bases are typically prepared in advance.
+However, for simulations involving specialized amino acids or ligand small molecules, it may be necessary to prepare a prep file containing the relevant parameters.
+These files are often prepared using external programs such as Gaussian, but during this process, the atom names assigned to molecules in the original PDB file may change, resulting in different atom names in the prep file.
+In such cases, manually matching the corresponding atom names in both the PDB and prep files can be time-consuming.
+This program automates this process by creating a table of corresponding atom names using "j_presto nt_gen," and "j_presto nt_conv" performs the conversion based on this table.
+
+The command "j_presto nt_gen" generates an atomic name correspondence table from a PREP file and a PDB file.
+This program parses the PDB file, extracting information about atomic distances and bonds, and then matches the atom names to those in the PREP file.
+The result is an output table showing the correspondence between atoms from both files.
+
+This generated name table can be used as input for the "j_presto nt_conv" command, which automatically converts and matches atom names between the PDB and PREP files based on their corresponding relationships. 
+The nt_conv command simplifies the process of aligning atom names from both files, ensuring that the atomic information is consistent and ready for further analysis or simulation.
+
+How to use: j_presto nt_gen INPUT_PREP_FILE INPUT_PDB_FILE [options]
+
+The INPUT_PREP_FILE and INPUT_PDB_FILE are required arguments.
+        INPUT_PREP_FILE	: The input PREP file path.
+        INPUT_PDB_FILE	: The input PDB file path.
+
+Option list:
+	nt_gen -o	: Specifies the output file name where the atomic correspondence table will be written.
+	nt_gen -t	: Threshold distance for determining the presence of covalent bonds between atom in the PDB file.
+
+If you would like to know how to use the arguments, please enter them such as "nt_gen -o".
+>nt_gen -o
+@u:nt_gen,n:nt_gen -t
+How to use: j_presto nt_gen -o OUTPUT_FILE_NAME
+
+This option specifies the output name table file name.
+The default is "table.txt".
+>nt_gen -t
+@u:nt_gen,p:nt_gen -o
+How to use: j_presto nt_gen -t THRESHOLD_DISTANCE
+
+This option specifies the threshold distance for determining the presence of covalent bonds between atoms in the PDB file.
+The default is 1.8 Å.
+This program determines that there is a covalent bond between atoms in the PDB file if the distance between them is below the specified threshold.
+It then infers the correspondence of atom names by comparing the bonding information with that listed in the PREP file.
+>nt_conv
+@u:j_presto,p:nt_gen,n:gen_db
+Simulation parameters for the 20 common amino acids and nucleic acid bases are typically prepared in advance.
+However, for simulations involving specialized amino acids or ligand small molecules, it may be necessary to prepare a prep file containing the relevant parameters.
+These files are often prepared using external programs such as Gaussian, but during this process, the atom names assigned to molecules in the original PDB file may change, resulting in different atom names in the prep file.
+In such cases, manually matching the corresponding atom names in both the PDB and prep files can be time-consuming.
+This program automates this process by creating a table of corresponding atom names using "j_presto nt_gen," and "j_presto nt_conv" performs the conversion based on this table.
+
+The command "j_presto nt_conv" converts residue and atom names in a PDB or PREP file based on the specified name table file.
+The name table file can be automatically generated using "j_presto nt_gen" command, and contains a mapping of original names (on the left) to new names (on the right).
+This tool allows you to convert names in bulk, or to reverse the conversion to restore the original names.
+
+How to use: j_presto nt_conv INPUT_TABLE_NAME INPUT_FILE_NAME [options]
+
+The INPUT_TABLE_NAME and INPUT_FILE_NAME are required arguments.
+	INPUT_TABLE_NAME	: Name table file name including the mapping between original names and the new names.
+	INPUT_FILE_NAME		: The input file (either PDB or prep format) to be processed.
+
+Option list:
+	nt_conv -o		: Specifies the output file name.
+	nt_conv -r		: Performs the conversion in the reverse direction.
+	nt_conv -rh		: Removes hydrogen atoms associated with converted residues; use 'all' to remove all hydrogen atoms from the PDB file.
+	nt_conv -ra		: Renumbers atom IDs in the output file, making them sequential.
+	nt_conv -rr		: Renumbers residue IDs in the output file, making them sequential.
+	nt_conv -rph		: Renames hydrogen atoms in prep files based on their bonded atom.
+
+If you would like to know how to use the arguments, please enter them such as "nt_gen -o".
+>nt_conv -o
+@u:nt_cont,n:nt_conv -r
+How to use: j_presto nt_conv -o OUTPUT
+
+This option specifies the output file name for the PDB or prep file.
+If not specified, the default output file will be "output.pdb" or "output.prep".
+>nt_conv -r
+@u:nt_cont,p:nt_conv -o,n:nt_conv -rh
+How to use: j_presto nt_conv -r
+
+This option performs the conversion in the reverse direction.
+Nomally, names are converted from the original name (on the left side of the name table file) to the new name (on the right side).
+When this option is used, the conversion happens from the new names back to the original ones.
+>nt_conv -rh
+@u:nt_cont,p:nt_conv -r,n:nt_conv -ra
+How to use: j_presto nt_conv -rh    or    j_presto nt_conv -rh all
+
+This option removes hydrogen atoms related to converted residues in the PDB file.
+Use "all" to remove all hydrogen atoms. 
+>nt_conv -ra
+@u:nt_cont,p:nt_conv -rh,n:nt_conv -rr
+How to use: j_presto nt_conv -ra
+
+This option renumbers atom IDs in the output PDB file, making them sequential.
+>nt_conv -rr
+@u:nt_cont,p:nt_conv -ra,n:nt_conv -rph
+How to use: j_presto nt_conv -rr
+
+This option renumbers residue IDs in the output PDB file, making them sequential.
+>nt_conv -rph
+@u:nt_cont,p:nt_conv -rr
+How to use: j_presto nt_conv -rph
+
+This option is used to rename hydrogen atoms within the prep file.
+In PDB files, the names of hydrogen atoms are typically determined based on how they bond with other atoms in the molecule.
+However, prep files may use a different naming convention.
+By using this option, hydrogen atoms in the converted prep file will be renamed appropriately, ensuring consistency with the required format for simulations or calculations.
 >gen_db
-@u:j_presto,n:prep
+@u:j_presto,p:nt_conv,n:prep
 The command "j_presto gen_db" generates topology database file (*.tpldb) and water solvent coordinate file (*.slv) for j_presto.
 These files are created by specifying AMBER format file with the "j_presto gen_db -i" argument.
 If you would like to know how to use the arguments, please enter them such as "gen_db -i"
@@ -368,7 +558,7 @@ To constrain all covalent bonds, specify j_presto prep -shake A.
 (Note that this argument cannot constrain covalent bonds specified with SSBOND or LINK.)
 By setting this argument, a configuration file (*.shk) necessary for applying SHAKE during the simulation will be generated.
 >md_run
-@u:j_presto,p:prep,n:get_tmpl
+@u:j_presto,p:prep,n:batch_set
 The command "j_presto md_run" executes molecular dynamics simulations or energy minimization calculations.
 The usage is as follows:
 	j_presto md_run [INPUT_FILE]
@@ -1284,7 +1474,7 @@ The 10th to 13th components represent fmin, fmax, rmin, and rmax, respectively.
 The 14th component is an option to output information about the atoms to which the dihedral angle restraints has been applied when executing "j_presto md_run".
 Setting this option to "YES" enable the output.
 >batch_set
-@u:j_presto,p:get_tmpl,n:GEprep
+@u:j_presto,p:md_run,n:GEprep
 The "j_presto batch_set" automatically generates input files and execution scripts necessary for running multiple MD simulation runs.
 When you execute a single MD simulation run, you prepare an input file (md.inp) describing the desired settings, and then execute the calculation with "j_presto md_run md.inp".
 However, in practical operations, you may need to run multiple MD simulations simultaneously with different initial velocities, or in McMD or ALSD simulations, repeatedly execute numerous MD runs for conformational sampling.
@@ -2111,25 +2301,6 @@ Option for the input file (GEprep.inp) for the subprogram "j_presto GEprep" that
 This option specifies to which data point in the *.ene file, containing energy and λ values, to use data essential for calculating functions necessary to execute McMD or ALSD.
 If you want to include data up to a specific data point, set that value here.
 If you want to use all data up to the end of the file, specify a sufficiently large number.
->get_tmpl
-@u:j_presto,p:md_run,n:batch_set
-This command is used to obtain the input file or the script templates necessary for executing j_presto (get template).
-The usage is as follows:
-	j_presto get_tmpl [file name to retrieve]
-The list of files that can be obtained is as follows:
-	gen_db             : Script for generating parameter database files (*.tpldb) for j_presto.
-	prep               : Script for preparing the necessary files for MD simulations and energy minimization (*.pdb, *.tpl, *.shk).
-	min.inp            : Input file for performing an energy minimization calculation.
-	md.inp             : Input file for performing a single MD simulation.
-	CAPbound.inp       : Input file to perform calculations with CAP boundary.
-	psr.inp            : Input file to restrain position of atoms.
-	dsr.inp            : Input file to restrain distances between atoms.
-	dhr.inp            : Input file to restrain dihedral angles.
-	md_run             : Script for running a single MD simulation or energy minimization.
-	batch_set.inp      : Input file for batch_set to prepare input files for multiple MD simulations in bulk, used to specify the MD schedule.
-	batch_set_ALSD.inp : Input file for batch_set to prepare input files for ALSD simulations in bulk, used to specify the MD schedule.
-	md_multi           : Script for running multiple MD simulations as a single MPI job.
-Additionally, to retrieve all of these files at once, you can use "j_presto get_tmpl all".
 >j_presto_mpi
 @u:j_presto,n:j_presto_master
 "j_presto_mpi" executes multiple MD simulation runs as a single MPI job using an embarrassingly parallel approach.
@@ -2365,13 +2536,13 @@ To input numerous structures in PDB format, create a list file where each line c
 	...
 and specify this list file using this option.
 >PDB_consistency_check
-@u:Ens_Ana.inp,p:input_PDB_list,n:input_binary_check
+@u:Ens_Ana.inp,p:input_PDB_list,n:input_binary_list
 An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
 This option is a flag to check the consistency between the PDB files provided through "input_PDB_list" and the template PDB specified by "template_PDB".
 If inconsistencies exist, Ens_Ana cannnot perform accurate analysis; thus, the default setting is "YES".
 However, as this check requires additonal computation time, it can be set to "NO" to reduce the time if you are confident that the files are already consistent.
 This option also applies to consistency check for reference PDB files provided through "input_reference_PDB" and "input_reference_PDB_list".
->input_binary_check
+>input_binary_list
 @u:Ens_Ana.inp,p:PDB_consistency_check,n:output_PDB_flag
 An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
 This option specifies a list file containing the names of j_presto coordinate binary format files (*.cod) to be used for analysis.
@@ -2383,11 +2554,25 @@ The format of this file is as follows:
 	...
 Each binary file's information is written in two lines.
 The first line specifies the file name and the second one is the range of structures to be analyzed, defined by the first and last structure numbers included in the binary file.
-In the above example, the initial 50 structures are excluded, starting the analysis from the 51st structure. If the last number exceeds the total number in the binary file, all structures up to the last one are analyzed.
+In the above example, the initial 50 structures are excluded, starting the analysis from the 51st structure.
+If the last number exceeds the total number in the binary file, all structures up to the last one are analyzed.
+
+In the previous example, two simulation trajectories (1.cod and 2.cod) were used as input.
+However, in practical simulation workflows, it is often not feasible to run one long trajectory continuously.
+Instead, simulations are typically executed in shorter segments, with each new segment starting from the final structure of the previous one.
+In such cases, if you want Ens_Ana to treat these segmented trajectories as a single continuous trajectory, you can link them by inserting a space and the following symbol "->" after the filename like:
+        1.cod ->
+        51  99999999
+        2.cod
+        51  99999999
+        ...
+In this case the sum of trajectories of 1.cod and 2.cod is treated as a long trajectory.
+This technique is especially useful when performing time-series analyses.
+
 The binary files are generated by executing "j_presto md_run" with the "NAMECO" option to specify their names.
 Note that if only partial coordinates were output using the "OUTATM" option, the PDB file specified by "template_PDB" option must also include only the corresponding atoms.
 >output_PDB_flag
-@u:Ens_Ana.inp,p:input_binary_check,n:output_binary_flag
+@u:Ens_Ana.inp,p:input_binary_list,n:output_binary_flag
 An option that can be set in the input file (Ens_Ana.inp) for the ensemble analysis program, "j_presto Ens_Ana".
 When this flag is set to "YES," the input structures are output as PDB files.
 For example, if "project_name = test" is specified, PDB files will be saved under the directory "Ens_Ana_test/test_PDB/" with names such as "1.pdb".
@@ -2765,10 +2950,12 @@ Argument for specifying PC axis file (*.axis).
 The file can be generated by the "j_presto PCAaxis" command.
 >PCAproj -n
 @u:PCAproj,p:PCAproj -a
+How to use: j_presto PCAproj -n NUMBER
+
 This argument specifies N, the number of PC axes for projection, ranging from the first (largest) to the N-th principal component.
 If you set "j_presto PCAproj -n 2", the PCA space coordinates of each structure are output in the *.proj file as rows of data with N+1 columns: the first column represents the weight coefficient of the structure, the second column the coordinate on the first PCA axis, and the third column the coordinate on the second PCA axis.
 >distrib
-@u:j_presto,p:PCAproj
+@u:j_presto,p:PCAproj,n:pick_conf
 The command "j_presto distrib" analyzes input data containing one- two-, or three-dimensional variables with optional weights and sub-grouping, and generates statistical distributions or free energy landscapes.
 This program is designed to analyze structural ensemble data generated from multiple MD simulations using the Trivial Trajectory Parallelization (TTP) method.
 It reads the combined output of these parallel simulations and calculates the average and standard error of physical quantities for each individual run, referred to as a "sub-group".
@@ -2827,7 +3014,7 @@ The columns to be used for analysis (e.g. x, y, z) are selected via the -a (--ax
 It is not necessary for all files to have the same number of rows, but the number and structure of columns should match if used with options like -a (--axis) or -w (-weight)
 >distrib -o
 @u:distrib,p:distrib -i,n:distrib -f
-How to use: j_presto distrib -o
+How to use: j_presto distrib -o OUTPUT
 
 This option sets the prefix for all output files generated by the program.
 The -o (output) option determines the common part (*) in the filenames like *.avg, *.dist etc.
@@ -2897,7 +3084,7 @@ If a range is not specified, it will be automatically determined based on the in
 If min and max values are given in reverse order, the program will automatically correct them.
 >distrib -t
 @u:distrib,p:distrib -r,n:distrib -bn
-How to use: j_presto distrib -t [temperature]
+How to use: j_presto distrib -t TEMPERATURE
 
 This option specifies the temperature used when plotting the free energy landscape.
 Since the free energy landscape is calculated based on the Boltzmann factor, the temperature affects the resulting energy values.
@@ -2905,7 +3092,7 @@ Here, temperature is given in Kelvin.
 If not specified, the default temperature used is 300K.
 >distrib -bn
 @u:distrib,p:distrib -t,n:distrib -bs
-How to use: j_presto distrib -bn nx[,ny]
+How to use: j_presto distrib -bn NX[,NY]
 
 This option allows you to specify the number of bins (for both x-axis and y-axis) when plotting a distribution.
 The number of bins determines how finely the data distribution is divided.
@@ -2920,7 +3107,7 @@ For 2-dimensional (x,y plane) distribution:
 For example, "j_presto distrib -bn 100,150", 100 bins will be used for the x-axis and 150 bins for the y-axis.
 >distrib -bs
 @u:distrib,p:distrib -bn,n:distrib -xnorm
-How to use: j_presto distrib -bs sx[,sy]
+How to use: j_presto distrib -bs SX[,SY]
 
 This option is used to specify the size (width) of each bin when plotting the graph.
 If bin size is explicitly specified, the number of bins is calculated accordingly.
@@ -2940,8 +3127,392 @@ When this option is specified, the probability distribution is normalized along 
 With "-xnorm", for each x-bin, the sum of probabilities along the y axis is normalized to 1.
 This is useful when examining conditional distributions or local profiles for each x position.
 This option is only effective when "-f" is not "DIST".
+>pick_conf
+@u:j_presto,p:distrib,n:ttp_se
+The command "j_presto pick_conf" extracts specific structures from simulation data based on user-defined conditions.
+When used together with the analysis program "j_presto Ens_Ana", it enables advanced post-processing such as ensemble filtering and event detection.
+
+Objectives of this program
+1 : Reconstruct an ensemble that satisfy specific conditions
+
+	Example : Extract an ensemble containg structures with RMSD < 1.2 Å, or within a specific area in the PCA plane etc.
+
+	This program outputs a "*.list" file, which is a list of structures that meet specified conditions based on Ens_Ana analysis results.
+	The *.list file can be used as "input_binary_list" in Ens_Ana to re-analyze only the selected subset.
+	For example, in enzyme design workflows like MSPER, it helps extract structures where the active site and ligand are in proximity.
+
+2 : Detect the time it takes for a defined event to occur
+
+	Example : Detect how long it takes for a protein to fold into its native structure.
+
+	This program detects the first time point at which a specified condition is met within each trajectory.
+	The results are saved as an event detection file (*.ed).
+	If you want to detect the time, you have to set the argument "pick_conf -m" correctly.
+
+3 : Rank structures that are closest to the target condition
+
+	Example : Rank and select the top 5 structures closest to a target point on a free energy landscape.
+
+	This program allows you to rank structures based on their proximity to the target condition and extract the top structures.
+	The results are saved as "*.pick" file.
+	This is useful for examining structures in the neighborhood of the condition.
+
+Option list:
+	pick_conf -i	: Input file name, column number, and reaction coordinate name (multiple allowed).
+	pick_conf -o	: Prefix for output files.
+	pick_conf -l 	: Input log information file from Ens_Ana.
+	pick_conf -w	: Input weight file from Ens_Ana (*.weight).
+	pick_conf -t	: TTPncnf file for assigning simulation ID and time.
+	pick_conf -m	: Define new reaction coordinates by combining multiple reaction coordinates.
+	pick_conf -pr	: Specify condition range (multiple allowed).
+	pick_conf -s	: Sorting order of output (multiple allowed).
+	pick_conf -n	: Number of top-ranked structures to output.
+	pick_conf -e	: Specify condition for event detection (required with -l, -w, -t, -ti).
+	pick_conf -ti	: Time step and initial time for event detection.
+
+If you would like to know how to use the arguments, please enter them such as "pick_conf -l"
+
+This program may generate the following output files:
+
+	*.list	: When both -l and -w are specified, a list file for structures satisfying the condition defined by the -pr option is generated.
+	*.ed	: When the -e option is specified, the results of event detection are output.
+	*.pick	: Data related to structures that meet the condition specified by the -pr option are output.
+>pick_conf -i
+@u:pick_conf,n:pick_conf -o
+How to use: j_presto pick_conf -i FILE_NAME1 COLUMN_NUMBER1 RC_NAME1 [FILE_NAME2 COLUMN_NUMBER2 RC_NAME2 ...]
+
+This option is specified as a set of three elements:
+	1 : Input file name
+	2 : Column number to read
+	3 : Name to assign to the data as a reaction coordinate.
+
+For example, the following input:
+	j_presto pick_conf -i test.rmsd 2 rmsd test.proj 2 PCA1 test.proj 3 PCA2
+means that the data in column 2 of the file "test.rmsd" will be read and assigned the name "rmsd", and that columns 2 and 3 of the file "test.proj" will be read and assigned the names "PCA1" and "PCA2", respectively.
+
+You can specify multiple such triplets.
+The names assigned here (reaction coordinate names) can later be used in other arguments such as -pr, -s, or -e to define conditions.
+>pick_conf -o
+@u:pick_conf,p:pick_conf -i,n:pick_conf -l
+How to use: j_presto pick_conf -o OUTPUT_PREFIX
+
+This option specifies prefix for output files.
+The default is "test" (i.e. The output files name as test.list, test.ed, etc...).
+>pick_conf -l
+@u:pick_conf,p:pick_conf -o,n:pick_conf -w
+How to use: j_presto pick_conf -l LOGINFO_FILE_NAME
+
+This option specifies the log file generated when executing "j_presto Ens_Ana".
+If you wish to obtain a list (*,list) of structures that satisfy your specified conditions, this option must be provided.
+
+If you used the execution template provided by "j_presto get_tmpl Ens_Ana.exe" command when running Ens_Ana, the log file is automatically saved as "Ens_Ana.log" by default—please specify this file.
+If you did not use the template, the log is typically printed to the screen (standard output) and not saved to a file.
+In such cases, use the "tee" command or similar methods to save the output to a file manually.
+This log file is essential for determining the correspondence between structure numbers and the original structure files (e.g., *.cod) from which they were generated.
+>pick_conf -w
+@u:pick_conf,p:pick_conf -l,n:pick_conf -t
+How to use: j_presto pick_conf -w WEIGHT_FILE_NAME
+
+This option specifies the weight file (*.weight) generated when executing "j_presto Ens_Ana".
+If you wish to obtain a list (*,list) of structures that satisfy your specified conditions, this option must be provided.
+When this option is specified, the first and second columns of the input file are automatically assigned as reaction coordinates named "index" and "weight", respectively.
+Therefore, do not specify reaction coordinates with these names using the -i option.
+pick_conf -t
+@u:pick_conf,p:pick_conf -w,n:pick_conf -m
+How to use: j_presto pick_conf -t TTPNCNF_FILE
+
+This option specifies the TTPncnf file, which contains information on the structure numbering and simulation frame index.
+When using the -e option for event detection, this option is required.
+The TTPncnf file is used to associate each structure with a simulation ID (simID) and simulation time (simtime), enabling time-based event analysis.
+>pick_conf -m  
+@u:pick_conf,p:pick_conf -t,n:pick_conf -pr
+How to use: j_presto pick_conf -m RCNAME1:RCNAME2:[...]:[ref1,ref2,...]  
+
+This option defines the distance from a specified reference point [ref1,ref2,...] in a multidimensional reaction coordinate (RC) space as a new reaction coordinate.  
+You can specify multiple existing RC names followed by the coordinates of a reference point in square brackets.  
+For example, "-m PCA1:PCA2[2,3]" defines a new RC as the Euclidean distance from the point (PCA1=2, PCA2=3) in the PCA1–PCA2 space.
+In this case, the newly created RC name is "PCA1:PCA2[2,3]".
+This name can be used for -pr, -s, -e options.
+
+The newly created distance-based RC can be used in subsequent condition specifications (e.g., with the -pr option).  
+Note: The reaction coordinates specified here must already be defined using the `-i` option.
+>pick_conf -pr
+@u:pick_conf,p:pick_conf -m,n:pick_conf -s
+How to use: j_presto pick_conf -pr RC_NAME1 RANGE1 [RC_NAME2 RANGE2] ...]
+
+This option specifies value ranges to extract data based on reaction coordinates.
+
+Example:
+	j_presto pick_conf -i test.rmsd 2 rmsd test.proj 2 PCA1 -pr rmsd 0:2 PCA1 5:
+Note that you must always specify in pairs of two items for -pr options: "reaction coordinate name" and "range".
+The reaction coordinate names are defined by the option "pick_conf -i".
+In the above case,
+	rmsd 0:2
+		Use data where rmsd is between 0 and 2.
+	PCA1 5:
+		Use data where PCA1 is 5 or more.
+Only the structures that satisfied conditions (i.e., logical AND, not OR) will be picked.
+>pick_conf -s
+@u:pick_conf,p:pick_conf -pr,n:pick_conf -n
+How to use: j_presto pick_conf -s RC_NAME1 ORDER1 [RC_NAME2 ORDER2] ...
+
+This option is used to sort data based on specified criteria.
+You can specify pairs of reaction coordinate name and the order (a (ascending) or d (descending).
+Multiple sorting criteria can be applied in sequence, and the data will be sorted accordingly.
+
+Example 1 : Sort by a single axis
+	j_presto pick_conf -i test.rmsd 2 rmsd -s rmsd a
+In this example, the data is sorted in ascending order based on the rmsd value.
+
+Example 2 : Sort by a composite axis
+	j_presto pick_conf -i test.proj 2 PCA1 test.proj 3 PCA2 -m PCA1:PCA2[2,3] -s PCA1:PCA2[2,3] a
+In this case, the data are sorted in order of increasing distance from the point [2,3] on the PCA1-PCA2 plane.
+
+Example 3 : Sort by multiple criteria
+	j_presto pick_conf -i test.rmsd 2 rmsd test.proj 2 PCA1 test.proj 3 PCA2 -m PCA1:PCA2[2,3] -s rmsd a PCA1:PCA2[2,3] a
+In this example, the data is first sorted by rmsd in ascending order, and then by the distance from the center coordinates [2,3] on the PCA1:PCA2 plane in ascending order.
+>pick_conf -n
+@u:pick_conf,p:pick_conf -pr,n:pick_conf -e
+How to use: j_presto pick_conf -t NUMBER
+
+This option limits the output to the top N structures based on the ranking defined by the `-s` option.
+For example, "pick_conf -n 5" will output only the top 5 structures that best satisfy the specified condition.
+If not specified, all matching structures will be included in the output.
+>pick_conf -e
+@u:pick_conf,p:pick_conf -n,n:pick_conf -ti
+How to use: j_presto pick_conf -e RCNAME1 RANGE1 [RCNAME2 RANGE2] ...
+
+This option enables event detection from time-series data across multiple simulation runs.
+To detect event by this option, you must define two reaction coordinates: "simID" (simulation run ID) and "simtime"` (simulation time).
+These reaction coordinates indicate which simulation run each input data point originates from and the simulation time at which the data was obtained, respectively.
+To give these two reaction coordinates, you must set -l, -w, -t, and -ti options.
+
+Use this option to specify the event condition you wish to detect.
+Examples:
+- To detect when rmsd value becomes less than 1.2, use: "-e rmsd :1.2"
+- To detect when the distance from the point [2,3] on the PCA1–PCA2 plane exceeds 0.9, use: "-e PCA1:PCA2[2,3] 0.9:"
+
+If this option is specified, the results of event detection will be saved in a "*.ed" file.
+>pick_conf -ti
+@u:pick_conf,p:pick_conf -e
+How to use: j_presto pick_conf -ti TIME_STEP INITIAL_TIME
+
+This option defines time index information for event detection.
+You must specify two values:
+	TIME_STEP: time interval between data points in the simulation (e.g., 0.005)
+	INITIAL_TIME: starting time of the simulation (e.g., 0)
+
+This option is required when using the -e option for event detection.
+The time values will be used to compute simtime from structure index and are essential for determining when events occur during the simulation.
+>ttp_se
+@u:j_presto,p:pick_conf,n:conmut
+The command "j_presto ttp_se" calculates weighted averages and standard errors of input data from multiple simulation runs.
+
+How to use: j_presto ttp_se INPUT TTPNCNF [OPTIONS]
+	INPUT	: Input data file.
+	TTPNCNF : TTPncnf file (*.TTPncnf).
+
+The TTPncnf file, usually generated by running the Ens_Ana program, is provided as input here.
+This file is used to specify which simulation run each data point in the input data file originates from among multiple simulation runs.
+
+Option list:
+	ttp_se -w	: Input weight file (*.weight).
+	ttp_se -c	: Specify a column number (integer) or a single character (e.g., DSSP code) to select input data.
+	ttp_se -o	: Output file name (default is "output.txt").
+
+If you would like to know how to use the arguments, please enter them such as "ttp_se -w"
+>ttp_se -w
+@u:ttp_se,n:ttp_se -c
+How to use: j_presto ttp_se -w WEIGHTFILE
+
+This option is used to define the weights of each data entry read from the input file.
+The *.weight file is generated when running Ens_Ana, so please use that file as input.
+If this option is not specified, all data entries are assigned a weight of 1.
+>ttp_se -c
+@u:ttp_se,p:ttp_se -w,n:ttp_se -o
+How to use: j_presto ttp_se -c COLUMN_OR_CHAR
+
+This option specifies which data to process from the input file and determines how the program interprets the input: as numeric data or as character data.
+
+For character data, input a single-character string (e.g., a DSSP secondary structure code like H for alpha-helix).
+The input file is expected to be a *.SS file output by the Ens_Ana program, where each line contains a string representing the secondary structure of each residue (one character per residue).
+When character data is specified, the program calculates the average occurrence probability and standard error of the specified character at each residue position across all data.
+
+For numeric data, input an integer indicating the column number of the data to use (e.g., 2 for the second column).
+The program then reads numeric values from that column and calculates their weighted average and standard error.
+
+If the argument is neither a single character nor an integer, or if multiple characters are given, the program will raise an error.
+>ttp_se -o
+@u:ttp_se,p:ttp_se -c
+How to use: j_presto ttp_se -o OUTPUT
+
+This option specifies output file name.
+If you do not set this option, the result is output as "output.txt".
+>conmut
+@u:j_presto,p:ttp_se,n:get_tmpl
+The command "j_presto conmut" utilizes an external tool, blastp, to collect homologous protein sequences with high similarity to a given query amino acid sequence.
+These sequences are then aligned using a multiple sequence alignment tool, such as MAFFT or ClustalW, to generate a consensus sequence.
+A consensus sequence represents the most common amino acid found at each position among the aligned sequences, and reflects evolutionarily conserved residues that are often important for structural stability or function.
+
+By comparing the query sequence to the consensus sequence, the program identifies positions where the query differs from the consensus.
+It then proposes amino acid substitutions that replace the original residues in the query with those found in the consensus.
+These substitutions are expected to improve the stability of the protein—particularly its thermostability—by introducing more conserved and potentially more structurally favorable amino acids.
+
+How to use: j_presto conmut QUERY [OPTIONS]
+        QUERY   : Query amino acid sequence in FASTA format.
+
+Option list:
+        conmut -e        : Email address (required for web BLAST).  
+        conmut -l        : Use local BLAST instead of web BLAST.  
+        conmut -d        : Specify path to local BLAST database (default: "nr").  
+        conmut -b        : E-value threshold for BLAST search (default: 1e-5).  
+        conmut -m        : Maximum number of target sequences for BLAST (default: 1000).  
+        conmut -i        : Minimum identity threshold (default: 0.9 = 90%).  
+        conmut -c        : Minimum coverage threshold (default: 0.9 = 90%).  
+        conmut -H        : Input homologous sequences in FASTA format (skip BLAST).  
+        conmut -a        : Multiple sequence aligner to use ("mafft" or "clustalw", default: "mafft").  
+        conmut -s        : Residue number to start counting from (default: 1).  
+        conmut -o        : Prefix for output files (default: "result").  
+
+If you would like to know how to use the arguments, please enter them such as "conmut -e"
+
+When the conmut program is executed, it generates the following output files (where * is the prefix specified by the -o option):
+	*_all.fasta
+		A FASTA file containing all sequences retrieved by the BLAST search.
+	*_flt.fasta
+		A FASTA file of sequences filtered based on the identity_threshold and coverage_threshold criteria.
+	*_res.fasta
+		A FASTA file containing representative sequences selected from each species.
+	*_aln.fasta
+		The result of multiple sequence alignment (MSA), showing aligned sequences.
+	*_consensus.fasta
+		The consensus sequence derived from the aligned sequences.
+	*_aln_view.txt
+		A formatted, human-readable view of the MSA results.
+	*_suggested_mutations.txt
+		A list of mutations suggested based on the consensus sequence method.
+>conmut -e  
+@u:conmut,n:conmut -l  
+How to use: j_presto conmut -e EMAIL
+
+This option specifies the email address required for using the web-based BLAST (NCBI BLAST).
+NCBI mandates an email address to identify users when accessing their BLAST services.  
+You must use this option unless you are running BLAST locally (i.e., when "-l" is not specified).
+If no email is provided and the program attempts to use web BLAST, it will terminate with an error.
+>conmut -l  
+@u:conmut -e,p:conmut -e,n:conmut -d  
+How to use: j_presto conmut -l
+
+This option enables the use of local BLAST instead of NCBI web-based BLAST.
+When this flag is specified, the program uses the "blastp" command installed on your local machine to search for homologous sequences.  
+This is useful in environments without internet access, or when you want to speed up processing using a pre-downloaded local database.
+
+If you use this option, make sure:
+	- "blastp" is properly installed and accessible from your command line
+	- A valid local BLAST database is available (use the "-d" option to specify its path)
+>conmut -d  
+@u:conmut,p:conmut -l,n:conmut -b  
+How to use: conmut -d DB_PATH
+
+This option specifies the path to the local BLAST database when using the "-l" option for local BLAST execution (default: "nr").
+If you are running BLAST locally (with "-l"), this option tells the program where to find your pre-formatted BLAST database.
+The database must be formatted with "makeblastdb" and compatible with "blastp".
+>conmut -b  
+@u:conmut,p:conmut -d,n:conmut -m
+How to use: j_presto conmut -b EVALUE
+
+This option sets the E-value threshold for BLAST searches (default: 1e-5).
+The E-value (expectation value) specifies the maximum number of hits expected by chance when searching a database of a particular size.  
+Lower values make the search more stringent, returning only high-confidence homologs.
+	- A smaller E-value (e.g., `1e-10`) yields more reliable hits, but may return fewer sequences.
+	- A larger E-value (e.g., `1e-2`) allows more matches but may include unrelated sequences.
+
+This option applies to both web-based and local BLAST runs.
+>conmut -m  
+@u:conmut -b,n:conmut -i  
+How to use: j_presto conmut -m MAX_TARGET_SEQS
+
+This option sets the maximum number of target sequences to retain from the BLAST search results (default: `1000`).
+By specifying this value, you control how many homologous sequences are retrieved and used in downstream processing, such as filtering and multiple sequence alignment.
+	- Setting a smaller number (e.g., `100`) can reduce runtime and focus analysis on the most relevant sequences.
+	- Setting a larger number (e.g., `5000`) increases coverage but may result in longer processing time and memory usage.
+This option is relevant for both web-based and local BLAST searches.
+>conmut -i  
+@u:conmut,p:conmut -m,n:conmut -c
+How to use: j_presto conmut -i IDENTITY_THRESHOLD
+
+This option sets the minimum sequence identity threshold for filtering BLAST hits (default: `0.9`, i.e., 90%).
+After retrieving homologous sequences via BLAST, the program filters them by calculating pairwise sequence identity with the query.
+Only sequences with an identity greater than or equal to this threshold are retained.
+	- Input value should be a float between 0 and 1, representing the identity ratio.
+	- Lowering this value includes more divergent sequences, potentially increasing diversity but reducing confidence.
+	- Increasing this value tightens similarity, which may improve reliability but reduce coverage.
+This filtering is performed after BLAST search but before multiple sequence alignment and consensus sequence generation.
+>conmut -c  
+@u:conmut,p:conmut -i,n:conmut -H
+How to use: j_presto conmut -c COVERAGE_THRESHOLD
+
+This option sets the minimum coverage threshold for filtering BLAST hits (default: `0.9`, i.e., 90%).
+Coverage is calculated as the ratio of the aligned region length to the full length of the query sequence.
+Only sequences with a coverage greater than or equal to this threshold are retained for further analysis.
+	- Input value should be a float between 0 and 1, representing the required fraction of coverage.
+	- A higher value ensures the homologs align with most of the query, which is important for reliable consensus prediction.
+	- Lowering the threshold may allow inclusion of partial sequences, which could reduce the quality of the alignment and consensus.
+This filtering is performed after BLAST search but before multiple sequence alignment and consensus sequence generation.
+>conmut -H  
+@u:conmut -c,p:conmut -c,n:conmut -a  
+How to use: j_presto conmut -H HOMOLOGS_FASTA
+
+This option allows you to directly provide a FASTA file containing homologous sequences, instead of running a BLAST search.
+Use this option if you have already prepared a set of homologous sequences (e.g., from a previous search or curated database) and want to skip the BLAST step.
+	- Input file must be in FASTA format.
+	- When this option is used, BLAST (both web and local) is completely skipped, and only the provided sequences are used for alignment and consensus calculation.
+>conmut -a  
+@u:conmut,p:conmut -H,n:conmut -s  
+How to use: j_presto conmut -a {mafft|clustalw}
+
+This option specifies the multiple sequence alignment (MSA) tool to use for aligning homologous sequences.
+
+Available choices:
+	mafft (default)
+	clustalw
+Notes:
+The chosen aligner must be installed on your system beforehand and accessible via your system’s PATH environment variable.
+>conmut -s  
+@u:commut,p:conmut -a,n:conmut -o  
+How to use: j_presto conmut -s START_RESIDUE_NUMBER
+
+This option sets the starting residue number for counting residues in output files.
+	- Default is 1.
+	- Useful when your query sequence numbering starts from a different residue number, allowing the output files to reflect the correct residue numbering according to your reference.
+>conmut -o  
+@u:conmut,p:conmut -s
+How to use: j_presto conmut -o OUTPUT_PREFIX
+
+This option specifies the prefix for output files generated by the program.
+	- Default prefix is "result".
+	- All output files will be named using this prefix followed by specific suffixes.  
+>get_tmpl
+@u:j_presto,p:conmut,n:manual
+This command is used to obtain the input file or the script templates necessary for executing j_presto (get template).
+The usage is as follows:
+	j_presto get_tmpl [file name to retrieve]
+The list of files that can be obtained is as follows:
+	gen_db             : Script for generating parameter database files (*.tpldb) for j_presto.
+	prep               : Script for preparing the necessary files for MD simulations and energy minimization (*.pdb, *.tpl, *.shk).
+	min.inp            : Input file for performing an energy minimization calculation.
+	md.inp             : Input file for performing a single MD simulation.
+	CAPbound.inp       : Input file to perform calculations with CAP boundary.
+	psr.inp            : Input file to restrain position of atoms.
+	dsr.inp            : Input file to restrain distances between atoms.
+	dhr.inp            : Input file to restrain dihedral angles.
+	md_run             : Script for running a single MD simulation or energy minimization.
+	batch_set.inp      : Input file for batch_set to prepare input files for multiple MD simulations in bulk, used to specify the MD schedule.
+	batch_set_ALSD.inp : Input file for batch_set to prepare input files for ALSD simulations in bulk, used to specify the MD schedule.
+	md_multi           : Script for running multiple MD simulations as a single MPI job.
+Additionally, to retrieve all of these files at once, you can use "j_presto get_tmpl all".
 >manual
-@u:j_presto
+@u:j_presto,p:get_tmpl
 The command "j_presto manual" is the command you are currently using.
 It provides an interactive explanation of commands and options available in j_presto.
 >atom specifier
@@ -2998,10 +3569,13 @@ Preparation for j_presto program
 		2 : Download j_presto repository
 		3 : Install j_presto
 
+For those working with specialized simulations, such as non-standard molecules; others can ignore.
+	tutorial prep_extra 1 : Fix inconsistencies between atom and residue names in the prep and PDB files.
+
 Execution of MD simulation
-	tutorial MD 1 : Create a topology database file (*.tpldb) with "j_presto gen_db"
-	tutorial MD 2 : Prepare input files for MD simulation with "j_presto prep"
-	tutorial MD 3 : Execute energy minimization calculations with "j_presto md_run min.inp"
+	tutorial MD 1   : Create a topology database file (*.tpldb) with "j_presto gen_db"
+	tutorial MD 2   : Prepare input files for MD simulation with "j_presto prep"
+	tutorial MD 3   : Execute energy minimization calculations with "j_presto md_run min.inp"
 	tutorial MD 4-1 : Execute a single MD simulation with "j_presto md_run md.inp"
 	tutorial MD 4-2 : Execute multiple MD simulations as a single MPI job with "j_presto_mpi" or "j_presto_master"
 
@@ -3068,6 +3642,25 @@ Users are responsible for downloading it at their own risk.
 	   After that, run
 		source .bashrc (if you added it to the .bashrc file)
 	   to set the directory containing the j_presto executables to your system's path.
+>tutorial prep_extra 1
+@u:tutorial
+Fixing Inconsistencies Between Atom and Residue Names in Prep and PDB Files.
+
+Note: This term is only necessary when you need to prepare your own parameters as prep files.
+If you are working with standard amino acids or nucleic acids, or if you're using pre-prepared parameter files, you can skip this section.
+
+For simulations involving specialized amino acids or ligand small molecules etc., it may be necessary to prepare custom prep files.
+These files are often created using external programs like Gaussian.
+However, during this preparation process, the atom names assigned in the original PDB file may change, resulting in discrepancies between the PDB and prep files.
+
+Manually matching the atom names in both files can be time-consuming and error-prone.
+To automate this process, "j_presto nt_gen" command generates a table of corresponding atom names, and "j_presto nt_conv" command uses this table to perform the necessary conversions, ensuring consistency between the files.
+
+Steps:
+	1 : Use "j_presto nt_gen" to create a table of atom name correspondences.
+	2 : Use "j_presto nt_conv" to apply the conversions based on the generated table, ensuring that the atom names in your PDB and prep files match correctly.
+
+Please refer to the respective terms for detailed usage of "nt_gen" and "nt_conv".
 >tutorial MD 1
 @u:tutorial,n:tutorial MD 2
 Create a topology database file (*.tpldb) with "j_presto gen_db"

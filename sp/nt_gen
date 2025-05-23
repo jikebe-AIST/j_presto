@@ -1,0 +1,308 @@
+#!/usr/bin/env python3
+
+import argparse, math, time, os
+import networkx as nx
+import numpy as np
+from Bio import PDB
+
+def display_credits():
+    program_name = "nt_gen"
+    author = "Jinzen Ikebe"
+    version = "1.0.0"
+    first_release_date = "2025-05-23"
+    current_release_date = "2025-05-23"
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    print("*" * 50)
+    print("*")
+    print(f"*    {program_name} (Version {version})")
+    print("*")
+    print(f"*                         Author : {author}")
+    print(f"*             First Release Date : {first_release_date}")
+    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print("*")
+    print(f"*" * 50)
+    print()
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+    except FileNotFoundError:
+        print("Error: License file not found.")
+        sys.exit()
+
+def read_prep_file(prep_file):
+    with open(prep_file, 'r') as file:
+        lines = file.readlines()
+        residue_name = lines[4].splitlines()[0].split()[0]
+
+        atom_data = {}
+        for line in lines[7:]:
+            if not line.strip():
+                break
+            columns = line.split()
+            atom_number = int(columns[0])
+            atom_name = columns[1]
+            atom_type = columns[2]
+            bond = int(columns[4])
+            angle = int(columns[5])
+            dihedral = int(columns[6])
+            z_bond = float(columns[7])
+            z_angle = float(columns[8])
+            z_dihedral = float(columns[9])
+
+            atom_data[atom_number] = {
+                'atom_name': atom_name,
+                'atom_type': atom_type,
+                'bond': bond,
+                'angle': angle,
+                'dihedral': dihedral,
+                'z_bond': z_bond,
+                'z_angle': z_angle,
+                'z_dihedral': z_dihedral,
+                'x': None,
+                'y': None,
+                'z': None
+            }
+        
+        loop_check = False ; loop = []
+        for line in lines[7+len(atom_data):]:
+            if loop_check:
+                if not line.split():
+                    break
+                else:
+                    columns = line.split()
+                    loop.append(columns)
+
+            elif line.strip() == "LOOP":
+                loop_check = True
+
+    return residue_name, atom_data, loop
+
+def calculate_coordinates(atom_data):
+    coordinates = np.zeros((len(atom_data)+1, 3))
+    coordinates[1] = [0.0, 0.0, 0.0]
+    coordinates[2] = [atom_data[2]['z_bond'], 0.0, 0.0]
+    coordinates[3] = [atom_data[2]['z_bond']-atom_data[3]['z_bond']*np.cos(atom_data[3]['z_angle']*math.pi/180.),\
+                      atom_data[3]['z_bond']*np.sin(atom_data[3]['z_angle']*math.pi/180.), 0.0]
+    for atom_number, properties in atom_data.items():
+        if atom_number < 4:
+            continue
+        #### Transform degrees to radian
+        dist = properties['z_bond']
+        angl = (180.0 - properties['z_angle']) * math.pi / 180.
+        tors = properties['z_dihedral'] * math.pi / 180.
+        #### Calc. internal coordinates
+        tcod = [dist*math.cos(angl),dist*math.cos(tors)*math.sin(angl),\
+                dist*math.sin(tors)*math.sin(angl)]
+        cod = [coordinates[properties[key]].tolist() for key in ['dihedral', 'angle', 'bond']]
+        #### Calc. Matrix
+        M1 = (np.array(cod[2]) - np.array(cod[1])) / (np.linalg.norm(np.array(cod[1]) - np.array(cod[2])))
+        tM = np.array(cod[1]) - np.array(cod[0])
+        M3 = np.cross(tM, M1)
+        M3 /= np.linalg.norm(M3)
+        M2 = np.cross(M3, M1)
+        M = [M1,M2,M3]
+        #### Calc. coordinates
+        rcod = []
+        rcod.append(M[0][0]*tcod[0] + M[1][0]*tcod[1] + M[2][0]*tcod[2] + cod[2][0])
+        rcod.append(M[0][1]*tcod[0] + M[1][1]*tcod[1] + M[2][1]*tcod[2] + cod[2][1])
+        rcod.append(M[0][2]*tcod[0] + M[1][2]*tcod[1] + M[2][2]*tcod[2] + cod[2][2])
+
+        coordinates[atom_number] = rcod
+        atom_data[atom_number]['x'], atom_data[atom_number]['y'], atom_data[atom_number]['z'] = coordinates[atom_number]
+
+    return
+
+def write_pdb(residue_name, atom_data):
+    with open('check.pdb', 'w') as file:
+        file.write("MODEL     1\n")
+        for atom_number, properties in atom_data.items():
+            if atom_number > 3: # Ignore dummy atoms 1, 2, 3
+                x, y, z = properties['x'], properties['y'], properties['z']
+                atom_name = properties['atom_name']
+                chain_id = "A"
+                residue_number = 1
+                pdb_line = f"ATOM  {atom_number-3:5} {atom_name:<4} {residue_name:<3} {chain_id:1}{residue_number:4}    {x:8.3f}{y:8.3f}{z:8.3f}\n"
+                file.write(pdb_line)
+
+        file.write("ENDMDL\n")
+
+def get_first_non_digit_character(input_string):
+    return next((char for char in input_string if not char.isdigit()), None)
+
+def prep_graph(atom_data, loop):
+    graphs = {}
+    for atom_number, properties in atom_data.items():
+        if atom_number > 3: # Ignore dummy atoms 1, 2, 3
+            atom_name = properties['atom_name']
+            graphs[atom_name] = {
+                 'atom_number': atom_number, 
+                 'bonded': []
+                 }
+
+    for atom_number, properties in atom_data.items():
+        if atom_number > 3: # Ignore dummy atoms 1, 2, 3
+            atom_name1 = properties['atom_name']
+            i = properties['bond']
+            if i > 3 :
+                atom_name2 = atom_data[i]['atom_name']
+                graphs[atom_name1]['bonded'].append(atom_name2)
+                graphs[atom_name2]['bonded'].append(atom_name1)
+
+    for atom_name1, atom_name2 in loop:
+        graphs[atom_name1]['bonded'].append(atom_name2)
+        graphs[atom_name2]['bonded'].append(atom_name1)
+
+    return graphs
+
+def read_pdb(file_path):
+    parser = PDB.PDBParser(QUIET=True)
+    structure = parser.get_structure('protein', file_path)
+
+    model_count = sum(1 for _ in structure.get_models())
+    chain_count = sum(1 for _ in structure.get_chains())
+    residue_count = sum(1 for _ in structure.get_residues())
+
+    if model_count > 1 or chain_count > 1 or residue_count > 1:
+        print("Warning: This program expects a PDB file with only one model, one chain, and one residue.")
+        print("Please provide a PDB file with a single residue.")
+    else:
+        for model in structure:
+            for chain in model:
+                for residue in chain:
+                    residue_name = residue.get_resname()
+                    break
+
+    return structure, residue_name
+
+def pdb_graph(structure, threshold):
+    graphs = {}
+    for model in structure:
+        for chain in model:
+            for residue in chain:
+                for atom1 in residue:
+                    atom_name1 = atom1.get_id()
+                    graphs[atom_name1] = {'bonded': []}
+
+    for model in structure:
+        for chain in model:
+            for residue in chain:
+                for atom1 in residue:
+                    atom_name1 = atom1.get_id()
+                    for atom2 in residue:
+                        if atom1 != atom2:
+                            atom_name2 = atom2.get_id()
+                            if get_first_non_digit_character(atom_name1).upper() == "H" and\
+                               get_first_non_digit_character(atom_name2).upper() == "H":
+                                continue
+
+                            distance = np.linalg.norm(atom1.coord - atom2.coord)
+                            if distance <= threshold:
+                                graphs[atom_name1]['bonded'].append(atom_name2)
+
+    return graphs
+
+def one_chara_list_generator(name_list):
+    one_chara_list = ''.join([get_first_non_digit_character(atom_name) for atom_name in name_list])
+    one_chara_list = ''.join(sorted(filter(lambda char: char.lower() != 'h', one_chara_list)))
+
+    return one_chara_list
+
+def representer_generator(graphs):
+    for target_atom_name, info in graphs.items():
+        checklist = {atom_name: False for atom_name in graphs}
+        representer = []
+        current_name_list = [target_atom_name]
+        while True:
+            name_list_bonded = []
+            for current_atom_name in current_name_list:
+                checklist[current_atom_name] = True
+                for atom_name_bonded in graphs[current_atom_name]['bonded']:
+                    if not checklist[atom_name_bonded]:
+                        name_list_bonded.append(atom_name_bonded)
+                        checklist[atom_name_bonded] = True
+
+            one_chara_list = one_chara_list_generator(name_list_bonded)
+            if one_chara_list:
+                representer.append(one_chara_list)
+                current_name_list = name_list_bonded
+            else:
+                break
+
+        info['representer'] = representer  
+
+def correspondence_check(Gprep, Gpdb):
+    corresp_list = []
+    checklist = {atom_name: False for atom_name in Gpdb}
+    checklist2 = {atom_name: False for atom_name in Gprep}
+    for atom_name1, info in Gprep.items():
+        representer1 = info['representer']
+
+        for atom_name2, info2 in Gpdb.items():
+            representer2 = info2['representer']
+            if not checklist[atom_name2]:
+                if representer1 == representer2:
+                     corresp_list.append([atom_name1, atom_name2])
+                     checklist[atom_name2] = True
+                     checklist2[atom_name1] = True
+                     break
+
+    if not all(checklist.values()):
+        print(f"!! Correspondence check did NOT complete successfully.")
+        unused1 = [atom_name for atom_name, used in checklist2.items() if not used]
+        if unused1:
+            print(f"Atom(s) in prep without correspondence: {unused1}")
+            for atom_name in unused1:
+                print(Gprep[atom_name])
+        unused2 = [atom_name for atom_name, used in checklist.items() if not used]
+        if unused2:
+            print(f"Atom(s) in pdb without correspondence: {unused2}")
+            for atom_name in unused2:
+                print(Gpdb[atom_name])
+
+    return corresp_list
+
+def output_table(output, prep_residue_name, pdb_residue_name, corresp_list):
+    with open(output, "w") as output_file:
+        output_file.write(f"{prep_residue_name.ljust(4)}  {pdb_residue_name.ljust(4)}")
+        for atom_name1, atom_name2 in corresp_list:
+            if atom_name1 != atom_name2:
+                output_file.write(f"\n  {atom_name1.ljust(4)}  {atom_name2.ljust(4)}")
+
+def main():
+    stime = time.perf_counter()
+    parser = argparse.ArgumentParser(description="Generate Atomic Name correspondence table from a prep file and a PDB file")
+    parser.add_argument('access_key', help=argparse.SUPPRESS)
+    parser.add_argument("prep_file", help="Input prep file")
+    parser.add_argument("pdb_file", help="Input PDB file")
+    parser.add_argument("--output", "-o", default="table.txt", help="Output atomic name correspondence table file. The Default is table.txt.")
+    parser.add_argument("--threshold", "-t", default=1.8, help="Threshold distance for determining the presence of covalent bonds between atoms in PDB. Default is 1.8.")
+    args = parser.parse_args()
+    access_key = args.access_key
+    if access_key != "j_presto":
+        sys.exit()
+    display_credits()
+
+    print(f"\nInput arguments:")
+    print(f"      Input prep file : {args.prep_file}" )
+    print(f"       Input PDB file : {args.pdb_file}" )
+    print(f"    Output table file : {args.output}" )
+    print(f"  Max covalent length : {args.threshold}\n" )
+
+    prep_residue_name, atom_data, loop = read_prep_file(args.prep_file)
+    calculate_coordinates(atom_data)
+#    write_pdb(prep_residue_name, atom_data)
+    Gprep = prep_graph(atom_data, loop)
+    representer_generator(Gprep)
+
+    structure, pdb_residue_name = read_pdb(args.pdb_file)
+    Gpdb = pdb_graph(structure, float(args.threshold))
+    representer_generator(Gpdb)
+
+    corresp_list = correspondence_check(Gprep, Gpdb)
+    output_table(args.output, prep_residue_name, pdb_residue_name, corresp_list)
+
+    etime = time.perf_counter()
+    print(f"\nExecution time : {etime - stime} (S)")
+    print(f"\n+++ Program j_presto nt_gen normally ended +++")
+if __name__ == "__main__":
+    main()

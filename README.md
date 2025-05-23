@@ -65,14 +65,31 @@ With j_presto, you can execute the following sub-programs using the command:
 	j_presto [sub_program_name]
 
 Sub-program name list:
-	gen_db     : Generation of a database file (*.tpldb) for creating j_presto topology files (*.tpl).
-	prep       : Preparation of input files (*.pdb, *.tpl, and *.shk files) for j_presto.
-	md_run     : Execution of MD simulation or energy minimization calculation.
-	get_tmpl   : Obtaining templates of input files and scripts for excuting j_presto.
-	batch_set  : Setting up all the necessary files and directories required to run multiple MD simulations efficiently
-	GEprep     : Preparation of a parameter file (*.nf) for Generalized Ensemble MD simulations such as McMD and ALSD.
-	Ens_Ana    : Performing analysis of conformational ensembles obtained from simulation results (Scheduled to be added in the next update)
-	manual     : Viewing the manual.
+    For MD simulation,
+        pdb_alignfit    : Superimposition of query structure to target one based on sequence alignment.
+        nt_gen          : Generation of atomic name correspondence table from a PREP and a PDB file.
+        nt_conv         : Convert residue and atom names in a PREP and a PDB file based on a name table.
+        gen_db          : Generation of a database file (*.tpldb) for creating j_presto topology files (*.tpl).
+        prep            : Preparation of input files (*.pdb, *.tpl, and *.shk files) for MD simulations.
+        md_run          : Execution of MD simulation or energy minimization calculation.
+        batch_set       : Setting up all the necessary files and directories required to run multiple MD simulations efficiently.
+        GEprep          : Preparation of a parameter file (*.nf) for Generalized Ensemble MD simulations such as McMD and ALSD.
+
+    For Analysis,
+        Ens_Ana         : Performing analysis of conformational ensembles obtained from simulation results.
+        PCAaxis         : Calculating axes for principal component analysis (PCA) through diagonalization.
+        PCAproj         : Projecting each structure onto PCA subspace.
+        distrib         : Generation of statistical distribution data from weighted input values for one- or two-dimensional variables.
+        pick_conf       : Extraction and ranking structures based on user-defined conditions and event timings.
+        ttp_se          : Calculation of weighted averages and standard errors of the data
+
+    For Enzyme development,
+        conmut          : Propose mutations to improve enzyme stability from input amino acid sequences using the consensus method
+
+    For user guidance,
+        get_tmpl        : Obtaining templates of input files and scripts for excuting j_presto.
+        manual          : Viewing the manual.
+
 The simulations performed by j_presto support parallelization using OpenMP, but currently do not support parallelization via MPI or GPU.
 However, you can use the programs j_presto_mpi and j_presto_master, which allow you to bundle multiple OpenMP-parallelized MD simulation runs and execute them as a single MPI job.
 	j_presto_mpi    : Execute multiple MD simulation runs as a single MPI job using an embarrassingly parallel approach.

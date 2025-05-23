@@ -113,11 +113,11 @@
           elseif ( SS .eq. " " ) then
             iBla = iBla + 1 ; Bla(i) = Bla(i) + wfac
           endif
-          write(uss,'(a1,$)')SS
+          write(uss,'(a1)', advance='no')SS
         enddo
 800     write(usc,'(i7,8(1x,i8))')icn,iH,iG,ipI,iB,iE,iT,iS,iBla
         close(utmp)
-        write(uss,*)
+        write(uss,'(a)')''
         if ( .not. DSSP_output_flag ) call system("rm "//trim(tmp2))
 
       ! Final analysis

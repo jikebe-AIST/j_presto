@@ -1,0 +1,296 @@
+#!/usr/bin/env python3
+
+import argparse, sys, time, os
+from Bio import PDB
+
+def display_credits():
+    program_name = "nt_conv"
+    author = "Jinzen Ikebe"
+    version = "1.0.0"
+    first_release_date = "2025-05-23"
+    current_release_date = "2025-05-23"
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    print("*" * 50)
+    print("*")
+    print(f"*    {program_name} (Version {version})")
+    print("*")
+    print(f"*                         Author : {author}")
+    print(f"*             First Release Date : {first_release_date}")
+    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print("*")
+    print(f"*" * 50)
+    print()
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+    except FileNotFoundError:
+        print("Error: License file not found.")
+        sys.exit()
+
+def input_table(input_file, flag):
+    residue_mapping = {} ; atom_mapping = {}
+    with open(input_file, 'r') as f:
+        lines = f.readlines()
+
+    residue1 = None ; residue2 = None
+    for line in lines:
+        line = line.strip()
+        if line == '':
+            residue1 = None ; residue2 = None
+        else:
+            if residue1 is None:
+                residue1, residue2 = line.split()
+                if not flag:
+                    residue_mapping[residue1] = residue2
+                else:
+                    residue_mapping[residue2] = residue1
+            else:
+                atom1, atom2 = line.split()
+                if not flag:
+                    atom_mapping[(residue1, atom1)] = (residue2, atom2)
+                else:
+                    atom_mapping[(residue2, atom2)] = (residue1, atom1)
+
+    return residue_mapping, atom_mapping
+
+def get_first_non_digit_character(input_string):
+    return next((char for char in input_string if not char.isdigit()), None)
+
+def input_and_convert_pdb(input_file, output_file, residue_mapping, atom_mapping, remove_hydrogen, renumber_atoms, renumber_residues):
+    atom_counter = 0 ; residue_counter = 0
+    current_residue = None ; current_residue_number = None
+    with open(input_file, 'r') as input_pdb:
+        lines = input_pdb.readlines()
+    for i in range(len(lines)):
+        line = lines[i]
+        if line[0:6].strip() in ["ATOM", "HETATM"]:
+            atom_id = line[12:16].strip()
+            residue_name = line[17:20].strip()
+            residue_number = int(line[22:26])
+
+            if residue_number != current_residue_number:
+                current_residue_number = residue_number
+                residue_counter += 1
+
+            if residue_name in residue_mapping:
+                new_residue_name = residue_mapping[residue_name]
+                line = line[:17] + new_residue_name + line[20:]
+            if (residue_name, atom_id) in atom_mapping:
+                new_residue_name, new_atom_name = atom_mapping[(residue_name, atom_id)]
+                if len(new_atom_name) == 1:
+                    new_atom_name = ' ' + new_atom_name + '  '
+                elif len(new_atom_name) == 2:
+                    new_atom_name = ' ' + new_atom_name + ' '
+                elif len(new_atom_name) == 3:
+                    new_atom_name = ' ' + new_atom_name
+                line = line[:12] + new_atom_name + line[16:]
+
+            # Check if --remove_hydrogen is set and skip hydrogen atoms
+            atom_checker = get_first_non_digit_character(atom_id).upper()
+            if (remove_hydrogen == 'all' or (remove_hydrogen and residue_name in residue_mapping)) and atom_checker == 'H':
+                continue
+
+            # Renumber atoms if --renumber_atoms is set
+            if renumber_atoms:
+                atom_counter += 1
+                line = line[:6] + str(atom_counter).rjust(5) + line[11:]
+
+            # Renumber residues if --renumber_residues is set
+            if renumber_residues:
+                line = line[:22] + str(residue_counter).rjust(4) + line[26:]
+
+            lines[i] = line
+    with open(output_file, 'w') as output_pdb:
+        output_pdb.writelines(lines)
+    print("Conversion completed successfully.\n")
+
+def fit_name(orig, conv):
+    len_orig, len_conv = len(orig), len(conv)
+    diff = len_orig - len_conv
+    if diff < 0 :
+        orig += " " * -diff
+    elif diff > 0:
+        conv += " " * diff
+
+    return orig, conv
+
+def convert_prep(lines, residue_mapping, atom_mapping):
+    i = 4
+    while True:
+        if i >= len(lines):
+            break
+        original_resname = lines[i].split()[0]
+        if original_resname in residue_mapping:
+            convert_resname = residue_mapping[original_resname]
+            original_resname, convert_resname = fit_name(original_resname, convert_resname)
+            lines[i] = lines[i].replace(original_resname, convert_resname, 1)
+            i += 5
+            while True:
+                i += 1
+                if i >= len(lines) or not lines[i].strip():
+                    break
+                original_atmname = lines[i].split()[1]
+                key = (original_resname, original_atmname)
+                if key in atom_mapping:
+                    _, convert_atmname = atom_mapping[key]
+                    original_atmname, convert_atmname = fit_name(original_atmname, convert_atmname)
+                    lines[i] = lines[i].replace(original_atmname, convert_atmname, 1)
+                
+            while True:
+                i += 1
+                if i >= len(lines):
+                    break
+
+                if lines[i].strip() == "IMPROPER" or lines[i].strip() == "LOOP":
+                    while True:
+                        i += 1
+                        if i >= len(lines) or not lines[i].strip():
+                            break
+                        atoms = lines[i].split()
+                        new_atoms = []
+                        for original_atmname in atoms:
+                            key = (original_resname, original_atmname)
+                            if key in atom_mapping:
+                                _, convert_atmname = atom_mapping[key]
+                                original_atmname, convert_atmname = fit_name(original_atmname, convert_atmname)
+                                new_atoms.append(convert_atmname)
+                            else:
+                                new_atoms.append(original_atmname)
+                        lines[i] = " " + " ".join(atom.ljust(4) for atom in new_atoms).rstrip() + "\n"
+
+                if lines[i].strip() == "DONE":
+                    i += 3 ; break
+        else:
+            while True:
+                i += 1
+                if i >= len(lines):
+                    break
+                if lines[i].strip() == "DONE":
+                    i += 3 ; break
+    return lines
+
+def make_hydrogen_mapping(lines):
+    residue_mapping2 = {} ; hydrogen_mapping = {}
+    i = 4
+    while True:
+        if i >= len(lines):
+            break
+        resname = lines[i].split()[0]
+        residue_mapping2[resname] = resname
+        i += 5
+        atom_data = {}
+        while True:
+            i += 1
+            if i >= len(lines) or not lines[i].strip():
+                break
+            line = lines[i].split()
+            atom_data[line[0]] = {
+                'atom_name': line[1],
+                'bonded': line[4]
+                         }
+
+        id_list = []
+        for atom_number, info in atom_data.items():
+            if info['atom_name'].startswith("H".upper()):
+                old_id = info['atom_name']
+                new_id = info['atom_name'][0]+atom_data[info['bonded']]['atom_name'][1:]
+                id_list.append([old_id, new_id])
+
+        new_id_counts = {new_id: sum(1 for _, current_new_id in id_list if current_new_id == new_id) for _, new_id in id_list}
+        new_id_count = {new_id: 0 for _, new_id in id_list}
+        for old_id, new_id in id_list:
+            if new_id_counts[new_id] == 1:
+                if old_id != new_id:
+                    hydrogen_mapping[(resname, old_id)] = (resname, new_id)
+            else:
+                new_id_count[new_id] += 1
+                new_name = new_id+str(new_id_count[new_id])
+                if old_id != new_name:
+                    hydrogen_mapping[(resname, old_id)] = (resname, new_name)
+
+        while True:
+            i += 1
+            if i >= len(lines):
+                break
+            if lines[i].strip() == "DONE":
+                i += 3 ; break
+  
+    return residue_mapping2, hydrogen_mapping
+
+def input_and_convert_prep(input_file, output_file, residue_mapping, atom_mapping, rename_hyd):
+    with open(input_file, 'r')  as input_prep:
+        lines = input_prep.readlines()
+
+    lines = convert_prep(lines, residue_mapping, atom_mapping)
+    if rename_hyd:
+        residue_mapping2, hydrogen_mapping = make_hydrogen_mapping(lines)
+        lines = convert_prep(lines, residue_mapping2, hydrogen_mapping)
+
+    with open(output_file, 'w') as output_prep:
+        output_prep.writelines(lines)
+    print("Conversion completed successfully.\n")
+
+def main():
+    stime = time.perf_counter()
+    parser = argparse.ArgumentParser(description="Convert residue and atom names in prep or pdb files with correspondence name table.")
+    parser.add_argument('access_key', help=argparse.SUPPRESS)
+    parser.add_argument("table_file", help="Input table file containing residue and atom name mappings.")
+    parser.add_argument("input_file", help="Input prep or PDB file to be converted.")
+    parser.add_argument("--output", "-o", default="output", help="Output file with converted names. Default is output.")
+    parser.add_argument("--reverse", "-r", action="store_true", help="Reverse convert residue and atom names.")
+    parser.add_argument("--remove_hydrogen", "-rh", nargs='?', const=True, default=False, help="Remove hydrogen atoms of renamed residues from the output PDB. Use 'all' to remove all hydrogen atoms.")
+    parser.add_argument("--renumber_atoms", "-ra", action="store_true", help="Renumber atoms in the output PDB.")
+    parser.add_argument("--renumber_residues", "-rr", action="store_true", help="Renumber residues in the output PDB.")
+    parser.add_argument("--rename_prep_hydrogen", "-rph", action="store_true", help="Rename hydrogen atoms in output prep file.")
+
+    args = parser.parse_args()
+    access_key = args.access_key
+    if access_key != "j_presto":
+        sys.exit()
+    display_credits()
+
+    print(f"\nInput arguments:")
+    print(f"         Table file : {args.table_file}")
+    print(f"         Input file : {args.input_file}")
+    if args.input_file.endswith(".pdb"):
+        print(f"  Input file format : PDB")
+        file_format = "pdb"
+    elif args.input_file.endswith(".prep") or args.input_file.endswith(".in"):
+        print(f"  Input file format : prep")
+        file_format = "prep"
+    else:
+        print(f"    Unknown input file {args.input_file}")
+        sys.exit(1)
+    output_file = args.output + "." + file_format
+    print(f"        Output file : {output_file}")
+    if args.reverse:
+        print(f"  Reverse converter : ON")
+    else:
+        print(f"  Reverse converter : OFF")
+    if file_format == "pdb":
+        if args.remove_hydrogen == "all":
+            print(f"  All hydrogen atoms are removed.")
+        elif args.remove_hydrogen:
+            print(f"  Hydrogen atoms in renamed residues are removed.")
+        if args.renumber_residues:
+            print(f"  Residue numbers in the output PDB file is renumbered.")
+        if args.renumber_atoms:
+            print(f"  Atom numbers in the output PDB file is renumbered.")
+    elif file_format == "prep":
+        if args.rename_prep_hydrogen:
+            print(f"  Hydrogen atoms are renamed.")
+    print()
+
+    residue_mapping, atom_mapping = input_table(args.table_file, args.reverse)
+
+    if file_format == "pdb":
+        input_and_convert_pdb(args.input_file, output_file, residue_mapping, atom_mapping, args.remove_hydrogen, args.renumber_atoms, args.renumber_residues)
+    elif file_format == "prep":
+        input_and_convert_prep(args.input_file, output_file, residue_mapping, atom_mapping, args.rename_prep_hydrogen)
+
+    etime = time.perf_counter()
+    print(f"\nExecution time : {etime - stime} (S)")
+    print(f"\n+++ Program j_presto nt_conv normally ended +++")
+
+if __name__ == "__main__":
+    main()

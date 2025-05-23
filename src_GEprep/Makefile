@@ -12,7 +12,7 @@ OBJS = main.o error.o output_time.o inpinp.o store_element.o infil.o \
 FC = ifort
 ifeq ($(FC), ifort)
     LFLAGS = -O2 -ipo -no-prec-div -no-prec-sqrt -xHost -qopenmp
-    #LFLAGS = -CB -traceback -pg -O2 -ipo -no-prec-div -xHost -openmp
+#    LFLAGS = -CB -traceback -pg -O2 -ipo -no-prec-div -xHost -qopenmp
 else ifeq ($(FC), gfortran)
     LFLAGS = -O2 -march=native -fopenmp
 else

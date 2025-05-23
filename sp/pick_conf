@@ -1,0 +1,457 @@
+#!/usr/bin/env python3
+
+import argparse, math, re, sys, time, os
+import numpy as np
+from decimal import Decimal, getcontext
+
+def display_credits():
+    program_name = "pick_conf"
+    author = "Jinzen Ikebe"
+    version = "1.0.0"
+    first_release_date = "2025-05-23"
+    current_release_date = "2025-05-23"
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    print("*" * 50)
+    print("*")
+    print(f"*    {program_name} (Version {version})")
+    print("*")
+    print(f"*                         Author : {author}")
+    print(f"*             First Release Date : {first_release_date}")
+    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print("*")
+    print(f"*" * 50)
+    print()
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+    except FileNotFoundError:
+        print("Error: License file not found.")
+        sys.exit()
+
+def read_data(file_path, column):
+    if not os.path.exists(file_path):
+        print(f"Error: File '{file_path}' does not exist.") ; sys.exit(1)
+    values = []
+    with open(file_path, 'r') as f:
+        for line in f:
+            if line.strip() == "" or line.strip().startswith("#"):
+                continue
+            fields = line.strip().split()
+            values.append(float(fields[column - 1]))
+    return values
+
+def input_data(input_list):
+    reserved_names = {"index", "weight", "simID", "simtime"}
+    if len(input_list) % 3 != 0:
+        raise ValueError("Input arguments must be in sets of 3: filename, column, rcname.")
+    data = {}
+    for i in range(0, len(input_list), 3):
+        filename, column, rcname = input_list[i:i+3]
+        if rcname in reserved_names:
+            print(f"The reaction coordinate name '{rcname}' is reserved for internal use. "
+                   "Please choose a different name.")
+        print(f"* Now input {rcname} from {filename}")
+        data[rcname] = read_data(filename, int(column))
+    return data
+
+def input_loginfo(logfile):
+    print(f"* Now input {logfile}")
+    loginfo = {"file" : [], "range" : [], "prange" : [], "start" : []} ; n = 0 ; m = 0
+    with open(logfile, 'r') as file:
+        lines = file.readlines()
+        for idx, line in enumerate(lines):
+            if "* Now input" in line:
+                 loginfo["file"].append(line[18:].strip())
+                 loginfo["start"].append(int(lines[idx+1].strip().split()[0]))
+                 i = int(lines[idx+2][lines[idx+2].index('I')+3:].strip().split()[0])
+                 j = int(lines[idx+2][lines[idx+2].index('U')+3:].strip().split()[0])
+                 loginfo["range"].append([n+1, n+i])
+                 loginfo["prange"].append([m+1, m+j])
+                 n += i ; m += j
+    return loginfo
+
+def input_weight(wfile):
+    global data
+    print(f"* Now input {wfile}")
+    index = read_data(wfile,1)
+    data["index"] = list(map(int,index))
+    data["weight"] = read_data(wfile,2)
+    return
+
+def parse_ttpncnf(file_path):
+    print(f"* Now input {file_path}")
+    with open(file_path, 'r') as f:
+        counts = [int(line.strip()) for line in f if line.strip()]
+    boundaries = np.cumsum([0] + counts)
+    return boundaries, len(counts)
+
+def number_data_check():
+    global data
+    lengths = set(len(d) for d in data.values())
+    if len(lengths) != 1:
+        print("Error: Number of input data are different.") ; return
+    return len(data[next(iter(data.keys()), None)])
+
+def make_multidim_space(lst, ncnf):
+    global data
+    i = 0
+    while i < len(lst):
+        try:
+            label = lst[i]
+            axes, origin = lst[i][:lst[i].index('[')].strip(), lst[i][lst[i].index('['):].strip()
+            if label in data:
+                i += 1 ; continue
+
+            axis_names = axes.split(':')
+            try:
+                origin_values = [float(x) for x in origin.strip('[]').split(',')]
+            except ValueError:
+                print(f"!! ERROR !! Origin values must be float: {origin}") ; sys.exit(1)
+            if len(axis_names) != len(origin_values):
+                print(f"!! ERROR !! Dimension mismatch: {axis_names} vs {origin_values}") ; sys.exit(1)
+            if not all(a in data for a in axis_names):
+                print(f"!! ERROR !! One or more axes not found in data: {axis_names}") ; sys.exit(1)
+
+            distances = []
+            for j in range(ncnf):
+                d = 0.0
+                for a, o in zip(axis_names, origin_values):
+                    d += (data[a][j] - o) ** 2
+                distances.append(math.sqrt(d))
+            data[label] = distances ; i += 1
+            print(f"     {label}")
+        except IndexError:
+            print(f"!! ERROR !! Expected format: -m rc1:rc2[x1,y1] rc3:rc4[x2,y2] ...") ; sys.exit(1)
+    return
+
+def input_range(name, ranges):
+    global data
+    if name not in data:
+        print(f"Error: Unknown reaction coordinate name '{name}'") ; sys.exit(1)
+    try:
+        min_str, max_str = ranges.split(":")
+        minval = float(min_str) if min_str else None
+        maxval = float(max_str) if max_str else None
+    except ValueError:
+        print(f"Error: Both minval and maxval must be valid real numbers separated by ':' for -pr and -e option") ; sys.exit(1)
+    if minval is not None and maxval is not None and minval > maxval:
+        minval, maxval = maxval, minval
+    return minval, maxval
+
+def pickup(lst, pick_flag):
+    global data
+    if len(lst) % 2 != 0:
+        print(f"Each pickup range must consist of a name and a range like (-pr rmsd 0:2).") ; sys.exit(1)
+    for i in range(0, len(lst), 2):
+        name, ranges = lst[i], lst[i+1]
+        print(f"     {name} {ranges}")
+        minval, maxval = input_range(name, ranges)
+        for index, value in enumerate(data[name]):
+            try:
+                numeric_value = float(value)
+                if minval is not None and numeric_value < minval:
+                    pick_flag[index] = False
+                elif maxval is not None and numeric_value > maxval:
+                    pick_flag[index] = False
+            except ValueError:
+                pick_flag[index] = False
+                print(f"Non-numeric value found in data: {name} {index}: {value}")
+    return pick_flag
+
+def sort_name_and_order(lst, sname, sorder):
+    global data
+    lst = lst[0]
+    if len(lst) % 2 != 0:
+        print(f"Each sort argument must consist of a name and an order like (-s rmsd a).") ; sys.exit(1)
+    for i in range(0, len(lst), 2):
+        name, order = lst[i], lst[i+1]
+        if order == "a":
+            print(f"     {name} (ascending order)")
+        elif order == "d":
+            print(f"     {name} (decending order)")
+        if name not in data:
+            print(f"Error: Unknown reaction coordinate name '{name}'") ; sys.exit(1)
+        if order == "d":
+            print(f"* Data is sorted in descending order by {name} value.")
+        elif order == "a":
+            print(f"* Data is sorted in ascending order by {name} value.")
+        else:
+            print(f"Error: Unknown sort order '{order}' (use 'a' for ascending or 'd' for descending).") ; sys.exit(1)
+        sname.append(name) ; sorder.append(order)
+    return sname, sorder
+
+def sort_data(ncnf, sname, sorder, tops):
+    global data
+    sorted_index = list(range(ncnf))
+    for j, name in enumerate(sname):
+        sorted_data = []
+        for i in sorted_index:
+            sorted_data.append(data[name][i])
+        reverse = True if sorder[j] == 'd' else False
+        sorted_zip = sorted(zip(sorted_data, sorted_index), key=lambda x: x[0], reverse=reverse)
+        sorted_index = [item[1] for item in sorted_zip]
+    return sorted_index
+
+def event_detection_condition(lst):
+    global data
+    if len(lst) % 2 != 0:
+        print(f"Each pickup range must consist of a name and a range like (-e rmsd 0:2).") ; sys.exit(1)
+    ename = [] ; eminv = [] ; emaxv = []
+    for i in range(0, len(lst), 2):
+        name, ranges = lst[i], lst[i+1]
+        minval, maxval = input_range(name, ranges)
+        ename.append(name) ; eminv.append(minval) ; emaxv.append(maxval)
+    return ename, eminv, emaxv
+
+def make_timeindex(lst, ncnf, loginfo, boundaries, ngroup):
+    global data
+    icount = 0 ; firstID = [0] ; isg = 0
+    for i in range(len(loginfo["range"])):
+        icount += loginfo["prange"][i][1] - loginfo["prange"][i][0] + 1
+        if icount == boundaries[isg+1]:
+            isg += 1 ; firstID.append(loginfo["range"][i][1])
+            if isg == ngroup-1:
+                break
+
+    tstep = Decimal(str(lst[0])) ; itime = Decimal(str(lst[1])) ; simID = [] ; simtime = []
+    for i in range(ngroup):
+        start, end = boundaries[i], boundaries[i+1]
+        for j in range(start, end):
+            time = (data["index"][j] - firstID[i]) * tstep + itime
+            simID.append(i+1) ; simtime.append(time)
+    data["simID"] = simID ; data["simtime"] = simtime
+    return
+
+def event_detection(ncnf, ename, eminv, emaxv, output):
+    if "simID" not in data:
+        print(f'Error. You must define "simID" reaction coordinate data for event detection.') ; sys.exit(1)
+    if "simtime" not in data:
+        print(f'Error. You must define "simtime" reaction coordinate data for event detection.') ; sys.exit(1)
+    for i in range(len(ename)):
+        msg = f"* Event detection for {ename[i]}"
+        if eminv[i] is not None and emaxv[i] is not None:
+            msg += f" (range {eminv[i]}:{emaxv[i]})"
+        elif eminv[i] is not None:
+            msg += f" (range {eminv[i]}:)"
+        elif emaxv[i] is not None:
+            msg += f" (range :{emaxv[i]})"
+        print(msg)
+
+    flag = [False] * ncnf
+    for i in range(ncnf):
+        broken = False
+        for j in range(len(ename)):
+            if eminv[j] is not None and data[ename[j]][i] < eminv[j]:
+                broken = True ; break
+            if emaxv[j] is not None and data[ename[j]][i] > emaxv[j]:
+                broken = True ; break
+        if broken:
+            continue
+        flag[i] = True
+
+    first_detect_time = {}
+    for i in range(ncnf):
+        if flag[i]:
+            ID = data["simID"][i] ; time = data["simtime"][i]
+            if ID not in first_detect_time or time < first_detect_time[ID]:
+                first_detect_time[ID] = time
+    sorted_items = sorted(first_detect_time.items(), key=lambda x: x[1])
+
+    print(f"* Result of event detection is output as {output}.ed")
+    with open(output+".ed", "w") as f:
+        for i in range(len(ename)):
+            msg = f"# {ename[i]}"
+            if eminv[i] is not None and emaxv[i] is not None:
+                msg += f" {eminv[i]}:{emaxv[i]}"
+            elif eminv[i] is not None:
+                msg += f" {eminv[i]}:"
+            elif emaxv[i] is not None:
+                msg += f" :{emaxv[i]}"
+            f.write(msg+"\n\n")
+        ic = 0 ; msg = []
+        for rank, (ID, time) in enumerate(sorted_items, start=1):
+            ic += 1 ; f.write(f"{time} {ic}\n")
+            msg.append([rank, ID, time])
+        f.write(f"\n")
+        for rank, ID, time in msg:
+            f.write(f"# {rank}: {ID}  {time}\n")
+    return
+
+def output_pick(output, sindex, sname, pick_flag, tops):
+    global data
+    print(f"* Data file is output as {output}.pick")
+    with open(output+".pick", "w") as f:
+        header = "#  "
+        print(f"* Output column information")
+        for i, key in enumerate(data.keys()):
+            print(f"    {i+1}: {key}")
+            header += f"{i+1}:{key}  "
+        if sname == []:
+            f.write(header+": index in input data\n")
+        else:
+            f.write(header+": order\n")
+        print("")
+
+        icount = 0
+        for idx in sindex:
+            if pick_flag[idx]:
+                icount += 1 ; output_line = ""
+                for key, d in data.items():
+                    output_line += f" {d[idx]}"
+                f.write(output_line+f" : {icount}\n")
+            if icount >= tops:
+                break
+
+        # average and standard deviation calculation
+        if "weight" in data:
+            weight = [float(value) for value in data["weight"]]
+        else:
+            weight = [1.0] * ncnf
+
+        for i, key in enumerate(data.keys()):
+            if not all(isinstance(x, (int, float)) or (isinstance(x, str) and re.match(r'^[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?$', x)) for x in data[key]):
+                break
+            selected_values = [] ; selected_weights = [] ; icount = 0
+            for idx in sindex:
+                if pick_flag[idx]:
+                    icount += 1 ; w = weight[idx]
+                    selected_values.append(float(data[key][idx]))
+                    selected_weights.append(w)
+                if icount >= tops:
+                    break
+            mean_value = np.average(selected_values, weights=selected_weights)
+            std_deviation = np.sqrt(np.average((selected_values - mean_value)**2, weights=selected_weights))
+            if "weight" in data:
+                f.write(f"#  weighted average {key} = {mean_value}  ± {std_deviation}\n")
+            else:
+                f.write(f"#  average {key} = {mean_value}  ± {std_deviation}\n")
+    return
+
+def output_list(ncnf, loginfo, output, sname, sindex, pick_flag, tops):
+    global data
+    n = 0 ; index_to_filenum = []
+    for i in range(0, ncnf):
+        if data["index"][i] <= loginfo["range"][n][1]:
+            index_to_filenum.append(n)
+        else:
+            while True:
+                n += 1
+                if data["index"][i] <= loginfo["range"][n][1]:
+                    index_to_filenum.append(n)
+                    break
+
+    print(f"* A list file for Ens_Ana is output as {output}.list")
+    with open(output+".list", "w") as f:
+        if sname == []:
+            i = -1
+            while True:
+                i += 1
+                if pick_flag[i]:
+                    n1 = index_to_filenum[i]
+                    ist = data["index"][i] - loginfo["range"][n1][0] + loginfo["start"][n1]
+                    n2 = i
+                    while True:
+                        n2 += 1
+                        if n2 == ncnf:
+                            i = n2 - 1
+                            ien = data["index"][i] - loginfo["range"][n1][0] + loginfo["start"][n1]
+                            break
+                        elif not pick_flag[n2] or n1 != index_to_filenum[n2] or (data["index"][n2] - data["index"][i] - n2 + i) != 0:
+                            i = n2 - 1
+                            ien = data["index"][i] - loginfo["range"][n1][0] + loginfo["start"][n1]
+                            break
+
+                    f.write(loginfo["file"][n1].strip() + "\n")
+                    f.write(f"{ist}  {ien} ->\n")
+
+                if i == ncnf-1:
+                    break
+        else:
+            icount = 0
+            for idx in sindex:
+                if pick_flag[idx]:
+                    icount += 1
+                    n1 = index_to_filenum[idx]
+                    ist = data["index"][idx] - loginfo["range"][n1][0] + loginfo["start"][n1]
+                    f.write(loginfo["file"][n1].strip() + "\n")
+                    f.write(f"{ist}  {ist} ->\n")
+                if icount >= tops:
+                    break
+    return
+
+def main():
+    global data, pick_flag
+    stime = time.perf_counter()
+    parser = argparse.ArgumentParser(description='The objectives of this program are 1: makes a list of structures that satisfy user-defined condition, 2: detect the time it takes for a defined event to occur, 3: rank structures based on the defined condition.')
+    parser.add_argument('access_key', help=argparse.SUPPRESS)
+    parser.add_argument('-i', '--input', nargs='+', help='Define reaction coordinates. For a reaction coordinate, you must specify the three values: 1:Input file name, 2:column number in the input file, and 3:the reaction coordinate name  (ex. -i rmsd.dat 2 rmsd PCA.proj 2 PCA1 PCA.proj 3 PCA2)')
+    parser.add_argument('-o', '--output', default="test", help='Output file name (defalut: test). (ex. test.pick, test.list, test.ed)')
+    parser.add_argument('-l', '--loginfo', help='Log information file name from Ens_Ana. If you want a list of structures (*.list file) that satisfy specific condition, you must set this option.')
+    parser.add_argument('-w', '--weight', help='Input weight file name from Ens_Ana. If you want a list of structures (*.list file) that satisfy specific condition, you must set this option.')
+    parser.add_argument('-t', '--ttp', help='TTPncnf file. If you set -e option, you must set this option to generante time index information.')
+    parser.add_argument('-m', '--multi_dim_distance', nargs='+', type=str, help='Define the distance from a specified point in the multidimensional reaction coordinate space as a new reaction coordinate. (ex. -m PCA1:PCA2[2,3]')
+    parser.add_argument('-pr', '--pickup_range', nargs='*', help='Range to Pick up data (ex. -pr rmsd 0:2 PCA1:PCA2[2,3] 0:1 (Pick up only the data with an rmsd between 0 and 2, and a distance from [2,3] on the PCA1-PCA2 plane within the range of 0 to 1)')
+    parser.add_argument('-s', '--sort', nargs='+', action='append', help='If you want to sort output data, please set this option. This option is given as a pair of 1:reaction coordinate name and 2:order. Order is d (decending order) or a (ascending order). If you set "-s rmsd a PCA1:PCA2[2,3] a", sort the data first by rmsd in ascending order and then sort by the distance from the point [2,3] on the PCA1:PCA2 plane, also in ascending order.')
+    parser.add_argument('-n', '--ntop', type=int, default=0, help='If you want to output only top N data, please set this option. (ex. -n 5)')
+    parser.add_argument('-e', '--event_detection', nargs='+', help='Set this option if you want to enter detect an event from data for multiple time series of simulation runs. You must define two reaction coordinates: the simulation run ID as "simID" and the simulation time as "simtime". The file to input ID and time can be make using "-m" option. (ex. If you detect rmsd < 1.2, -e rmsd :1.2") (ex. If you detect distance to [2,3] on PCA1:PCA2 plane > 0.9, -e PCA1:PCA2[2,3] 0.9:") When you set this option, you must set -w, -l, -t and -ti option.')
+    parser.add_argument('-ti', '--time_index', metavar=('Tstep', 'Itime'), nargs=2, type=float, help='If you set -e option, you must set this option to generate time index information for event detaction. This option is given as "-ti Tstep Itime". (ex. Tstep: time interval between each data point in the simulation, Itime: initial simulation time like "-ti 0.005,0" ). To generate time index information, you must set -w, -l, and -t option. The generated simulation ID and time data are internally stored as reaction coordinates named "simID" and "simtime", respectively.')
+    args = parser.parse_args()
+    access_key = args.access_key
+    if access_key != "j_presto":
+        sys.exit()
+    display_credits()
+
+    print(f"")
+    if args.input is None:
+        print("Error: Input file is not specified. Please use the '-i' or '--input' option to provide input file(s).") ; sys.exit(1)
+    data = input_data(args.input)
+    if args.loginfo is not None:
+        loginfo = input_loginfo(args.loginfo)
+    if args.weight is not None:
+        input_weight(args.weight)
+    if args.loginfo is None or args.weight is None:
+        print(f"    !! CAUTION !!\nIf you want to make *.list file for Ens_Ana input, you must set both of -l and -w options.")
+    if args.ttp is not None:
+        boundaries, ngroup = parse_ttpncnf(args.ttp)
+    ncnf = number_data_check()
+    if args.multi_dim_distance is not None:
+        print(f"\n* Below new reaction coordinate(s) are generated.")
+        make_multidim_space(args.multi_dim_distance, ncnf)
+
+    # For pick_up
+    pick_flag = [True] * ncnf
+    if args.pickup_range is not None:
+        print(f"* Pickup range : ")
+        pick_flag = pickup(args.pickup_range, pick_flag)
+
+    #For sort
+    sname = [] ; sorder = [] ; sindex = None
+    if args.sort is not None:
+        print(f"* Sort : ")
+        sname, sorder = sort_name_and_order(args.sort, sname, sorder)
+    tops = args.ntop
+    if sname != [] and tops != 0:
+        print(f"* Top {tops} data is output.")
+    if tops == 0:
+        tops = ncnf
+    sindex = sort_data(ncnf, sname, sorder, tops)
+
+    #For event_detection
+    if args.event_detection is not None:
+        if args.weight is None or args.loginfo is None or args.ttp is None or args.time_index is None:
+            print(f"Error. For event detection, -w, -l, -t and -ti must be set.") ; sys.exit(1)
+        ename, eminv, emaxv = event_detection_condition(args.event_detection)
+        make_timeindex(args.time_index, ncnf, loginfo, boundaries, ngroup)
+        event_detection(ncnf, ename, eminv, emaxv, args.output)
+
+    #For output
+    output_pick(args.output, sindex, sname, pick_flag, tops)
+    if args.loginfo is not None and args.weight is not None:
+        output_list(ncnf, loginfo, args.output, sname, sindex, pick_flag, tops)
+
+    etime = time.perf_counter()
+    print(f"\nExecution time : {etime - stime} (S)")
+    print(f"\n+++ Program j_presto pick_conf normally ended +++")
+
+if __name__ == "__main__":
+    main()

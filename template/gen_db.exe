@@ -2,6 +2,9 @@
 
 j_presto gen_db -o test -i leaprc.protein.ff14SB leaprc.water.tip3p -rr TP3:WAT | tee gen_db.log
 
+#For AMBER-based hybrid force field
+#j_presto gen_db -o test -i leaprc.ff94 frcmod.parmhyb955 atomic_ions.lib solvents.lib frcmod.tip3p frcmod.ions1lm_126_tip3p frcmod.ionsjc_tip3p -rr TP3:WAT | tee gen_db.log
+
 #################################################################################################
 #
 #  Description of the script

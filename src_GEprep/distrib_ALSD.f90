@@ -22,7 +22,8 @@
       ! MINimum Energy for Count
         real(8):: minEc
       ! (Temporary) Energy of each bin (EE is for dlnN)
-        real(8):: EE(nAB),tEE(nAB),ELMD(nlmd),EEAA(nEAA),EEAB(nEAB)
+        real(8):: EE(nAB),tEE(nAB),ELMD(nlmd)
+        real(8),allocatable:: EEAA(:),EEAB(:)
       ! FILE NaMe
         character(130):: filnam
         integer(4):: iST,iEN
@@ -70,6 +71,7 @@
       allocate(twF(nEAA,nEAB,nlmd),Pc(nlmd,nEAA,nEAB))
       allocate(aveEAA(nAB),aveEAB(nAB),cEAAEAB(nAB))
       allocate(TaveEAA(nAB),TaveEAB(nAB),TcEAAEAB(nAB),acclabrat(nAB))
+      allocate(EEAA(nEAA),EEAB(nEAB))
 
       ifile = 0 ; fwflg = .false.
       if ( accele ) fwflg = .true.
@@ -406,7 +408,7 @@
              minEAB2.lt.minEAB .or. maxEAB2.gt.maxEAB ) then
           deallocate(wei,weit,tw,twF,Pc,aveEAA,aveEAB,cEAAEAB,TaveEAA, &
             TaveEAB,TcEAAEAB,acclabrat,flt,lmdrng,COEold,low_old,      &
-            high_old)
+            high_old,EEAA,EEAB)
           minEAA = float(floor(minEAA2/5) * 5)
           maxEAA = ceiling(maxEAA2/5.0) * 5.0
           minEAB = float(floor(minEAB2/5) * 5)

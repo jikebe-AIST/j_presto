@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+
+import argparse, os, sys, time
+import numpy as np
+
+def display_credits():
+    program_name = "ttp_se"
+    author = "Jinzen Ikebe"
+    version = "1.0.0"
+    first_release_date = "2025-05-23"
+    current_release_date = "2025-05-23"
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    print("*" * 50)
+    print("*")
+    print(f"*    {program_name} (Version {version})")
+    print("*")
+    print(f"*                         Author : {author}")
+    print(f"*             First Release Date : {first_release_date}")
+    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print("*")
+    print(f"*" * 50)
+    print()
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+    except FileNotFoundError:
+        print("Error: License file not found.")
+        sys.exit()
+
+def parse_ttpncnf(file_path):
+    with open(file_path, 'r') as f:
+        counts = [int(line.strip()) for line in f if line.strip()]
+    boundaries = np.cumsum([0] + counts)
+    return boundaries, len(counts)
+
+def read_weights(file_path):
+    weights = []
+    with open(file_path, 'r') as f:
+        for line in f:
+            cols = line.strip().split()
+            weights.append(float(cols[1]))
+    return np.array(weights)
+
+def read_numeric_data(file_path, col_index):
+    data = []
+    with open(file_path, 'r') as f:
+        for line in f:
+            if len(line.strip()) == 0 or line.lstrip().startswith("#"):
+                continue
+            cols = line.strip().split()
+            data.append(float(cols[col_index - 1]))
+    return np.array(data)
+
+def read_string_data(file_path):
+    data = []
+    with open(file_path, 'r') as f:
+        for line in f:
+            if line.lstrip().startswith("#"):
+                continue
+            if line.endswith('\n'):
+                line = line[:-1]
+            data.append(list(line))
+    return np.array(data)
+
+def weighted_avg_and_se(data, weights, boundaries, ngroup):
+    means = [] ; ses = [] ; swei = []
+    for i in range(ngroup):
+        start, end = boundaries[i], boundaries[i+1]
+        d = data[start:end] ; w = weights[start:end]
+        avg = np.average(d, weights=w)
+        var = np.average((d - avg)**2, weights=w)
+        se = np.sqrt(var) / np.sqrt(len(d))
+        means.append(avg) ; ses.append(se) ; swei.append(sum(w))
+    return means, ses, swei
+
+def calc_overall_mean_and_se(means, swei):
+    means = np.array(means) ; weights = np.array(swei)
+    weighted_mean = np.average(means, weights=weights)
+    variance = np.average((means - weighted_mean)**2, weights=weights)
+    se = np.sqrt(variance / len(means))
+    return weighted_mean, se
+
+def weighted_avg_and_se_per_position(data, weights, boundaries, ngroup, target_char):
+    m = data.shape[1] ; results = []
+    for pos in range(m):
+        char_data = (data[:, pos] == target_char).astype(float)
+        means, ses, swei = weighted_avg_and_se(char_data, weights, boundaries, ngroup)
+        results.append((pos + 1, means, ses, swei))
+    return results
+
+def main():
+    stime = time.perf_counter()
+    parser = argparse.ArgumentParser(description="Weighted average and standard error calculator with TTPncnf grouping.")
+    parser.add_argument('access_key', help=argparse.SUPPRESS)
+    parser.add_argument("input", help="Input data file (numeric or string)")
+    parser.add_argument("TTPncnf", help="TTPncnf file defining subgroups")
+    parser.add_argument("-w", "--weight", help="Weight file")
+    parser.add_argument("-c", "--col_or_char", help="Specify either the column number (integer) of the input data file or a single-character string (e.g., DSSP secondary structure code) to select the data to process.")
+    parser.add_argument("-o", "--output", type=str, default="output.txt", help="Output file name (default: output.txt)")
+
+    args = parser.parse_args()
+    access_key = args.access_key
+    if access_key != "j_presto":
+        sys.exit()
+    display_credits()
+
+    print(f"* Input TTPncnf file : {args.TTPncnf}")
+    boundaries, ngroup = parse_ttpncnf(args.TTPncnf)
+    if args.weight:
+        print(f"* Input weight file  : {args.weight}")
+        weights = read_weights(args.weight)
+    else:
+        with open(args.input, 'r') as f:
+            num_data = sum(1 for line in f if line.strip())
+        weights = np.ones(num_data)
+
+    arg = args.col_or_char
+    if isinstance(arg, str) and len(arg) == 1 and not arg.isdigit():
+        print(f"* Character string   : {arg}")
+        string = arg ; col = None
+    else:
+        try:
+            print(f"* Column number : {arg}")
+            col = int(arg) ; string = None
+        except ValueError:
+            print(f"Argument for -c must be either a single character string or an integer column number.") ; sys.exit(1)
+
+    print(f"* Input file         : {args.input}")
+    if col is not None:
+        data = read_numeric_data(args.input, col)
+        if len(data) != len(weights):
+            print(f"N of data: {len(data)}, N of weight: {len(weights)}")
+            print(f"Data length and weight length do not match.") ; sys.exit(1)
+        means, ses, swei = weighted_avg_and_se(data, weights, boundaries, ngroup)
+        with open(args.output, 'w') as f:
+            overall_mean, overall_se = calc_overall_mean_and_se(means, swei)
+            f.write(f"Mean = {overall_mean:.6f}, SE = {overall_se:.6f}\n")
+    else:
+        data = read_string_data(args.input)
+        if len(data) != len(weights):
+            print(f"N of data: {len(data)}, N of weight: {len(weights)}")
+            raise ValueError("Data length and weight length do not match.")
+        results = weighted_avg_and_se_per_position(data, weights, boundaries, ngroup, string)
+        with open(args.output, 'w') as f:
+            for pos, means, ses, swei in results:
+                overall_mean, overall_se = calc_overall_mean_and_se(means, swei)
+                f.write(f"{pos} {overall_mean:.6f} {overall_se:.6f}\n")
+    print(f"* Output file        : {args.output}")
+
+    etime = time.perf_counter()
+    print(f"\nExecution time : {etime - stime} (S)")
+    print(f"\n+++ Program j_presto ttp_se normally ended +++")
+
+if __name__ == "__main__":
+    main()
+

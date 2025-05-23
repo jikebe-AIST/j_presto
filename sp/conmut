@@ -1,0 +1,307 @@
+#!/usr/bin/env python3
+import argparse, os, subprocess, sys, shutil, re, tempfile
+from Bio import SeqIO
+from Bio.Blast import NCBIWWW, NCBIXML
+from collections import Counter, defaultdict
+
+def display_credits():
+    program_name = "conmut"
+    author = "Jinzen Ikebe"
+    version = "1.0.0"
+    first_release_date = "2025-04-21"
+    current_release_date = "2025-04-21"
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    print("*" * 50)
+    print("*")
+    print(f"*    {program_name} (Version {version})")
+    print("*")
+    print(f"*                         Author : {author}")
+    print(f"*             First Release Date : {first_release_date}")
+    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print("*")
+    print(f"*" * 50)
+    print()
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+    except FileNotFoundError:
+        print("Error: License file not found.")
+        sys.exit()
+
+def check_dependency(program):
+    if shutil.which(program) is None:
+        print(f"Error: {program} is not installed or not in PATH.\nPlease install '{program}' and ensure it is accessible from the command line."); sys.exit(1)
+
+from Bio import SeqIO
+
+def write_alignment_view(query_seq, sequences, consensus_seq, species_list, output_txt, line_width, srn):
+    from textwrap import wrap
+
+    aligned_query = sequences["query"]
+    del sequences["query"]
+    aln_len = len(aligned_query)
+    max_label_len = max(len(name) for name in species_list + ["query", "consensus", "diff"])
+
+    number_line = [" "] * aln_len
+    query_position = srn
+    for i in range(aln_len):
+        if aligned_query[i] != "-":
+            if query_position % 10 == 0:
+                label = str(query_position)
+                for j, char in enumerate(label[::-1]):
+                    if i - j >= 0:
+                        number_line[i - j] = char
+            query_position += 1
+    number_line_str = "".join(number_line)
+
+    position_line = []
+    query_index = srn
+    for aa in aligned_query:
+        if aa == "-":
+            position_line.append(" ")
+        else:
+            position_line.append(str((query_index % 10)))
+            query_index += 1
+    position_line_str = "".join(position_line)
+
+    with open(output_txt, "w") as f:
+        for start in range(0, aln_len, line_width):
+            end = start + line_width
+
+            f.write(" " * (max_label_len + 3) + number_line_str[start:end] + "\n")
+            f.write(" " * (max_label_len + 3) + position_line_str[start:end] + "\n")
+            f.write(f"{'query'.ljust(max_label_len)} : {aligned_query[start:end]}\n\n")
+            for ii, (name, seq) in enumerate(sequences.items()):
+                f.write(f"{species_list[ii].ljust(max_label_len)} : {seq[start:end]}\n")
+            f.write(f"\n{'consensus'.ljust(max_label_len)} : {consensus_seq[start:end]}\n")
+            diff_line = "".join(
+                "*" if aligned_query[i] != consensus_seq[i] and aligned_query[i] != "-" and consensus_seq[i] != "-"
+                else " "
+                for i in range(start, min(end, aln_len))
+            )
+            f.write(f"{'diff'.ljust(max_label_len)} : {diff_line}\n\n")
+
+def extract_organism(description):
+    matches = re.findall(r"\[(.+?)\]", description)
+    return matches[-1] if matches else "Unknown_species"
+
+def select_representative(hit_list_for_species):
+    best_score = -1
+    best_hit = None
+    for hit in hit_list_for_species:
+        score = hit["score"]
+
+        if 'ref|' in hit["hit_id"]:
+            score += 50
+        if "partial" in hit["description"].lower():
+            score -= 20
+        if "hypothetical" in hit["description"].lower():
+            score -= 10
+        if len(hit["sequence"]) < 100:
+            score -= 30
+
+        if score > best_score:
+            best_score = score
+            best_hit = hit
+
+    return best_hit
+
+def parse_blast_results(blast_records):
+    hits = []
+    for record in blast_records:
+        query_length = record.query_length
+        for alignment in record.alignments:
+            for hsp in alignment.hsps:
+                hits.append({
+                    "hit_id": alignment.hit_id,
+                    "description": alignment.hit_def,
+                    "organism": extract_organism(alignment.hit_def),
+                    "sequence": hsp.sbjct.replace("-", ""), # ギャップを除去
+                    "score": hsp.score,
+                    "evalue": hsp.expect,
+                    "identity": hsp.identities,
+                    "identity_pct": hsp.identities / hsp.align_length,
+                    "align_len": hsp.align_length,
+                    "query_coverage": hsp.align_length / query_length
+                })
+    return hits
+
+def run_blast(query_file, email, local_BLAST, db_path, evalue, Nseq, output_prefix, identity_threshold, coverage_threshold):
+    if local_BLAST:
+        output_file = "blast_results.xml"
+        cmd = [
+            "blastp", "-query", query_file, "-db", db_path, "-out", output_file,
+            "-outfmt", "5", "-evalue", str(evalue), "-max_target_seqs", str(Nseq)
+        ]
+        subprocess.run(cmd, check=True)
+        with open(output_file) as result_handle:
+            blast_records = NCBIXML.parse(result_handle)
+            raw_hits = parse_blast_results(blast_records)
+    else:
+        with open(query_file) as f:
+            record = SeqIO.read(f, format="fasta")
+        print("Submitting query to NCBI BLAST server...")
+        result_handle = NCBIWWW.qblast("blastp", "nr", record.format("fasta"), expect=evalue, hitlist_size=Nseq, format_type="XML")
+        blast_records = NCBIXML.parse(result_handle)
+        raw_hits = parse_blast_results(blast_records)
+    write_hits_to_fasta(raw_hits, f"{output_prefix}_all.fasta")
+
+    hits_thre = []
+    for hit in raw_hits:
+        if hit["identity_pct"] >= identity_threshold and hit["query_coverage"] >= coverage_threshold:
+            hits_thre.append(hit)
+    write_hits_to_fasta(hits_thre, f"{output_prefix}_flt.fasta")
+
+    species_to_hits = {}
+    for hit in hits_thre:
+        species_match = re.match(r"(\w+ \w+)", hit["organism"])
+        species = species_match.group(1) if species_match else hit["organism"]
+        species_to_hits.setdefault(species, []).append(hit)
+
+    final_hits = []
+    for species, hits in species_to_hits.items():
+        best = select_representative(hits)
+        if best:
+            final_hits.append(best)
+    write_hits_to_fasta(final_hits, f"{output_prefix}_rep.fasta")
+
+    return final_hits
+
+def write_hits_to_fasta(hits, output_fasta):
+    dir_name = os.path.dirname(output_fasta)
+    if dir_name:
+        os.makedirs(dir_name, exist_ok=True)
+
+    with open(output_fasta, "w") as f:
+        for i, hit in enumerate(hits):
+            header = (
+                f">hit_{i}_{hit['hit_id']} "
+                f"|organism={hit['organism']} "
+                f"|description={hit['description']} "
+                f"|evalue={hit['evalue']:.2e} "
+                f"|identity={hit['identity']}/{hit['align_len']} "
+                f"|score={hit['score']}"
+            )
+            f.write(f"{header}\n{hit['sequence']}\n")
+
+def run_alignment(input_fasta, output_fasta, aligner):
+    if aligner == "clustalw":
+        check_dependency("clustalw")
+        base_name = os.path.splitext(os.path.basename(input_fasta))[0]
+        default_output = f"{base_name}.aln"
+        clustalw_command = ["clustalw", "-INFILE=" + input_fasta]
+
+        try:
+            subprocess.run(clustalw_command, check=True)
+            if os.path.exists(default_output):
+                shutil.move(default_output, output_fasta)
+            else:
+                print(f"Error: Expected output '{default_output}' not found.")
+                sys.exit(1)
+            return "clustal"
+
+        except subprocess.CalledProcessError as e:
+            print(f"Error running ClustalW:\n{e.stderr}")
+            sys.exit(1)
+
+    else:
+        check_dependency("mafft")
+        try:
+            result = subprocess.run(["mafft", input_fasta], capture_output=True, text=True, check=True)
+            with open(output_fasta, "w") as f:
+                f.write(result.stdout)
+            return "fasta"
+        except FileNotFoundError:
+            print("Error: MAFFT is not installed or not found in PATH.\nPlease install 'mafft' and ensure it is accessible from the command line."); sys.exit(1)
+        except subprocess.CalledProcessError as e:
+            print(f"Error running MAFFT:\n{e.stderr}"); sys.exit(1)
+
+def calculate_consensus(msa_file, fmt="fasta"):
+    alignment = list(SeqIO.parse(msa_file, fmt))
+    consensus = "" ; consensus_percentages = [] ; consensus_list = []
+    for i in range(len(alignment[0])):
+        column = [record.seq[i] for record in alignment if i < len(record)]
+        column_counts = Counter(column)
+        most_common = Counter(column).most_common(1)[0][0]
+
+        most_common_count = column_counts[most_common]
+        most_common_items = [item for item, count in column_counts.items() if count == most_common_count]
+        consensus_list.append(most_common_items)
+
+        total_sequences = len(column)
+        most_common_count = column.count(most_common)
+        percentage = (most_common_count / total_sequences) * 100
+        consensus_percentages.append(percentage)
+        if len(most_common_items) > 1:
+            most_common = 'X'
+        consensus += most_common
+    return consensus, consensus_percentages, consensus_list
+
+def suggest_mutations(query_seq, consensus, consensus_pcts, consensus_list, srn, output_file):
+    with open(output_file, "w") as f:
+        f.write(f"Position\tQuery\t->\tConsensus\tPercentage of Matches\n")
+        query_pos = srn - 1
+        for i in range(len(consensus)):
+            if query_seq[i] != '-':
+                query_pos += 1
+            if query_seq[i] != consensus[i] and query_seq[i] != '-' and consensus[i] != '-':
+                f.write(f"{query_pos:<8}\t{query_seq[i]:<6}\t->\t{''.join(consensus_list[i]):<10}\t{consensus_pcts[i]:.2f}%\n")
+
+def main():
+    parser = argparse.ArgumentParser(description="Predict beneficial mutations based on consensus sequences from homologs.")
+    parser.add_argument('access_key', help=argparse.SUPPRESS)
+    parser.add_argument("query", help="Query FASTA file")
+    parser.add_argument("-e", "--email", help="Email (required for web BLAST)")
+    parser.add_argument("-l", "--local_BLAST", action="store_true", help="Use local BLAST")
+    parser.add_argument("-d", "--db_path", default="nr", help="Local BLAST DB path")
+    parser.add_argument("-b", "--blast_evalue", type=float, default=1e-5, help="E-value threshold for BLAST")
+    parser.add_argument("-m", "--max_target_seqs", type=int, default=1000, help="Maximum number of target sequences for BLAST")
+    parser.add_argument("-i","--identity_threshold", type=float, default=0.9, help="Minimum identity ratio (e.g., 0.9 = 90%)")
+    parser.add_argument("-c","--coverage_threshold", type=float, default=0.9, help="Minimum coverage ratio (e.g., 0.9 = 90%)")
+    parser.add_argument("-H", "--homologs", help="Path to a FASTA file containing homolog sequences")
+    parser.add_argument("-a", "--aligner", choices=["mafft", "clustalw"], default="mafft", help="Multiple sequence aligner")
+    parser.add_argument("-s", "--start_residue_number", type=int, default=1, help="Residue number to start counting from (default: 1).")
+    parser.add_argument("-o", "--output_prefix", default="result", help="Prefix for output files")
+    args = parser.parse_args()
+    access_key = args.access_key
+    if access_key != "j_presto":
+        sys.exit()
+    display_credits()
+
+    if not args.homologs:
+        if args.local_BLAST:
+            check_dependency("blastp")
+        elif not args.email:
+            print("Email is required for web BLAST."); sys.exit(1)
+
+        hits = run_blast(args.query, args.email, args.local_BLAST, args.db_path, args.blast_evalue, args.max_target_seqs, args.output_prefix, args.identity_threshold, args.coverage_threshold)
+        if not hits:
+            print("No BLAST hits found. Try using a less stringent e-value or a different query sequence."); sys.exit(1)
+        homolog_fasta = f"{args.output_prefix}_rep.fasta"
+
+    else:
+        homolog_fasta = args.homologs
+
+    fmt = run_alignment(homolog_fasta, f"{args.output_prefix}_aln.fasta", args.aligner)
+
+    consensus_seq, consensus_pct, consensus_list = calculate_consensus(f"{args.output_prefix}_aln.fasta", fmt=fmt)
+    with open(f"{args.output_prefix}_consensus.fasta", "w") as f:
+        f.write(f">consensus\n{consensus_seq}\n")
+
+    first_record_id = next(SeqIO.parse(f"{args.output_prefix}_aln.fasta", "fasta")).id
+    alignment_records = SeqIO.to_dict(SeqIO.parse(f"{args.output_prefix}_aln.fasta", "fasta"))
+    query_record = alignment_records[first_record_id]
+    
+    species_dict = {}
+    for record in alignment_records.values():
+        species_name = extract_organism(record.description)
+        species_dict[record.id] = species_name
+    species_list = [species_dict[record.id] for record in alignment_records.values()]
+    
+    suggest_mutations(str(query_record.seq), consensus_seq, consensus_pct, consensus_list, args.start_residue_number, f"{args.output_prefix}_suggested_mutations.txt")
+
+    sequences = {record.id: str(record.seq) for record in alignment_records.values()}
+    sequences["query"] = str(alignment_records[query_record.id].seq)
+    write_alignment_view(str(query_record.seq), sequences, consensus_seq, species_list, f"{args.output_prefix}_aln_view.txt", 60, args.start_residue_number)
+if __name__ == "__main__":
+    main()

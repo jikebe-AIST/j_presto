@@ -66,8 +66,12 @@
 
       ! RESIDUE CALCULATION LIST FOR CMM
       if ( len(trim(celres)) .ne. 0 ) then
-        call atom_specifier(len(trim(celres)),trim(celres),ilist,      &
-          cxatmn,absres,cxresn,tnCHN,tCHN,cord,ncou,tlist)
+        call atom_specifier(len(trim(celres)),trim(celres),ixnatm,     &
+          ilist,cxatmn,absres,cxresn,tnCHN,tCHN,cord,ncou,tlist)
+        write(iprint,'(a)')"  Atoms for residue cell ceparation for "//&
+          "CMM : "//trim(celres)
+        call output_specifier_log(ncou,"s",ixnatm,ilist,cxatmn,absres, &
+          cxresn,tnCHN,tCHN,tlist)
         !! Make cmm residue list
         if ( ncou .ne. 0 ) then
           n = absres(ixnatm)

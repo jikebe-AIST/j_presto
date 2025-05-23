@@ -62,7 +62,7 @@
       if ( icount .eq. 0 ) then
         write(6,*)"!! ERROR !!"
         write(6,*)"None of atoms were selected under the specified"//" &
-                  selection criteria"//trim(specifiers)//"."
+                  selection criteria "//trim(specifiers)//"."
         stop
       endif
       flist(1:icount) = sum_list(1:icount)
