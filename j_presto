@@ -4,7 +4,7 @@ import subprocess
 import sys, os
 
 def run_program(program_name, args):
-    program_dict = {"md_run", "GEprep", "Ens_Ana", "PCAaxis", "PCAproj", "distrib", "pdb_alignfit", "nt_gen", "nt_conv", "conmut", "pick_conf", "ttp_se"}
+    program_dict = {"md_run", "GEprep", "Ens_Ana", "PCAaxis", "PCAproj", "distrib", "pdb_alignfit", "nt_gen", "nt_conv", "conmut", "pick_conf", "ttp_se", "genlist", "MSPER"}
     program_dict_nohelp = {"md_run", "GEprep", "Ens_Ana"}
     try:
         sys.stdout.flush()

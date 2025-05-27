@@ -65,6 +65,7 @@ With j_presto, you can execute the following sub-programs using the command:
 	j_presto [sub_program_name]
 
 Sub-program name list:
+
     For MD simulation,
         pdb_alignfit    : Superimposition of query structure to target one based on sequence alignment.
         nt_gen          : Generation of atomic name correspondence table from a PREP and a PDB file.
@@ -84,6 +85,7 @@ Sub-program name list:
         ttp_se          : Calculation of weighted averages and standard errors of the data
 
     For Enzyme development,
+	MSPER           : Predict mutation sites to improve enzyme selectivity.
         conmut          : Propose mutations to improve enzyme stability from input amino acid sequences using the consensus method
 
     For user guidance,

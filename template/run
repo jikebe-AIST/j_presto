@@ -1,0 +1,21 @@
+#!/bin/bash
+
+first=0
+last=20
+previous_job_id=""
+
+# -----------------------------------------------
+# Description:
+#   Submits a series of SLURM jobs (md_multi_X.exe)
+#   in sequential order with job dependencies,
+#   ensuring each job runs after the previous one.
+# -----------------------------------------------
+
+for job_index in $(seq $first $last); do
+  if [ -n "$previous_job_id" ]; then
+    previous_job_id=$(sbatch --dependency=afterok:$previous_job_id md_multi_${job_index}.exe | awk '{print $4}')
+  else
+    previous_job_id=$(sbatch md_multi_${job_index}.exe | awk '{print $4}')
+  fi
+  echo "Submitted md_multi_${job_index}.exe as job $previous_job_id"
+done

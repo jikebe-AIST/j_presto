@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+
+import argparse, os, sys, time
+
+def display_credits():
+    program_name = "genlist"
+    author = "Jinzen Ikebe"
+    version = "1.0.0"
+    first_release_date = "2025-05-27"
+    current_release_date = "2025-05-27"
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    print("*" * 50)
+    print("*")
+    print(f"*    {program_name} (Version {version})")
+    print("*")
+    print(f"*                         Author : {author}")
+    print(f"*             First Release Date : {first_release_date}")
+    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print("*")
+    print(f"*" * 50)
+    print()
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+    except FileNotFoundError:
+        print("Error: License file not found.") ; sys.exit(1)
+
+def main():
+    stime = time.perf_counter()
+    parser = argparse.ArgumentParser(description="Generate a list of file paths and data ranges for input.")
+    parser.add_argument('access_key', help=argparse.SUPPRESS)
+    parser.add_argument("-m", "--md_range", required=True,help="MD index range in the form start:end (e.g., 0:27)")
+    parser.add_argument("-n", "--n_range", required=True,help="N index range in the form start:end (e.g., 1:60)")
+    parser.add_argument("-r", "--range", required=True,help="Data range in the form start:end (e.g., 1:15000000)")
+    parser.add_argument("-f", "--file", required=True,help="Target file name (e.g., md.cod)")
+    parser.add_argument("-p", "--prefix", type=str, default="",help='Path prefix to files (default: "")')
+    parser.add_argument("-o", "--output", type=str, default="file.list",help="Output filename (default: 'file.list')")
+
+    args = parser.parse_args()
+    access_key = args.access_key
+    if access_key != "j_presto":
+        sys.exit()
+    display_credits()
+
+    md_start, md_end = map(int, args.md_range.split(":"))
+    n_start, n_end = map(int, args.n_range.split(":"))
+    range_start, range_end = map(int, args.range.split(":"))
+    target_file = args.file
+
+    with open(args.output, "w") as f:
+        for n in range(n_start, n_end + 1):
+            for md in range(md_start, md_end + 1):
+                f.write(f"{args.prefix}md{md}/n{n}/{target_file}\n")
+                print(f"{args.prefix}md{md}/n{n}/{target_file}")
+                if md == md_end:
+                    f.write(f"{range_start} {range_end}\n")
+                    print(f"{range_start} {range_end}")
+                else:
+                    f.write(f"{range_start} {range_end}  ->\n")
+                    print(f"{range_start} {range_end}  ->")
+
+    etime = time.perf_counter()
+    print(f"\nExecution time : {etime - stime} (S)")
+    print(f"\n+++ Program j_presto genlist normally ended +++")
+
+if __name__ == "__main__":
+    main()
+

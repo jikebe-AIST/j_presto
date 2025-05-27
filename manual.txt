@@ -1,10 +1,10 @@
 >
    #####  What is the content you would like to ask about?  #####
    #                                                            #
-   #  j_presto manual (Version 1.1.0)                           #
+   #  j_presto manual (Version 1.2.0)                           #
    #	                       Author : Jinzen Ikebe            #
    #  	           First Release Date : 2024-11-11              #
-   #	Release Date for Current ver. : 2025-05-23              #
+   #	Release Date for Current ver. : 2025-05-27              #
    #                                                            #
    ##############################################################
 
@@ -54,11 +54,12 @@ Sub-program name list:
 	ttp_se		: Calculation of weighted averages and standard errors of the data.
 
     For Enzyme development,
-#	MSPER		:
-	conmut		: Propose mutations to improve enzyme stability from input amino acid sequences using the consensus method.
+	MSPER		: Predict mutation sites to improve enzyme selectivity.
+	conmut		: Propose mutations to improve enzyme stability from input amino acid sequences using the consensus mutagenesis.
 
     For user guidance,
 	get_tmpl   	: Obtaining templates of input files and scripts for excuting j_presto.
+	genlist		: Generate file path lists and data ranges for MD and analysis inputs.
 	manual     	: Viewing the manual.
 
 The simulations performed by j_presto support parallelization using OpenMP, but currently do not support parallelization via MPI or GPU.
@@ -3305,7 +3306,7 @@ You must specify two values:
 This option is required when using the -e option for event detection.
 The time values will be used to compute simtime from structure index and are essential for determining when events occur during the simulation.
 >ttp_se
-@u:j_presto,p:pick_conf,n:conmut
+@u:j_presto,p:pick_conf,n:MSPER
 The command "j_presto ttp_se" calculates weighted averages and standard errors of input data from multiple simulation runs.
 
 How to use: j_presto ttp_se INPUT TTPNCNF [OPTIONS]
@@ -3348,8 +3349,75 @@ How to use: j_presto ttp_se -o OUTPUT
 
 This option specifies output file name.
 If you do not set this option, the result is output as "output.txt".
+>MSPER
+@u:j_presto,p:ttp_se,n:conmut
+The command "j_presto MSPER" performs MPSER (Mutation site prediction method for enhancing regioselectivity of substrate reaction site) analysis to improve the selectivity of enzymatic reactions.
+MPSER takes as input both "desiable" complex structures that can lead to the desired product and "undesiable" ones that may lead to undesired byproducts.
+The concept of MPSER is that the amino acid residues of the enzyme in contact with the substrate are important for stabilizing the complex structure, and substituting these residues tends to destabilize the complex.
+Based on this principle, MPSER predicts mutation sites that can suppress the formation of byproducts while maintaining the production of the desired product.
+Specifically, it calculates the contact ratio between the substrate and the enzyme within various complex structures, and identifies residues that show low contact in desiable complexes and high contact in undesiable ones.
+These residues are then proposed as mutation sites to enhance the selectivity of the enzymatic reaction.
+
+How to use : j_presto MSPER [OPTIONS]
+
+Option list:
+	MSPER -d	: A PDB file including enzyme contact rates with substrates for desirable ensemble.
+	MSPER -u	: A PDB file including enzyme contact rates with substrates for undesirable ensemble.
+	MSPER -o	: Prefix for the output files. The default is "MSPER".
+	MSPER -e	: Residue numbers for excluding from the MSPER ranking list (e.g. active sites, substrate etc.).
+	MSPER -a	: Adjust residue numbers in *.list and *.scr files by this shift value (default: 0)
+	MSPER -s	: Specify *.scr files to create an integrated ranking by averaging ranks from these files. When used, only the integrated ranking is output, and the regular MSPER scoring is skipped.
+
+If you would like to know how to use the arguments, please enter them such as "MSPER -d"
+
+When the MSPER program is executed, it generates the following output files (where * is the prefix specified by the -o option):
+	*.scr
+		An output file containing MSPER score.
+	*.list
+		An MSPER ranking list.
+	*.pdb
+		A PDB file with the difference in contact rates (undesirable − desirable) recorded in the B-factor column.
+>MSPER -d
+@u:MSPER,n:MSPER -u
+How to use: j_presto MSPER -u DESIRABLE
+
+This option specifies a PDB file including enzyme contact rates with substrates for desirable ensemble.
+This PDB file is assumed to be the output from the contact analysis of "j_presto Ens_Ana", where the contact rates are recorded in the b-factor column.
+Please refer to the "tutorial MSPER" for instructions on how to prepare this file.
+>MSPER -u
+@u:MSPER,p:MSPER -d,n:MSPER -o
+How to use: j_presto MSPER -u DESIRABLE
+
+This option specifies a PDB file including enzyme contact rates with substrates for undesirable ensemble.
+This PDB file is assumed to be the output from the contact analysis of "j_presto Ens_Ana", where the contact rates are recorded in the b-factor column.
+Please refer to the "tutorial MSPER" for instructions on how to prepare this file.
+>MSPER -o
+@u:MSPER,p:MSPER -u,n:MSPER -e
+How to use: j_presto MSPER -o PREFIX
+
+This option sets the prefix for the output files.
+If not specified, the default prefix is "MSPER".
+>MSPER -e
+@u:MSPER,p:MSPER -o,n:MSPER -a
+How to use: j_presto MSPER -e EXCLUDE_RESIDUES
+
+This option specifies residue numbers to exclude from the MSPER ranking list in advance (e.g., active sites, substrate, etc.).
+You can specify multiple residues.
+For example, to exclude residues 31, 32, 33, and 35, use "-e 31:33 35".
+>MSPER -a
+@u:MSPER,p:MSPER -e,n:MSPER -s
+How to use: j_presto MSPER -a ADJUST_RESNUM
+
+This option adjusts residue numbers in the output *.list and *.scr files by the specified integer shift value.
+The default value is 0 (no adjustment).
+>MSPER -s
+@u:MSPER,p:MSPER -a
+How to use: j_presto MSPER -s SCR_FILES1 SCR_FILES2 [SCR_FILES3 ...]
+
+Specify *.scr files to generate an integrated ranking by averaging the ranks from these files.
+When this option is used, only the integrated ranking is output and the normal MSPER scoring calculation is skipped.
 >conmut
-@u:j_presto,p:ttp_se,n:get_tmpl
+@u:j_presto,p:MSPER,n:get_tmpl
 The command "j_presto conmut" utilizes an external tool, blastp, to collect homologous protein sequences with high similarity to a given query amino acid sequence.
 These sequences are then aligned using a multiple sequence alignment tool, such as MAFFT or ClustalW, to generate a consensus sequence.
 A consensus sequence represents the most common amino acid found at each position among the aligned sequences, and reflects evolutionarily conserved residues that are often important for structural stability or function.
@@ -3493,7 +3561,7 @@ This option specifies the prefix for output files generated by the program.
 	- Default prefix is "result".
 	- All output files will be named using this prefix followed by specific suffixes.  
 >get_tmpl
-@u:j_presto,p:conmut,n:manual
+@u:j_presto,p:conmut,n:genlist
 This command is used to obtain the input file or the script templates necessary for executing j_presto (get template).
 The usage is as follows:
 	j_presto get_tmpl [file name to retrieve]
@@ -3511,8 +3579,75 @@ The list of files that can be obtained is as follows:
 	batch_set_ALSD.inp : Input file for batch_set to prepare input files for ALSD simulations in bulk, used to specify the MD schedule.
 	md_multi           : Script for running multiple MD simulations as a single MPI job.
 Additionally, to retrieve all of these files at once, you can use "j_presto get_tmpl all".
+>genlist
+@u:j_presto,p:get_tmpl,n:manual
+The command "j_presto genlist" generates a list of file paths and corresponding data ranges for MD simulations or analysis inputs.
+The "->" symbol is used to indicate continuation between files except for the last file in a sequence.
+
+Option list:
+        genlist -m	: Specify the MD index range as "start:end".
+        genlist -n	: Specify the sub-index range as "start:end".
+        genlist -r	: Specify the data range as "start:end".
+        genlist -f	: Specify the target filename.
+        genlist -p	: Specify an optional directory prefix (default: "").
+	genlist -o	: Specify the output file name (default: "file.list")
+
+If you want detailed usage of each argument, please enter, for example, "genlist -m".
+
+For example, if you execute "j_presto genlist -m 0:1 -n 1:2 -r 1:100 -f md.cod -p ../ -o file.list", the "file.list" file is output:
+	../md0/n1/md.cod
+	1 100 ->
+	../md1/n1/md.cod
+	1 100
+	../md0/n2/md.cod
+	1 100 ->
+	../md1/n2/md.cod
+	1 100
+
+Such files can be set for "input_binary_list" option of Ens_Ana program, "CODLST" option of GEprep program, and so on.
+>genlist -m
+@u:j_presto,n:genlist -n
+How to use: j_presto genlist -m MD_RANGE
+
+Specify the range of MD indices to include in the file list.
+Format should be "start:end" (e.g., 0:20).
+Both start and end must be integers, and start should be less than or equal to end.
+>genlist -n
+@u:j_presto,p:genlist -m,n:genlist -r
+How to use: j_presto genlist -n N_RANGE
+
+Specify the range of sub-indices to include in the file list.
+Format should be "start:end" (e.g., 1:60).
+Both start and end must be integers, and start should be less than or equal to end.
+>genlist -r
+@u:j_presto,p:genlist -n,n:genlist -f
+How to use: j_presto genlist -r DATA_RANGE
+
+Specify the data range within each file.
+Format should be "start:end" (e.g., 1:15000000).
+These values indicate which data entries will be read from the target files.
+>genlist -f
+@u:j_presto,p:genlist -r,n:genlist -p
+How to use: j_presto genlist -f TARGET_FILE
+
+Specify the target filename included in each path.
+For example: "md.cod" or any other relevant filename for the simulation or analysis input.
+>genlist -p
+@u:j_presto,p:genlist -f,n:genlist -o
+How to use: j_presto genlist -p PREFIX
+
+Specify an optional directory prefix to prepend to each file path.
+For example: "../" or "../../".
+If omitted, no prefix is added.
+>genlist -o
+@u:j_presto,p:genlist -p
+How to use: j_presto genlist -o OUTPUT_FILE
+
+This option specifies the output filename for the generated list.
+If this option is not set, the output will be written to "file.list" by default.
+You can use this to change the name of the output file (e.g., "mylist.txt").
 >manual
-@u:j_presto,p:get_tmpl
+@u:j_presto,p:genlist
 The command "j_presto manual" is the command you are currently using.
 It provides an interactive explanation of commands and options available in j_presto.
 >atom specifier
@@ -3579,13 +3714,16 @@ Execution of MD simulation
 	tutorial MD 4-1 : Execute a single MD simulation with "j_presto md_run md.inp"
 	tutorial MD 4-2 : Execute multiple MD simulations as a single MPI job with "j_presto_mpi" or "j_presto_master"
 
+Execution of various ensemble analysis
+	Please refer to "Ens_Ana".
+
 Execution of Principal Component Analysis (PCA) 
 	tutorial PCA 1 : Generate a PCA coordinate file using "j_presto Ens_Ana".
 	tutorial PCA 2 : Compute the PCA axes using "j_presto PCAaxis" and project the structures using "j_presto PCAproj".
 	tutorial PCA 3 : Create the distribution or free energy landscape from the projected data using "j_presto distrib".
 
-Execution of various ensemble analysis
-	Please refer to "Ens_Ana".
+Execution of MSPER
+	tutorial MSPER : Predict mutation sites to enhance the selectivity of enzymes.
 >tutorial install
 @u:tutorial
 1 : Download AMBERtools  ***************************
@@ -3805,44 +3943,100 @@ The "j_presto distrib" command outputs a "*.dist" file for 1D analysis and a "*.
 These output files can be visualized as distribution plots or free energy landscapes using external programs "gnuplot".
 
 To assist with plotting using gnuplot, template batch scripts can be obtained with "j_presto get_tmpl gnu.plot" (for 1D) or "j_presto get_tmpl gnu.splot" (for 2D), which can then be modified as needed for your visualization.
+>tutorial MSPER
+@u:tutorial
+MPSER (Mutation site prediction method for enhancing regioselectivity of substrate reaction site) is an analytical method developed to improve the selectivity of enzymatic reactions.
+MPSER takes as input both "desiable" complex structures that can lead to the desired product and "undesiable" ones that may lead to undesired byproducts.
+The concept of MPSER is that the amino acid residues of the enzyme in contact with the substrate are important for stabilizing the complex structure, and substituting these residues tends to destabilize the complex.
+Based on this principle, MPSER predicts mutation sites that can suppress the formation of byproducts while maintaining the production of the desired product.
+Specifically, it calculates the contact ratio between the substrate and the enzyme within various complex structures, and identifies residues that show low contact in desiable complexes and high contact in undesiable ones.
+These residues are then proposed as mutation sites to enhance the selectivity of the enzymatic reaction.
+
+Compared to conventional methods, MPSER offers the following three key advantages:
+	1 : Ensemble-based prediction.
+		Enhancing enzymatic selectivity requires precise detection of subtle differences in complex structures with similar substrates.
+		Traditional methods such as free energy calculations often rely on a single or few structural models, which can yield inconsistent predictions depending on slight variations in the input structure.
+		MPSER, by contrast, can incorporate large structural ensembles derived from molecular dynamics (MD) simulations, enabling predictions that are less dependent on specific conformations and more robust.
+
+	2 : Specialized for regioselectivity enhancement.
+		For improvements such as thermostability, it is possible to apply AI-based methods trained on large public databases.
+		However, in the case of selectivity enhancement, the problem is highly specific to each enzyme-substrate pair, and no general database exists.
+		Furthermore, building such a database would require numerous low-throughput experiments to distinguish between structurally similar substrates.
+		MPSER circumvents this limitation by enabling predictions without reliance on extensive experimental datasets.
+
+	3 : Objective and reproducible predictions.
+		Traditional approaches rely on human intuition and expertise, such as manually inspecting docked models to select mutation sites, which introduces subjectivity.
+		MPSER, on the other hand, provides consistent predictions for the same input data, eliminating human bias and improving reproducibility.
+
+The following section describes the procedure for performing MPSER analysis using the j_presto program.
+The overall workflow consists of the following four steps:
+	1 : Generate enzyme–substrate complex structures via molecular dynamics (MD) simulations.
+	2 : Extract desirable and undesirable structural ensembles.
+	3 : Calculate the probability that each enzyme atom is in contact with the substrate across the ensembles.
+	4 : Predict mutation sites to improve the selectivity of the enzymatic reaction.
+
+1 : Generate enzyme–substrate complex structures via molecular dynamics (MD) simulations.
+
+To create the ensemble of enzyme–substrate complex structures required as input for MPSER analysis, perform MD simulations using the "j_presto md_run" command.
+In cases where multiple products are generated from a single enzyme–substrate pair (i.e., to improve the regioselectivity of substrate reaction sites), prepare an initial structure by manually positioning the substrate within the enzyme pocket or by using existing docking simulations, then run MD simulations.
+When the objective is to develop an enzyme that selectively reacts with only the desired substrate among closely related undesirable substrates (i.e., to improve substrate selectivity), it is necessary to perform multiple simulations for each substrate.
+Although it is also possible to use multiple complex models generated by docking simulations or a very limited number of experimentally determined complex models as inputs for MPSER instead of MD simulations, it should be noted that this may diminish the advantage of MPSER, which lies in its ability to utilize structural ensembles as input.
+
+2 : Extract desirable and undesirable structural ensembles.
+
+Among the numerous complex structures obtained from the simulations, extract the desirable and undesirable ensembles using "j_presto Ens_Ana" and "j_presto pick_conf".
+For example, define the desirable structures as those where the enzyme’s active site and the substrate’s reaction site are within a reactive distance, and the undesirable structures as those where the enzyme’s active site is close to the substrate’s reaction site leading to byproducts.
+First, analyze the ensemble using "j_presto Ens_Ana".
+By setting the "measurements" option in the Ens_Ana input file, you can measure the distance between the enzyme active site and the substrate reaction site for each structure in the ensemble.
+The results are output to files named "*.distan".
+Then, use "j_presto pick_conf" to extract only those structures whose measured distances are within a specified threshold, creating a file list (*.list) of the desirable ensemble structures.
+Similarly, perform the same analysis for the undesirable ensemble.
+
+ 3 : Calculate the probability that each enzyme atom is in contact with the substrate across the ensembles.
+
+Specify the "*.list" file for "input_binary_list" field of the "j_presto Ens_Ana" input file, and appropriately set the enzyme and substrate atoms for contact analysis in "atom_spec_contact" and perform "j_presto Ens_Ana" again.
+This calculates the contact frequency between enzyme atoms and the substrate in the desirable ensemble, outputting the results as a file named "*_con.pdb".
+This output file is in PDB format, with the contact frequency recorded in the B-factor column for each atom.
+Similarly, perform the same analysis for the undesirable ensemble, resulting in two *_con.pdb files representing the contact frequencies for both the desirable and undesirable ensembles.
+
+These files serve as the input for the subsequent MSPER analysis.
+
+ 4 : Predict mutation sites to improve the selectivity of the enzymatic reaction.
+
+Using the two previously generated *_con.pdb files as input, run the MSPER analysis with "j_presto MSPER".
+The scores for MSPER ranking and the list ranking mutation sites are output as a file named "*.scr" and "*.list". respectively.
+The accuracy of this ranking depends on whether the MD simulations used to generate the input ensemble performed sufficient structural sampling.
+Since it is generally difficult to determine this, the original MSPER paper performs MSPER analyses independently on two sets of simulations starting from different initial structures, producing separate ranking lists.
+If the structural sampling is adequate, the mutation site rankings in these lists tend to be similar.
+Conversely, insufficient sampling can result in large differences between the two ranking lists.
+If the results have not converged well, extending the simulation time is recommended.
+
+You can merge the results of the two MSPER analyses (1.scr and 2.scr) into a combined ranking list using the following command:
+	j_presto MSPER -s 1.scr 2.scr
+The combined ranking is based on the average rank of mutation sites across the individual rankings.
 >FAQ
-1  : Regarding the download and installation of j_presto.
-	1-1  : 	How to introduce the required AMBER parameter files for running j_presto?
-	 	Please refer to "tutorial 1".
-	1-2  : 	How to obtain j_presto program?
-	 	Please refer to "tutorial 2".
-	1-3  : 	How to install j_presto program?
-	 	Please refer to "tutorial 3".
-	1-4  : 	What should I do when Python error messages are displayed and the j_presto program terminates abnormally?
-		Please refer to "tutorial 3" and read the process 3.
-2  : Regarding j_presto gen_db
-	2-1  : 	What should I do when Python error messages are displayed and the j_presto program terminates abnormally?
-		Please refer to "tutorial 3" and read the process 3.
-	2-2  : 	Please tell me about solvent coordinate database file (*.slv).
-		Please refer to "gen_db -s".
-3  : Regarding j_presto prep
-	3-1  : 	What should I do when Python error messages are displayed and the j_presto program terminates abnormally?
-		Please refer to "tutorial 3" and read the process 3.
-	3-2  : 	Please tell me how to handle histidine in j_presto?
-		When preparing for simulations with "j_presto prep", the program automatically assigns each histidine to one of the three types based on the surrounding environment and the pH conditions of the solvent.
-		For more details, please refer to the explanations of 'prep -pH,' 'prep -dh,' and 'prep -th'.
-		If you prefer not to have this automatic assignment, you can use the 'prep -nah' argument.
-		Additionally, you can explicitly specify the type of histidine by modifying the residue names in the input PDB to "HIE", "HID", and "HIP".
-	3-3 : 	Please tell me how to introduce disulfide bonds and covalent bonds.
+1  : Regarding j_presto prep
+
+	1-1 : 	Please tell me how to introduce disulfide bonds and covalent bonds.
+
 		In the PDB file format, disulfide bonds and covalent bonds are represented with "SSBOND" and "LINK" lines, respectively.
 		For more details, please look up the PDB format online.
 		The 'j_presto prep' reads these pieces of information from the PDB file and assigns parameters for disulfide bonds and covalent bonds in simulations, outputting a topology file (*.tpl).
 		If you want to introduce disulfide bonds or covalent bonds, you should add the corresponding "SSBOND" or "LINK" lines to the input PDB file and execute "j_presto prep".
-	3-4 :	Can j_presto trim a part of simulation system?
-		Yes, it can. For more details, please refer to "prep -ts".
-	3-5 :	The duplex pair of DNA will be removed due to the trimming of the system.
+
+	1-2 :	The duplex pair of DNA will be removed due to the trimming of the system.
+
 		To prevent this issue, you can use "j_presto prep -pair." Please refer to "prep -pair" for more details.
-	3-6 :	I want to cancel out the charge at the ends of the peptide chain.
+
+	1-3 :	I want to cancel out the charge at the ends of the peptide chain.
+
 		In such cases, you can use "j_presto prep -ACE" and "j_presto prep -NME" to add the ACE and NME groups to the N-terminus and C-terminus of the peptide chain, respectively.
 		For more details, please refer to "prep -ACE" and "prep -NME."
 
-4  : Regarding j_presto md_run
-	4-1 : 	After running j_presto md_run, memory or OpenMP-related errors are occured that prevent the calculation from proceeding.
+2  : Regarding j_presto md_run
+
+	2-1 : 	After running j_presto md_run, memory or OpenMP-related errors are occured that prevent the calculation from proceeding.
+
 		There is a possibility that the simulation will stop due to insufficient memory required for execution.
 		Below are examples of countermeasures.
 		In the script that executes j_presto md_run, set the following variables.
@@ -3862,5 +4056,6 @@ To assist with plotting using gnuplot, template batch scripts can be obtained wi
 			The commands and variables to change this upper limit are ulimit and the OMP_STACKSIZE variable.
 			For example, to set the limit to 16 megabytes, ulimit should be set in KB (16MB = 16 * 1024KB = 16384), and OMP_STACKSIZE should be set to 16M.
 			Note that these two values must match.
-	4-2 :	Can parallel computation be performed with "j_presto md_run"?
+
+	2-2 :	Can parallel computation be performed with "j_presto md_run"?
 		The program "j_presto md_run" supports parallelization with OpenMP, but it does not support MPI parallelization.

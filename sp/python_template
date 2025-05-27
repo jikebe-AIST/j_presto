@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+
+import argparse, os, sys, time
+
+def display_credits():
+    program_name = "test"
+    author = "Jinzen Ikebe"
+    version = "1.0.0"
+    first_release_date = "2025-05-23"
+    current_release_date = "2025-05-23"
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    print("*" * 50)
+    print("*")
+    print(f"*    {program_name} (Version {version})")
+    print("*")
+    print(f"*                         Author : {author}")
+    print(f"*             First Release Date : {first_release_date}")
+    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print("*")
+    print(f"*" * 50)
+    print()
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+    except FileNotFoundError:
+        print("Error: License file not found.") ; sys.exit(1)
+
+def main():
+    stime = time.perf_counter()
+    parser = argparse.ArgumentParser(description="test")
+    parser.add_argument('access_key', help=argparse.SUPPRESS)
+    parser.add_argument("input", help="Input data")
+    parser.add_argument("-o", "--output", type=str, default="output.txt", help="Output file name (default: output.txt)")
+
+    args = parser.parse_args()
+    access_key = args.access_key
+    if access_key != "j_presto":
+        sys.exit()
+    display_credits()
+
+
+
+
+    etime = time.perf_counter()
+    print(f"\nExecution time : {etime - stime} (S)")
+    print(f"\n+++ Program j_presto test normally ended +++")
+
+if __name__ == "__main__":
+    main()
+

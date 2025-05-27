@@ -1,0 +1,287 @@
+#!/usr/bin/env python3
+
+import argparse, os, sys, time, shutil, re, copy
+import numpy as np
+from Bio.PDB import PDBParser, PDBIO
+
+res3to1 = { "ALA":"A", "ARG":"R", "ASN":"N", "ASP":"D", "CYS":"C", "GLN":"Q",
+            "GLU":"E", "GLY":"G", "HIS":"H", "HIE":"H", "HID":"H", "HIP":"H",
+            "ILE":"I", "LEU":"L", "LYS":"K", "MET":"M", "PHE":"F", "PRO":"P",
+            "SER":"S", "THR":"T", "TRP":"W", "TYR":"Y", "VAL":"V"}
+
+def display_credits():
+    program_name = "MSPER"
+    author = "Jinzen Ikebe"
+    version = "1.0.0"
+    first_release_date = "2025-05-27"
+    current_release_date = "2025-05-27"
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    print("*" * 50)
+    print("*")
+    print(f"*    {program_name} (Version {version})")
+    print("*")
+    print(f"*                         Author : {author}")
+    print(f"*             First Release Date : {first_release_date}")
+    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print("*")
+    print(f"*" * 50)
+    print()
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+    except FileNotFoundError:
+        print("Error: License file not found.") ; sys.exit(1)
+
+def check_file_exists(filepath, label=""):
+    if not os.path.isfile(filepath):
+        print(f"!!! ERROR: {label} file '{filepath}' does not exist.") ; sys.exit(1)
+
+def extract_atoms(pdb_file, label):
+    check_file_exists(pdb_file, label="")
+    parser = PDBParser(QUIET=True)
+    structure = parser.get_structure("structure", pdb_file)
+
+    atoms = []
+    for model in structure:
+        for chain in model:
+            for residue in chain:
+                for atom in residue:
+                    atoms.append({'atm_num': atom.serial_number,'atm_name': atom.name,'res_name': residue.resname,'chain': chain.id,'res_num': residue.id[1],'coord': atom.coord,'occupancy': atom.occupancy,'b_factor': atom.bfactor})
+    return atoms
+
+def parse_exclude_residues(remove_marker):
+    exclude_residues = set()
+
+    if remove_marker:
+        for item in remove_marker:
+            if ":" in item:
+                try:
+                    start, end = map(int, item.split(":"))
+                    exclude_residues.update(range(start, end + 1))
+                except ValueError:
+                    print(f"!!! ERROR: Invalid residue range format '{item}' in -r argument.") ; sys.exit(1)
+            else:
+                try:
+                    exclude_residues.add(int(item))
+                except ValueError:
+                    print(f"!!! ERROR: Invalid residue number '{item}' in -r argument.") ; sys.exit(1)
+    return sorted(exclude_residues)
+
+def atom_id(atom):
+    parent = atom.get_parent() ; grandparent = parent.get_parent()
+    return (grandparent.id, parent.id[1], parent.id[2], atom.get_name())
+
+def load_atoms_by_id(pdb_path):
+    parser = PDBParser(QUIET=True)
+    structure = parser.get_structure("struct", pdb_path)
+    atoms = {}
+    for atom in structure.get_atoms():
+        aid = atom_id(atom) ; atoms[aid] = atom
+    return atoms, structure
+
+def make_residue_info(desirable_pdb, undesirable_pdb, output, er=None, ar=0):
+    atoms_desirable, struct_d = load_atoms_by_id(desirable_pdb)
+    atoms_undesirable, _ = load_atoms_by_id(undesirable_pdb)
+    common_ids = set(atoms_desirable.keys()) & set(atoms_undesirable.keys())
+    residue_info = {} ; atom_info = {}
+
+    for aid in common_ids:
+        a_d = atoms_desirable[aid] ; a_u = atoms_undesirable[aid]
+        atmname = a_d.get_name()
+        residue = a_d.get_parent()
+        resID = residue.id[1]
+        resname = residue.resname
+        d_bfac = a_d.get_bfactor() ; u_bfac = a_u.get_bfactor()
+        diff = u_bfac - d_bfac
+        a_d.set_bfactor(diff)
+        if er and resID in er:
+            continue
+        resID += ar
+        if resID not in residue_info:
+            residue_info[resID] = {"resname": res3to1.get(resname.upper(), resname) + str(resID)}
+        if resID not in atom_info:
+            atom_info[resID] = {}
+        atom_info[resID][atmname] = {"score": diff, "uscore": u_bfac, "dscore": d_bfac}
+
+    for resID in residue_info:
+        residue_info[resID]["score"] = sum(a["score"] for a in atom_info[resID].values())
+        residue_info[resID]["uscore"] = sum(a["uscore"] for a in atom_info[resID].values())
+        residue_info[resID]["dscore"] = sum(a["dscore"] for a in atom_info[resID].values())
+
+    print(f"* A PDB file with difference of contact rates are output as {output}.pdb")
+    for model in struct_d:
+        for chain in model:
+            for residue in list(chain):
+                for atom in list(residue):
+                    if atom_id(atom) not in common_ids:
+                        residue.detach_child(atom.id)
+                if len(residue) == 0:
+                    chain.detach_child(residue.id)
+            if len(chain) == 0:
+                model.detach_child(chain.id)
+    io = PDBIO()
+    io.set_structure(struct_d)
+    io.save(output+".pdb")
+
+    sorted_residues = sorted(((resID, data["score"]) for resID, data in residue_info.items()), key=lambda x: x[1], reverse=True)
+    rank = 0 ; prev_score = None
+    for i, (resID, score) in enumerate(sorted_residues):
+        if score != prev_score:
+            rank = i + 1 ; prev_score = score
+        residue_info[resID]["rank"] = rank
+
+    print(f"* An MSPER detailed score is output as {output}.scr")
+    with open(output+".scr", "w") as f:
+        f.write("# rank   residue    score\n\n")
+        for (resID, score) in sorted_residues:
+            info = residue_info[resID]
+            f.write(f'{info["rank"]:8d}     {info["resname"]:8s}  {info["score"]:0.3f} ({info["uscore"]:0.3f} - {info["dscore"]:0.3f})\n')
+            sorted_atoms = sorted(atom_info[resID].items(), key=lambda x: x[1]["score"], reverse=True)
+            for (atmname, data) in sorted_atoms:
+                info = atom_info[resID][atmname]
+                if info["uscore"] == 0 and info["dscore"] == 0:
+                    continue
+                f.write(f'          {atmname:>4}  {info["score"]:0.3f} ({info["uscore"]:0.3f} - {info["dscore"]:0.3f})\n')
+            f.write("\n")
+    return [dict(sorted(residue_info.items()))]
+
+def output_ranking_list(residue_info_list, output):
+
+    print(f"* An MSPER ranking list is output as {output}.list")
+    print(f"!!! Please note that residues and atoms with Score = 0. are removed from the ranking list.\n")
+    N = len(residue_info_list)
+    with open(output+".list", "w") as f:
+        header = ["resname", "resnum"]
+        if N == 1:
+            header += ["score", "rank", "uscore", "dscore"]
+        else:
+            header += [f"score{i+1}" for i in range(N)]
+            header += [f"rank{i+1}" for i in range(N)]
+            header += ["average_rank"]
+            header += [f"uscore{i+1} dscore{i+1}" for i in range(N)]
+        f.write("   ".join(header)+"\n")
+
+        residues_with_avg_rank = []
+        for resID, data in residue_info_list[0].items():
+            uscore_list = [info[resID]["uscore"] for info in residue_info_list]
+            dscore_list = [info[resID]["dscore"] for info in residue_info_list]
+            if all(u == 0 for u in uscore_list) and all(d == 0 for d in dscore_list):
+                continue
+            rank_list = [info[resID]["rank"] for info in residue_info_list]
+            avg_rank = sum(rank_list) / len(rank_list)
+            residues_with_avg_rank.append((resID, avg_rank))
+
+        residues_with_avg_rank.sort(key=lambda x: x[1])
+
+        for resID, avg_rank in residues_with_avg_rank:
+            data = residue_info_list[0][resID]
+            uscore_list = [info[resID]["uscore"] for info in residue_info_list]
+            dscore_list = [info[resID]["dscore"] for info in residue_info_list]
+            resname = data["resname"]
+            rank_list = [info[resID]["rank"] for info in residue_info_list]
+            score_list = [info[resID]["score"] for info in residue_info_list]
+
+            line = [resname, str(resID)]
+            line += [f"{s:.3f}" for s in score_list]
+            line += [str(r) for r in rank_list]
+            if N != 1:
+                line += [f"{avg_rank:.2f}"]
+            for u, d in zip(uscore_list, dscore_list):
+                line.append(f"{u:.3f} {d:.3f}")
+            f.write("   ".join(line)+"\n")
+
+def read_score_file(filenames):
+
+    residue_info_list = []
+    for fn in filenames:
+        check_file_exists(fn, "score")
+        with open(fn, 'r') as f:
+            lines = f.readlines()
+
+        residue_info = {} ; read_flag = False
+        idx = 1 ; n_lines = len(lines)
+        while idx < n_lines:
+            line = lines[idx].strip()
+            if not line:
+                idx += 1 ; read_flag = True ; continue
+            elif read_flag is False:
+                idx += 1 ; continue
+
+            try:
+                parts = line.split()
+                rank = int(parts[0])
+                resname = parts[1]
+                match = re.match(r"([A-Za-z]+)(\d+)", resname)
+                if not match:
+                    print(f"Invalid residue name format: {resname}") ; sys.exit(1)
+                _, resID = match.groups()
+                resID = int(resID)
+                score = float(parts[2])
+                uscore = float(parts[3].lstrip('('))
+                dscore = float(parts[5].rstrip(')'))
+            except Exception as e:
+                print(f"ERROR. Format in {fn} is strange.")
+                print(f"{line}")
+                print(f"Reason: {e}") ; sys.exit(1)
+
+            residue_info[resID] = {"rank": rank, "resname": resname, "score": score, "uscore": uscore, "dscore": dscore}
+            idx += 1 ; read_flag = False
+        residue_info_list.append(residue_info)
+
+    all_resid_sets = [set(ri.keys()) for ri in residue_info_list]
+    base_set = all_resid_sets[0]
+    for i, resid_set in enumerate(all_resid_sets[1:], start=1):
+        if resid_set != base_set:
+            print(f"Error. residue_info_list[{i}] has different resIDs.") ; sys.exit(1)
+
+    for resID in base_set:
+        resnames = [ri[resID]["resname"] for ri in residue_info_list]
+        if len(set(resnames)) != 1:
+            print(f"Error. Inconsistent resname for resID {resID}: {resnames}") ; sys.exit(1)
+
+    return residue_info_list
+
+def main():
+    stime = time.perf_counter()
+    parser = argparse.ArgumentParser(description='Suggest substitution residue candidates based on differences in substrate contact rates between desirable and undesirable ensembles. If -s is specified, only integrated ranking is generated by averaging ranks across the given *.scr files, skipping normal MSPER calculation.')
+    parser.add_argument('access_key', help=argparse.SUPPRESS)
+    parser.add_argument('-d', '--desirable', type=str, help='A PDB file including enzyme contact rates with substrates for desirable conformational ensemble')
+    parser.add_argument('-u', '--undesirable', type=str, help='A PDB file including enzyme contact rates with substrates for undesirable conformational ensemble')
+    parser.add_argument('-o', '--output', default="MSPER", type=str, help='Prefix for the output files. The default is "MSPER".')
+    parser.add_argument('-e', '--exclude_residues', nargs='*', help='Residue numbers that you want to exclude from the MSPER ranking list in advance (e.g. active sites, substrate and so on). You can set multiple residues for this argument. If you want to exclude residues 31, 32, 33, and 35, please set "-r 31:33 35"')
+    parser.add_argument('-a', '--adjust_residue_number', type=int, default=0, help='Adjust residue numbers in *.list and *.scr files by this shift value (default: 0)')
+    parser.add_argument('-s', '--scr_files', nargs='+', type=str, help=('Specify *.scr files to generate an integrated ranking based on average ranks across the input files. When this option is specified, only the integrated ranking is generated, and the normal MSPER score calculation is skipped.'))
+
+    args = parser.parse_args()
+    access_key = args.access_key
+    if access_key != "j_presto":
+        sys.exit()
+    display_credits()
+
+    line_len = 27
+    print("Output prefix : ".rjust(line_len) + args.output)
+    if args.scr_files is None:
+        print("Desirable PDB : ".rjust(line_len) + args.desirable)
+        print("Undesirable PDB : ".rjust(line_len) + args.undesirable)
+        if args.exclude_residues:
+            print("Exclude residue numbers : ".rjust(line_len) + ", ".join(args.exclude_residues))
+        if args.adjust_residue_number != 0:
+            print("Adjust Residue number : ".rjust(line_len) + str(args.adjust_residue_number))
+        print("\n")
+
+        desirable = extract_atoms(args.desirable, "desirable PDB")
+        undesirable = extract_atoms(args.undesirable, "undesirable PDB")
+        exclude_residues = parse_exclude_residues(args.exclude_residues)
+        residue_info_list = make_residue_info(args.desirable, args.undesirable, args.output, exclude_residues, args.adjust_residue_number)
+
+    else:
+        print("\n") ; residue_info_list = read_score_file(args.scr_files)
+
+    output_ranking_list(residue_info_list, args.output)
+
+    etime = time.perf_counter()
+    print(f"\nExecution time : {etime - stime} (S)")
+    print(f"\n+++ Program j_presto MSPER normally ended +++")
+
+if __name__ == "__main__":
+    main()

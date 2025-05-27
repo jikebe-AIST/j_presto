@@ -82,6 +82,7 @@ def main():
     if args.unlock:
         unlocked_files = {
             "md_multi": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "md_multi.exe_ul"),
+            "run": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "run"),
         }
         file_mapping.update(unlocked_files)
 
