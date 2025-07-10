@@ -571,7 +571,7 @@
       atom_spec_PCA = ELEMNT(40)
       if ( len(trim(atom_spec_PCA)) .ne. 0 ) then
         write(6,'(2x,a)')"* Making PCA coordinates is performed"
-        write(6,'(4x,a)')"atom_spec_PCA"
+        write(6,'(4x,a)')"atom_spec_PCA : ",trim(atom_spec_PCA)
         allocate(tlist(nATM))
         call atom_specifier(len(trim(atom_spec_PCA)),                  &
           trim(atom_spec_PCA),nATM,ATMnum,ATMnm,RESnum,RESnm,nCHN,CHN, &

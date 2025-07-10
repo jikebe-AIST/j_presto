@@ -6,28 +6,22 @@ import numpy as np
 from Bio import PDB
 
 def display_credits():
-    program_name = "nt_gen"
-    author = "Jinzen Ikebe"
-    version = "1.0.0"
-    first_release_date = "2025-05-23"
-    current_release_date = "2025-05-23"
-    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     print("*" * 50)
     print("*")
-    print(f"*    {program_name} (Version {version})")
+    print(f"*    nt_gen (Version 1.0.0)")
     print("*")
-    print(f"*                         Author : {author}")
-    print(f"*             First Release Date : {first_release_date}")
-    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print(f"*        Author : Jinzen Ikebe")
+    print(f"* First Release : 2025-05-23")
+    print(f"*  Current ver. : 2025-05-23")
     print("*")
     print(f"*" * 50)
     print()
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     try:
         with open(license_path, "r", encoding="utf-8") as file:
             license_content = file.read()
     except FileNotFoundError:
-        print("Error: License file not found.")
-        sys.exit()
+        print("Error: License file not found.") ; sys.exit(1)
 
 def read_prep_file(prep_file):
     with open(prep_file, 'r') as file:
@@ -277,9 +271,8 @@ def main():
     parser.add_argument("--output", "-o", default="table.txt", help="Output atomic name correspondence table file. The Default is table.txt.")
     parser.add_argument("--threshold", "-t", default=1.8, help="Threshold distance for determining the presence of covalent bonds between atoms in PDB. Default is 1.8.")
     args = parser.parse_args()
-    access_key = args.access_key
-    if access_key != "j_presto":
-        sys.exit()
+    if args.access_key != "j_presto":
+        sys.exit(1)
     display_credits()
 
     print(f"\nInput arguments:")

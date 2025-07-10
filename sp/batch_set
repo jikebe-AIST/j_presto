@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
   
-import argparse, os, sys, time, re
+import argparse, os, sys, time, re, subprocess, shlex
 
 namELM = {}
 namELM["INPUT"] = [
@@ -41,6 +41,24 @@ replacements = {
         "#RNDSED": None,
         "#NRUN": None,
         "#NMPI": None,}
+
+def display_credits():
+    print("*" * 50)
+    print("*")
+    print(f"*    batch_set (Version 1.0.3)")
+    print("*")
+    print(f"*        Author : Jinzen Ikebe")
+    print(f"* First Release : 2024-11-11")
+    print(f"*  Current ver. : 2025-07-10")
+    print("*")
+    print(f"*" * 50)
+    print()
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+    except FileNotFoundError:
+        print("Error: License file not found.") ; sys.exit(1)
 
 def check_file_existence(fil):
     if not os.path.exists(fil):
@@ -157,19 +175,20 @@ def read_batch_set(batch_set, md_run, md_multi, rseed):
                 run = str(irun) ; cdir2 = os.path.join(cdir, f"n{run}")
                 if not os.path.exists(cdir2):
                     os.makedirs(cdir2)
-                l = min_lambda + (max_lambda - min_lambda) * (irun - 1) / (nrun - 1)
-                t = min_temper + (max_temper - min_temper) * (irun - 1) / (nrun - 1)
+                if nrun == 1:
+                    l = min_lambda ; t = min_temper
+                else:
+                    l = min_lambda + (max_lambda - min_lambda) * (irun - 1) / (nrun - 1)
+                    t = min_temper + (max_temper - min_temper) * (irun - 1) / (nrun - 1)
 
                 replacements.update({"#RUN": run, "#LAMBDA": str(l), "#TEMPER": str(t), "#RNDSED": str(irun + rseed)})
                 txt = replace_placeholders(batch_set_txt, replacements)
                 with open(os.path.join(cdir2, "md.inp"), 'w') as out:
                     out.write(txt)
-                if ELEMNT["INPENE"]:
+                if ELEMNT["INPENE"] and ELEMNT["SIMTYP"] == "CANO":
                     txt = replace_placeholders(ELEMNT["INPENE"], replacements)
-                    if ELEMNT["SIMTYP"] != "CANO":
-                        filelist_txt += f'{txt}\n{ELEMNT["NFIRST"]} {ELEMNT["NFINAL"]}\n'
-                    elif ELEMNT["SIMTYP"]:
-                        filelist_txt += f'{txt}\n{ELEMNT["NFIRST"]} {ELEMNT["NFINAL"]} {t}\n'
+                    txt = re.sub(r'(#.*?)(?=/)',run,txt)
+                    filelist_txt += f'{txt}\n{ELEMNT["NFIRST"]} {ELEMNT["NFINAL"]} {t}\n'
                 destination = os.path.join(cdir2, md_run)
                 os.system(f"cp {md_run} {destination}")
                 os.chmod(destination, 0o755)
@@ -190,8 +209,16 @@ def read_batch_set(batch_set, md_run, md_multi, rseed):
                     fil.write(txt)
             active = [key for key in namELM["filelist"] if ELEMNT[key]]
             if active:
-                with open(os.path.join(cdir, "file.list"), 'w') as fil:
-                    fil.write(filelist_txt)
+                if len(filelist_txt) != 0:
+                    with open(os.path.join(cdir, "file.list"), 'w') as fil:
+                        fil.write(filelist_txt)
+                else:
+                    txt = replace_placeholders(ELEMNT["INPENE"], replacements)
+                    program_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "sp", "genlist")
+                    output_path = os.path.join(cdir, f"file.list")
+                    arg = f'j_presto {txt} -r {ELEMNT["NFIRST"]}:{ELEMNT["NFINAL"]} -o {output_path}'
+                    arg = shlex.split(arg)
+                    subprocess.run([program_path] + arg, check=True, stdout=subprocess.DEVNULL)
 
         if ELEMNT["NXMINV"]:
             ELEMNT["MINVAL"] = ELEMNT["NXMINV"] ; ELEMNT["NXMINV"] = False
@@ -199,30 +226,6 @@ def read_batch_set(batch_set, md_run, md_multi, rseed):
             ELEMNT["MAXVAL"] = ELEMNT["NXMAXV"] ; ELEMNT["NXMAXV"] = False
         if ELEMNT["NXTEMP"]:
             ELEMNT["TEMPER"] = ELEMNT["NXTEMP"] ; ELEMNT["NXTEMP"] = False
-
-def display_credits():
-    program_name = "batch_set"
-    author = "Jinzen Ikebe"
-    version = "1.0.2"
-    first_release_date = "2024-11-11"
-    current_release_date = "2025-05-23"
-    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
-    print("*" * 50)
-    print("*")
-    print(f"*    {program_name} (Version {version})")
-    print("*")
-    print(f"*                         Author : {author}")
-    print(f"*             First Release Date : {first_release_date}")
-    print(f"*  Release Date for Current ver. : {current_release_date}")
-    print("*")
-    print(f"*" * 50)
-    print()
-    try:
-        with open(license_path, "r", encoding="utf-8") as file:
-            license_content = file.read()
-    except FileNotFoundError:
-        print("Error: License file not found.")
-        sys.exit()
 
 def main():
     stime = time.perf_counter()
@@ -234,14 +237,10 @@ def main():
     parser.add_argument('-rseed','--random_seed', default=0, type=int, help='If you want to increase or decrease the value set by #RNDSED, use this option to configure the increment or decrement value. The default is 0.')
 
     args = parser.parse_args()
-    access_key = args.access_key
-    input_type = args.batch_set
-    if access_key != "j_presto":
-        sys.exit()
+    if args.access_key != "j_presto":
+        sys.exit(1)
     display_credits()
-    batch_set = args.batch_set ; md_run = args.md_run ; md_multi = args.md_multi ; rseed = args.random_seed
-
-    read_batch_set(batch_set, md_run, md_multi, rseed)
+    read_batch_set(args.batch_set, args.md_run, args.md_multi, args.random_seed)
 
     etime = time.perf_counter()
     print(f"\nExecution time : {etime - stime} (S)")

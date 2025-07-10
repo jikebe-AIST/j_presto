@@ -46,6 +46,24 @@ tpl_db = {} ; pdb_tpl = {"tpl_inf": [], "atm_inf": [], "seq": [], "nmol": []}
 iaSS = [] ; iaLINK = [] ; ion_list = {} ; islv = None
 ###############################################################################
 
+def display_credits():
+    print("*" * 50)
+    print("*")
+    print(f"*    prep (Version 1.0.2)")
+    print("*")
+    print(f"*        Author : Jinzen Ikebe")
+    print(f"* First Release : 2024-11-11")
+    print(f"*  Current ver. : 2025-07-10")
+    print("*")
+    print(f"*" * 50)
+    print()
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+    except FileNotFoundError:
+        print("Error: License file not found.") ; sys.exit(1)
+
 class RadiusAction(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
         if len(values) == 1:
@@ -112,7 +130,7 @@ def find_file(filename, option):
                 found_file = find_file_in_directory(directory, filename)
                 if found_file:
                     return found_file
-    sys.exit(f'!! ERROR !!\nThe file {fil} is NOT found.\n You have to set the correct path with {option} option.')
+    sys.exit(f'!! ERROR !!\nThe file {filename} is NOT found.\n You have to set the correct path with {option} option.')
 
 def read_datablock(contents):
     block = [] ; lines = [] ; link_flag = False
@@ -266,8 +284,16 @@ def prepare_pdb():
                                     jtmp = itmp
                     jtmp = jtmp[:16]+" "+jtmp[17:]
                 pdb.append(jtmp)
-    if not pdb[-1].startswith("TER"):
-        pdb.append("TER")
+
+    last_atom_index = None
+    for i in reversed(range(len(pdb))):
+        if pdb[i].startswith("ATOM"):
+            last_atom_index = i ; break
+    if last_atom_index is not None:
+        if last_atom_index + 1 >= len(pdb) or not pdb[last_atom_index + 1].startswith("TER"):
+            last_line = pdb[last_atom_index]
+            ter_line = f"TER\n"
+            pdb.insert(last_atom_index + 1, ter_line)
 
     ## For SSBOND & LINK
     iSS = [] ; iLINK = []
@@ -491,7 +517,6 @@ def prepare_pdb():
             cod.append(tcod1) ; cod = cod[1:4] ; tcod2 = z_matrix_to_cartesian(cod,1.530,116.6,180.0)
             info["atm_inf"].append({"aname": "CA", "rname": "ACE", "nres": ires, "cod": tcod2})
             info["atm_inf"].append({"aname": "C", "rname": "ACE", "nres": ires, "cod": tcod1})
-            info["seq"].append("ACE")
         reschk = ""
         for atm_info in atm_inf[old_chn[ichn]]:
             nres = atm_info["nres"] - 1
@@ -1525,31 +1550,6 @@ def exe_shake():
     if os.path.exists(".aho_tmp"):
         shutil.rmtree(".aho_tmp")
 
-def display_credits():
-    program_name = "prep"
-    author = "Jinzen Ikebe"
-    version = "1.0.1"
-    first_release_date = "2024-11-11"
-    current_release_date = "2025-01-14"
-    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
-    print("*" * 50)
-    print("*")
-    print(f"*    {program_name} (Version {version})")
-    print("*")
-    print(f"*                         Author : {author}")
-    print(f"*             First Release Date : {first_release_date}")
-    print(f"*  Release Date for Current ver. : {current_release_date}")
-    print("*")
-    print(f"*" * 50)
-    print()
-    try:
-        with open(license_path, "r", encoding="utf-8") as file:
-            license_content = file.read()
-#            print(license_content)
-    except:
-        print("Error: License file not found.")
-        sys.exit()
-
 if __name__ == "__main__":
     stime = time.perf_counter()
     parser = argparse.ArgumentParser(description="j_presto prep makes a pdb file and the corresponding topology file (*.tpl), and optionally input file for SHAKE (*.shk) for j_presto")
@@ -1585,7 +1585,11 @@ if __name__ == "__main__":
     parser.add_argument("-shake", "--shake", nargs='?', const='H', default=False, choices=['H', 'A'], help='If you want to constrain covalent bonds using SHAKE, set this option. Use "-shake" or "-shake H" to constrain only covalent bonds involving hydrogens. Use "-shake A" to constrain all covalent bonds. (Note that this option does NOT constrain covalent bonds specified with SSBOND and LINK.)')
 
     args = parser.parse_args()
-    access_key = args.access_key ; output = args.output ; tpldb = args.tpldb ; input_file = args.input ; pH = args.pH_value
+    if args.access_key != "j_presto":
+        sys.exit(1)
+    display_credits()
+
+    output = args.output ; tpldb = args.tpldb ; input_file = args.input ; pH = args.pH_value
     auto_his = not args.no_auto_hispro ; def_his = args.default_his + " " ; dist_his = args.threshold_distance_hispro
     trim_shape = args.trim_shape ; ACE = args.add_ACE ; NME = args.add_NME
     trim_radius = args.trim_radius ; trim_center = args.trim_center ; trim_bound = args.trim_boundary
@@ -1602,11 +1606,8 @@ if __name__ == "__main__":
     if slv_bound is not None:
         slv_bound = [item for sublist in [sorted(slv_bound[i:i+2]) for i in range(0, len(slv_bound), 2)] for item in sublist]
     slv_den = args.solvent_density ; shake = args.shake
-    if access_key != "j_presto":
-        sys.exit()
 
     line_len = 41
-    display_credits()
     print(f'{"Output name : ".rjust(line_len)} {output}')
     tpldb = find_file(tpldb, "-t")
     print(f'{"Input tpldb file : ".rjust(line_len)} {tpldb}')

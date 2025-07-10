@@ -61,7 +61,7 @@ def main():
             license_content = file.read()
     except:
         print("Error: License file not found.")
-        sys.exit()
+        sys.exit(1)
 
     parser = argparse.ArgumentParser(description="Manual reader program.")
     parser.add_argument('access_key', help=argparse.SUPPRESS)

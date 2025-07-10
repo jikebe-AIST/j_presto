@@ -60,6 +60,24 @@ for var_name in global_variables:
 
 #########################################################################################
 
+def display_credits():
+    print("*" * 50)
+    print("*")
+    print(f"*    gen_db (Version 1.0.1)")
+    print("*")
+    print(f"*        Author : Jinzen Ikebe")
+    print(f"* First Release : 2024-11-11")
+    print(f"*  Current ver. : 2025-01-14")
+    print("*")
+    print(f"*" * 50)
+    print()
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+    except FileNotFoundError:
+        print("Error: License file not found.") ; sys.exit(1)
+
 def find_file_in_directory(directory, filename):
     for root, dirs, files in os.walk(directory):
         if filename in files:
@@ -1322,31 +1340,6 @@ def output_tpl(ofile):
             for tmp in solvent_box_dict[sol]["positions"]:
                 fil.write(f"{' '.join(map(str, tmp))}\n")
 
-def display_credits():
-    program_name = "gen_db"
-    author = "Jinzen Ikebe"
-    version = "1.0.1"
-    first_release_date = "2024-11-11"
-    current_release_date = "2025-01-14"
-    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
-    print("*" * 50)
-    print("*")
-    print(f"*    {program_name} (Version {version})")
-    print("*")
-    print(f"*                         Author : {author}")
-    print(f"*             First Release Date : {first_release_date}")
-    print(f"*  Release Date for Current ver. : {current_release_date}")
-    print("*")
-    print(f"*" * 50)
-    print()
-    try:
-        with open(license_path, "r", encoding="utf-8") as file:
-            license_content = file.read()
-#            print(license_content)
-    except:
-        print("Error: License file not found.")
-        sys.exit()
-
 def main():
     stime = time.perf_counter()
     global input_files, solvent_box, residue_name_translator
@@ -1357,14 +1350,14 @@ def main():
     parser.add_argument("-rr","--residue_rename", nargs='+', help='If you need to rename residue names, specify pairs of old and new residue names using this option. For example, to change "TP3" to "WAT", use -rr TP3:WAT.')
     parser.add_argument('-s','--solvent_box', nargs='+', action="append", help='If you want to create a solvent coordinate database from library files, input the solvent box name such as TIP3PBOX. The database will be output as *.slv.')
     args = parser.parse_args()
-    access_key = args.access_key
-    if access_key != "j_presto":
-        sys.exit()
+    if args.access_key != "j_presto":
+        sys.exit(1)
+    display_credits()
+
     input_files = [file for sublist in args.input for file in sublist]
     if args.solvent_box:
         solvent_box = args.solvent_box[0]
 
-    display_credits()
     if args.residue_rename:
         print(f'* The below residue names are translated : ')
         tmp_dic = {}
@@ -1375,6 +1368,7 @@ def main():
     input_tpl()
     check_consistency()
     output_tpl(args.output)
+
     etime = time.perf_counter() ; print(f"\nExecution time : {etime - stime} (S)")
     print(f"\n+++ Program j_presto gen_db normally ended +++")
 

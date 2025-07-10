@@ -5,28 +5,22 @@ import numpy as np
 from decimal import Decimal, getcontext
 
 def display_credits():
-    program_name = "pick_conf"
-    author = "Jinzen Ikebe"
-    version = "1.0.0"
-    first_release_date = "2025-05-23"
-    current_release_date = "2025-05-23"
-    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     print("*" * 50)
     print("*")
-    print(f"*    {program_name} (Version {version})")
+    print(f"*    pick_conf (Version 1.0.1)")
     print("*")
-    print(f"*                         Author : {author}")
-    print(f"*             First Release Date : {first_release_date}")
-    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print(f"*        Author : Jinzen Ikebe")
+    print(f"* First Release : 2025-05-23")
+    print(f"*  Current ver. : 2025-07-10")
     print("*")
     print(f"*" * 50)
     print()
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     try:
         with open(license_path, "r", encoding="utf-8") as file:
             license_content = file.read()
     except FileNotFoundError:
-        print("Error: License file not found.")
-        sys.exit()
+        print("Error: License file not found.") ; sys.exit(1)
 
 def read_data(file_path, column):
     if not os.path.exists(file_path):
@@ -299,6 +293,8 @@ def output_pick(output, sindex, sname, pick_flag, tops):
                 for key, d in data.items():
                     output_line += f" {d[idx]}"
                 f.write(output_line+f" : {icount}\n")
+                if sname == [] and "simID" in data and idx != len(sindex)-1 and data["simID"][idx] != data["simID"][idx+1]:
+                    f.write("\n")
             if icount >= tops:
                 break
 
@@ -396,9 +392,8 @@ def main():
     parser.add_argument('-e', '--event_detection', nargs='+', help='Set this option if you want to enter detect an event from data for multiple time series of simulation runs. You must define two reaction coordinates: the simulation run ID as "simID" and the simulation time as "simtime". The file to input ID and time can be make using "-m" option. (ex. If you detect rmsd < 1.2, -e rmsd :1.2") (ex. If you detect distance to [2,3] on PCA1:PCA2 plane > 0.9, -e PCA1:PCA2[2,3] 0.9:") When you set this option, you must set -w, -l, -t and -ti option.')
     parser.add_argument('-ti', '--time_index', metavar=('Tstep', 'Itime'), nargs=2, type=float, help='If you set -e option, you must set this option to generate time index information for event detaction. This option is given as "-ti Tstep Itime". (ex. Tstep: time interval between each data point in the simulation, Itime: initial simulation time like "-ti 0.005,0" ). To generate time index information, you must set -w, -l, and -t option. The generated simulation ID and time data are internally stored as reaction coordinates named "simID" and "simtime", respectively.')
     args = parser.parse_args()
-    access_key = args.access_key
-    if access_key != "j_presto":
-        sys.exit()
+    if args.access_key != "j_presto":
+        sys.exit(1)
     display_credits()
 
     print(f"")

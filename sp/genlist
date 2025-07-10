@@ -1,68 +1,102 @@
 #!/usr/bin/env python3
 
 import argparse, os, sys, time
+from itertools import product
+from collections import defaultdict
 
 def display_credits():
-    program_name = "genlist"
-    author = "Jinzen Ikebe"
-    version = "1.0.0"
-    first_release_date = "2025-05-27"
-    current_release_date = "2025-05-27"
-    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
-    print("*" * 50)
+    print("*"*50)
     print("*")
-    print(f"*    {program_name} (Version {version})")
+    print("*    genlist (Version 2.0.0)")
     print("*")
-    print(f"*                         Author : {author}")
-    print(f"*             First Release Date : {first_release_date}")
-    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print("*         Author : Jinzen Ikebe")
+    print("* First Release : 2025-05-27")
+    print("* Current Ver.  : 2025-05-30")
     print("*")
-    print(f"*" * 50)
+    print("*"*50)
     print()
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     try:
         with open(license_path, "r", encoding="utf-8") as file:
             license_content = file.read()
     except FileNotFoundError:
         print("Error: License file not found.") ; sys.exit(1)
 
+def parse_structure(structure_str):
+    parts = structure_str.strip().split("/")
+    variables = [] ; values_list = [] ; filename = parts[-1]
+    for part in parts[:-1]:
+        if "#" in part:
+            name, range_str = part.split("#")
+            if ":" in range_str:
+                start, end = map(int, range_str.split(":"))
+            else:
+                start = end = int(range_str)
+            values = [f"{name}{i}" for i in range(start, end + 1)]
+        else:
+            values = [part]
+        values_list.append(values)
+    return values_list, filename
+
+def get_arrow_flags(combinations, values_list):
+    arrow_flags = [False] * len(combinations)
+    groups = defaultdict(list)
+    for idx, comb in enumerate(combinations):
+        groups[comb[0]].append(idx)
+    for indices in groups.values():
+        for i in range(len(indices) - 1):
+            arrow_flags[indices[i]] = True
+    return arrow_flags
+
 def main():
     stime = time.perf_counter()
-    parser = argparse.ArgumentParser(description="Generate a list of file paths and data ranges for input.")
+    parser = argparse.ArgumentParser(description="Flexible path list generator")
     parser.add_argument('access_key', help=argparse.SUPPRESS)
-    parser.add_argument("-m", "--md_range", required=True,help="MD index range in the form start:end (e.g., 0:27)")
-    parser.add_argument("-n", "--n_range", required=True,help="N index range in the form start:end (e.g., 1:60)")
-    parser.add_argument("-r", "--range", required=True,help="Data range in the form start:end (e.g., 1:15000000)")
-    parser.add_argument("-f", "--file", required=True,help="Target file name (e.g., md.cod)")
-    parser.add_argument("-p", "--prefix", type=str, default="",help='Path prefix to files (default: "")')
-    parser.add_argument("-o", "--output", type=str, default="file.list",help="Output filename (default: 'file.list')")
+    parser.add_argument('pattern', help="e.g., ../ab#1:3/cd#5/ef#1:2/filename")
+    parser.add_argument('-r', '--range', help="e.g., 1:150000")
+    parser.add_argument('-na', '--no_arrow', action='store_true', help='If set, this program does not output the "->" arrow symbol.')
+    parser.add_argument('-o', '--output', default="file.list", help="Output filename")
 
     args = parser.parse_args()
-    access_key = args.access_key
-    if access_key != "j_presto":
-        sys.exit()
+    if args.access_key != "j_presto":
+        sys.exit(1)
     display_credits()
 
-    md_start, md_end = map(int, args.md_range.split(":"))
-    n_start, n_end = map(int, args.n_range.split(":"))
-    range_start, range_end = map(int, args.range.split(":"))
-    target_file = args.file
+    values_list, filename = parse_structure(args.pattern)
+    Tvalues_list = [values_list[-1]] + values_list[:-1]
+    combinations = list(product(*Tvalues_list))
+    if not args.no_arrow:
+      arrow_flags = get_arrow_flags(combinations, values_list)
+    else:
+        arrow_flags = [False] * len(combinations)
+
+    product_input = list([values_list[-1]] + list(values_list[:-1]))
+    combinations = [ list(comb[1:]) + [comb[0]] for comb in combinations]
+
+    if args.range:
+        try:
+            range_start, range_end = map(int, args.range.split(":"))
+        except ValueError:
+            print("Error: Invalid range format. Use start:end.") ; sys.exit(1)
+    else:
+        range_start = range_end = None
 
     with open(args.output, "w") as f:
-        for n in range(n_start, n_end + 1):
-            for md in range(md_start, md_end + 1):
-                f.write(f"{args.prefix}md{md}/n{n}/{target_file}\n")
-                print(f"{args.prefix}md{md}/n{n}/{target_file}")
-                if md == md_end:
-                    f.write(f"{range_start} {range_end}\n")
-                    print(f"{range_start} {range_end}")
-                else:
+        for (path_parts, arrow) in zip(combinations, arrow_flags):
+            full_path = "/".join(list(path_parts) + [filename])
+            f.write(f"{full_path}\n")
+            print(f"{full_path}")
+            if range_start is not None and range_end is not None:
+                if arrow:
                     f.write(f"{range_start} {range_end}  ->\n")
                     print(f"{range_start} {range_end}  ->")
+                else:
+                    f.write(f"{range_start} {range_end}\n")
+                    print(f"{range_start} {range_end}")
 
     etime = time.perf_counter()
-    print(f"\nExecution time : {etime - stime} (S)")
-    print(f"\n+++ Program j_presto genlist normally ended +++")
+    print(f"\nExecution time: {etime - stime:.3f} sec")
+    print("+++ Program j_presto genlist normally ended +++")
 
 if __name__ == "__main__":
     main()
-

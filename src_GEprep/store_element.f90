@@ -12,7 +12,7 @@
       implicit none
 
       real(8):: rtmp
-      logical(4):: ex
+      logical(1):: ex
 
 !***************************
 
@@ -169,12 +169,15 @@
              minEAB.gt.maxEAB ) call error(10215)
 
           nlmd = 20 ! 100 = # of bins for lambda
+          !nlmd = 40 ! 100 = # of bins for lambda
           slmd = (maxlmd-minlmd) / nlmd
-          sEAA = 4.d0
+          !sEAA = 4.d0
+          sEAA = 1.d0
           rtmp = (maxEAA-minEAA)/sEAA
           nEAA = idint(rtmp)
           if ( abs(rtmp-nEAA) .gt. 0.0001d0 ) nEAA = nEAA + 1
-          sEAB = 4.5d0
+          !sEAB = 4.5d0
+          sEAB = 1.d0
           rtmp = (maxEAB-minEAB)/sEAB
           nEAB = idint(rtmp)
           if ( abs(rtmp-nEAB) .gt. 0.0001d0 ) nEAB = nEAB + 1

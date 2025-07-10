@@ -32,13 +32,7 @@ if [ #CMD -ge 3 ]; then
     (
         cd md#CMD
         cp ../PCA.inp .
-        rm PCA.list
-        for ((i=1; i<=#NRUN; i++)); do
-            {
-                echo "n${i}/md.cod"
-                echo "1 9999999"
-            } >> PCA.list
-        done
+	j_presto genlist "n#1:#NRUN/md.cod" -r 1:999999 -o PCA.list
         j_presto Ens_Ana PCA.inp && \
         mv Ens_Ana_test/test.PCAcod . && \
         mv Ens_Ana_test/test.TTPncnf . && \

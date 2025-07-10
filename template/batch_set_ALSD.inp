@@ -1,4 +1,4 @@
-nmd 0 26
+nmd 0 27
 nrun 60
 nmpi 60
 lambda 0.6 0.85
@@ -10,9 +10,8 @@ SETSHK= ../../test.shk
 REFCOO= ../../test_min.pdb
 POSITI= ../../psr.inp
 ;SETBOU= ../../CAPbound.inp
-;CAL15M= CMM
-;CMMUPD= 5
-;CELRES= WAT:*
+;CAL15M= ZD
+CELRES= WAT:*
 GEPSME= LMD
 ;CLUSTA= *
 METHOD= CANO
@@ -57,7 +56,7 @@ FITDIM= 2
 NWINDO= 1
 SIMTEM= 300.0
 FORCES= 3000.0
-INPENE= n#RUN/test.ene
+INPENE= n#1:#RUN/test.ene
 NFIRST= 250001
 NFINAL= 15000000
 
@@ -110,3 +109,8 @@ MAXEAA= -170.0
 MINEAB= -1220.0
 MAXEAB= -440.0
 ADJENE= YES
+
+27
+PREFIT= ../md25/test.nf
+NAMEGE= ../../md25/test.nf
+INPENE= ../md#26:#CMD/n#1:#NRUN/test.ene

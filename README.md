@@ -67,6 +67,7 @@ With j_presto, you can execute the following sub-programs using the command:
 Sub-program name list:
 
     For MD simulation,
+	initpep         : Preperation of extended initial structures for folding simulation.
         pdb_alignfit    : Superimposition of query structure to target one based on sequence alignment.
         nt_gen          : Generation of atomic name correspondence table from a PREP and a PDB file.
         nt_conv         : Convert residue and atom names in a PREP and a PDB file based on a name table.
@@ -83,9 +84,10 @@ Sub-program name list:
         distrib         : Generation of statistical distribution data from weighted input values for one- or two-dimensional variables.
         pick_conf       : Extraction and ranking structures based on user-defined conditions and event timings.
         ttp_se          : Calculation of weighted averages and standard errors of the data
+	pdb_movie       : Generation of a multi-model PDB file from sequential single-structure PDB files for trajectory visualization.
 
     For Enzyme development,
-	MSPER           : Predict mutation sites to improve enzyme selectivity.
+        MSPER           : Predict mutation sites to improve enzyme selectivity.
         conmut          : Propose mutations to improve enzyme stability from input amino acid sequences using the consensus method
 
     For user guidance,

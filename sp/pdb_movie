@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+
+import os, argparse, sys, time, gzip
+from glob import glob
+from natsort import natsorted
+from tqdm import tqdm
+
+def display_credits():
+    print("*" * 50)
+    print("*")
+    print(f"*    pdb_movie (Version 1.0.0)")
+    print("*")
+    print(f"*        Author : Jinzen Ikebe")
+    print(f"* First Release : 2025-07-10")
+    print(f"*  Current ver. : 2025-07-10")
+    print("*")
+    print(f"*" * 50)
+    print()
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+    except FileNotFoundError:
+        print("Error: License file not found.") ; sys.exit(1)
+
+def open_pdb_file(filepath):
+    if filepath.endswith('.gz'):
+        return gzip.open(filepath, 'rt')
+    else:
+        return open(filepath, 'r')
+
+def collect_pdbs_to_model_block(input_dir, output_file, pattern):
+    pdb_files = natsorted(
+        glob(os.path.join(input_dir, pattern)) +
+        glob(os.path.join(input_dir, pattern + '.gz'))
+    )
+    if not pdb_files:
+        raise ValueError(f"No matching PDB files found in {input_dir} with pattern '{pattern}'")
+
+    with open(output_file, 'w') as out_f:
+        for i, pdb_file in enumerate(tqdm(pdb_files, desc="Processing PDB files"), start=1):
+            out_f.write(f"MODEL     {i}\n")
+            out_f.write(f"REMARK   Original file: {os.path.basename(pdb_file)}\n")
+            with open_pdb_file(pdb_file) as in_f:
+                for line in in_f:
+                    if not line.startswith(('END', 'MODEL', 'ENDMDL')):
+                        out_f.write(line)
+            out_f.write("ENDMDL\n")
+
+    print(f"\n✅ Combined {len(pdb_files)} PDB files into {output_file}")
+
+def main():
+    stime = time.perf_counter()
+    parser = argparse.ArgumentParser(description='Combine PDB or PDB.GZ files into a multi-model PDB file for animation (e.g. PyMOL).')
+    parser.add_argument('access_key', help=argparse.SUPPRESS)
+    parser.add_argument('input_dir', help='Directory containing .pdb or .pdb.gz files to combine.')
+    parser.add_argument('-o', '--output', default='movie.pdb', help='Output PDB file (default: movie.pdb)')
+    parser.add_argument('-p', '--pattern', default='*.pdb', help='Glob pattern for file selection (default: "*.pdb")')
+
+    args = parser.parse_args()
+    if args.access_key != "j_presto":
+        sys.exit(1)
+    display_credits()
+    collect_pdbs_to_model_block(args.input_dir, args.output, args.pattern)
+
+    etime = time.perf_counter()
+    print(f"\nExecution time : {etime - stime} (S)")
+    print(f"\n+++ Program j_presto pdb_movie normally ended +++")
+
+if __name__ == '__main__':
+    main()
+

@@ -6,7 +6,7 @@ DEFAULT_DEST_DIR="$HOME/local/bin"
 DEFAULT_COMPILER="ifort"
 
 # Define required Python modules manually
-REQUIRED_PYTHON_MODULES=("argparse" "os" "sys" "math" "re" "subprocess" "shutil" "time" "itertools" "numpy" "statistics" "concurrent" "mpi4py" "Bio" "collections" "networkx" "decimal")
+REQUIRED_PYTHON_MODULES=("argparse" "os" "sys" "math" "re" "subprocess" "shutil" "time" "itertools" "numpy" "statistics" "concurrent" "mpi4py" "Bio" "collections" "networkx" "decimal" "shlex" "scipy" "sklearn" "PeptideBuilder" "gzip" "glob" "natsort" "tqdm")
 
 # Check if required Python modules are installed
 MISSING_MODULES=()

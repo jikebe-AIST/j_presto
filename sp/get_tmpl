@@ -3,28 +3,22 @@
 import argparse, os, sys, time, shutil
 
 def display_credits():
-    program_name = "get_tmpl"
-    author = "Jinzen Ikebe"
-    version = "1.0.2"
-    first_release_date = "2024-11-11"
-    current_release_date = "2025-04-16"
-    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     print("*" * 50)
     print("*")
-    print(f"*    {program_name} (Version {version})")
+    print(f"*    get_tmpl (Version 1.0.3)")
     print("*")
-    print(f"*                         Author : {author}")
-    print(f"*             First Release Date : {first_release_date}")
-    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print(f"*        Author : Jinzen Ikebe")
+    print(f"* First Release : 2024-11-11")
+    print(f"*  Current ver. : 2025-07-10")
     print("*")
     print(f"*" * 50)
     print()
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     try:
         with open(license_path, "r", encoding="utf-8") as file:
             license_content = file.read()
     except FileNotFoundError:
-        print("Error: License file not found.")
-        sys.exit()
+        print("Error: License file not found.") ; sys.exit(1)
 
 def copy_file(src, dest):
     # For unlock files
@@ -50,12 +44,9 @@ def main():
     parser.add_argument('-u', '--unlock', action='store_true', help=argparse.SUPPRESS)
 
     args, unknown_args = parser.parse_known_args()
-#    args = parser.parse_args()
-    access_key = args.access_key
-#    input_types = args.inputs
     input_types = args.inputs + unknown_args
-    if access_key != "j_presto":
-        sys.exit()
+    if args.access_key != "j_presto":
+        sys.exit(1)
     display_credits()
 
     # Mapping of input types to file paths

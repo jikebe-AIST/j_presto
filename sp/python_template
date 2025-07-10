@@ -3,22 +3,17 @@
 import argparse, os, sys, time
 
 def display_credits():
-    program_name = "test"
-    author = "Jinzen Ikebe"
-    version = "1.0.0"
-    first_release_date = "2025-05-23"
-    current_release_date = "2025-05-23"
-    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     print("*" * 50)
     print("*")
-    print(f"*    {program_name} (Version {version})")
+    print(f"*    test (Version 1.0.0)")
     print("*")
-    print(f"*                         Author : {author}")
-    print(f"*             First Release Date : {first_release_date}")
-    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print(f"*        Author : Jinzen Ikebe")
+    print(f"* First Release : 2025-01-01")
+    print(f"*  Current ver. : 2025-01-01")
     print("*")
     print(f"*" * 50)
     print()
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     try:
         with open(license_path, "r", encoding="utf-8") as file:
             license_content = file.read()
@@ -33,9 +28,8 @@ def main():
     parser.add_argument("-o", "--output", type=str, default="output.txt", help="Output file name (default: output.txt)")
 
     args = parser.parse_args()
-    access_key = args.access_key
-    if access_key != "j_presto":
-        sys.exit()
+    if args.access_key != "j_presto":
+        sys.exit(1)
     display_credits()
 
 

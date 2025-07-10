@@ -90,7 +90,7 @@
             exit
           endif
         enddo
- 
+
 !       2) HANDLING BUFFER
 !        A) MAKE EACH CHAIN INFORMATION IF MOLECULE HAS
 !           TWO OR MORE CHAINS          (MKCHNI)
@@ -798,7 +798,6 @@
         iytnbf(iyntor) = iytnbf(itors)
       enddo
       enddo
-      stop
 
 !*****************************
 

@@ -7,7 +7,7 @@ export OMP_STACKSIZE=16M
 export KMP_AFFINITY=disabled
 
 #For energy minimization calculation
-#j_presto md_run min.inp > min.log
+j_presto md_run min.inp > min.log
 
 #For MD simulation
 #j_presto md_run md.inp > md.log

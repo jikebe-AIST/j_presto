@@ -5,34 +5,26 @@ from Bio.Blast import NCBIWWW, NCBIXML
 from collections import Counter, defaultdict
 
 def display_credits():
-    program_name = "conmut"
-    author = "Jinzen Ikebe"
-    version = "1.0.0"
-    first_release_date = "2025-04-21"
-    current_release_date = "2025-04-21"
-    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     print("*" * 50)
     print("*")
-    print(f"*    {program_name} (Version {version})")
+    print(f"*    conmut (Version 1.0.0)")
     print("*")
-    print(f"*                         Author : {author}")
-    print(f"*             First Release Date : {first_release_date}")
-    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print(f"*        Author : Jinzen Ikebe")
+    print(f"* First Release : 2025-04-21")
+    print(f"*  Current ver. : 2025-04-21")
     print("*")
     print(f"*" * 50)
     print()
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     try:
         with open(license_path, "r", encoding="utf-8") as file:
             license_content = file.read()
     except FileNotFoundError:
-        print("Error: License file not found.")
-        sys.exit()
+        print("Error: License file not found.") ; sys.exit(1)
 
 def check_dependency(program):
     if shutil.which(program) is None:
         print(f"Error: {program} is not installed or not in PATH.\nPlease install '{program}' and ensure it is accessible from the command line."); sys.exit(1)
-
-from Bio import SeqIO
 
 def write_alignment_view(query_seq, sequences, consensus_seq, species_list, output_txt, line_width, srn):
     from textwrap import wrap
@@ -263,9 +255,8 @@ def main():
     parser.add_argument("-s", "--start_residue_number", type=int, default=1, help="Residue number to start counting from (default: 1).")
     parser.add_argument("-o", "--output_prefix", default="result", help="Prefix for output files")
     args = parser.parse_args()
-    access_key = args.access_key
-    if access_key != "j_presto":
-        sys.exit()
+    if args.access_key != "j_presto":
+        sys.exit(1)
     display_credits()
 
     if not args.homologs:

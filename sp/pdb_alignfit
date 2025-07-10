@@ -5,28 +5,22 @@ from Bio import PDB, Align
 from Bio.PDB import Superimposer
 
 def display_credits():
-    program_name = "pdb_alignfit"
-    author = "Jinzen Ikebe"
-    version = "1.0.0"
-    first_release_date = "2025-05-23"
-    current_release_date = "2025-05-23"
-    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     print("*" * 50)
     print("*")
-    print(f"*    {program_name} (Version {version})")
+    print(f"*    pdb_alignfit (Version 1.0.0)")
     print("*")
-    print(f"*                         Author : {author}")
-    print(f"*             First Release Date : {first_release_date}")
-    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print(f"*        Author : Jinzen Ikebe")
+    print(f"* First Release : 2025-05-23")
+    print(f"*  Current ver. : 2025-05-23")
     print("*")
     print(f"*" * 50)
     print()
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     try:
         with open(license_path, "r", encoding="utf-8") as file:
             license_content = file.read()
     except FileNotFoundError:
-        print("Error: License file not found.")
-        sys.exit()
+        print("Error: License file not found.") ; sys.exit(1)
 
 def parse_pdb(file_path):
     parser = PDB.PDBParser(QUIET=True)
@@ -123,9 +117,8 @@ def main():
     parser.add_argument('--output', '-o', default='superimposed_structure.pdb', help='Output PDB file name for the superimposed structure. Default: superimposed_structure.pdb')
 
     args = parser.parse_args()
-    access_key = args.access_key
-    if access_key != "j_presto":
-        sys.exit()
+    if args.access_key != "j_presto":
+        sys.exit(1)
     display_credits()
 
     print("\nInput arguments:")

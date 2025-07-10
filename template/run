@@ -3,6 +3,7 @@
 first=0
 last=20
 previous_job_id=""
+cancel_script="cancel_jobs.sh"
 
 # -----------------------------------------------
 # Description:
@@ -11,6 +12,9 @@ previous_job_id=""
 #   ensuring each job runs after the previous one.
 # -----------------------------------------------
 
+echo "#!/bin/bash" > $cancel_script
+echo "# Cancel all submitted jobs" >> $cancel_script
+
 for job_index in $(seq $first $last); do
   if [ -n "$previous_job_id" ]; then
     previous_job_id=$(sbatch --dependency=afterok:$previous_job_id md_multi_${job_index}.exe | awk '{print $4}')
@@ -18,4 +22,7 @@ for job_index in $(seq $first $last); do
     previous_job_id=$(sbatch md_multi_${job_index}.exe | awk '{print $4}')
   fi
   echo "Submitted md_multi_${job_index}.exe as job $previous_job_id"
+  echo "scancel $previous_job_id" >> $cancel_script
 done
+
+chmod +x $cancel_script

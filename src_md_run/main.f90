@@ -29,9 +29,9 @@
      write(iprint,*)'*'
      write(iprint,*)'*    md_run (Version 1.0.1)'
      write(iprint,*)'*'
-     write(iprint,*)'*                         Author : Jinzen Ikebe'
-     write(iprint,*)'*             First Release Date : 2024-11-11'
-     write(iprint,*)'*  Release Date for Current ver. : 2025-01-14'
+     write(iprint,*)'*        Author : Jinzen Ikebe'
+     write(iprint,*)'* First Release : 2024-11-11'
+     write(iprint,*)'*  Current ver. : 2025-01-14'
      write(iprint,*)'*'
      write(iprint,*)'**************************************************'
      write(iprint,*)''
@@ -167,7 +167,7 @@
       fustol = 1.d-6  ; fcstol = 1.d-3 ; capshp = 1
 
       ! 6) COMCMM
-      iy15m = 4  ; nfrg = 1 ; itwin = 0
+      iy15m = 1  ; nfrg = 1 ; itwin = 0
       lambda = 0.d0 ; lambda_v = 0.d0
 
       return

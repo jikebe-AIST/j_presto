@@ -25,7 +25,7 @@
         real(8):: EE(nAB),Escl(nAB),Escl2(nAB),tEE(nAB),EENE(nBIN),    &
                   EENEscl2(nBIN)
       ! FILE NaMe
-        character(130):: filnam
+        character(9999):: filnam
         integer(4):: iST,iEN
       ! COEfficient
         real(8),allocatable:: COEold(:,:),COE(:,:)
@@ -48,7 +48,7 @@
       real(8),allocatable:: low_old(:),high_old(:)
       real(8):: low_v_window(Nwindow),high_v_window(Nwindow)
       character(130):: tmp,dirname
-      logical(4):: onend,fwflg
+      logical(1):: onend,fwflg
 
 !*****************************
 !     Initialization
@@ -109,7 +109,7 @@
             write(6,'(8x,i0,a3,i0)')iST," - ",j-1
             tP(1:nAB) = tP(1:nAB) + dble(ttP(1:nAB))
           else
-            write(6,'(8x,i0,a3,i0,a5,f0.0,a1)')iST," - ",j-1," ( x ",&
+            write(6,'(8x,i0,a3,i0,a5,f8.3,a1)')iST," - ",j-1," ( x ",&
               fw,")"
             tP(1:nAB) = tP(1:nAB) + dble(ttP(1:nAB))*fw
           endif

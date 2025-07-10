@@ -10,22 +10,17 @@ res3to1 = { "ALA":"A", "ARG":"R", "ASN":"N", "ASP":"D", "CYS":"C", "GLN":"Q",
             "SER":"S", "THR":"T", "TRP":"W", "TYR":"Y", "VAL":"V"}
 
 def display_credits():
-    program_name = "MSPER"
-    author = "Jinzen Ikebe"
-    version = "1.0.0"
-    first_release_date = "2025-05-27"
-    current_release_date = "2025-05-27"
-    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     print("*" * 50)
     print("*")
-    print(f"*    {program_name} (Version {version})")
+    print(f"*    MSPER (Version 1.0.0)")
     print("*")
-    print(f"*                         Author : {author}")
-    print(f"*             First Release Date : {first_release_date}")
-    print(f"*  Release Date for Current ver. : {current_release_date}")
+    print(f"*        Author : Jinzen Ikebe")
+    print(f"* First Release : 2025-05-27")
+    print(f"*  Current ver. : 2025-05-27")
     print("*")
     print(f"*" * 50)
     print()
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
     try:
         with open(license_path, "r", encoding="utf-8") as file:
             license_content = file.read()
@@ -253,9 +248,8 @@ def main():
     parser.add_argument('-s', '--scr_files', nargs='+', type=str, help=('Specify *.scr files to generate an integrated ranking based on average ranks across the input files. When this option is specified, only the integrated ranking is generated, and the normal MSPER score calculation is skipped.'))
 
     args = parser.parse_args()
-    access_key = args.access_key
-    if access_key != "j_presto":
-        sys.exit()
+    if args.access_key != "j_presto":
+        sys.exit(1)
     display_credits()
 
     line_len = 27

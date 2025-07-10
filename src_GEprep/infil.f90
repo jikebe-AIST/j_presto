@@ -6,13 +6,13 @@
       implicit none
 
       integer(4),intent(in):: iu
-      character(130),intent(out):: filnam
+      character(9999),intent(out):: filnam
       integer(4),intent(out):: iST,iEN,ier
       real(8),intent(out):: fw
-      logical(4),intent(out):: onend
+      logical(1),intent(out):: onend
 
       integer(4):: i,ic,iend
-      character(130):: line
+      character(9999):: line
 
 !**********************************
 

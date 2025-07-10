@@ -3,8 +3,27 @@
 import subprocess
 import sys, os
 
+def display_credits():
+    print("*" * 50)
+    print("*")
+    print(f"*    j_presto (Version 1.1.1)")
+    print("*")
+    print(f"*        Author : Jinzen Ikebe")
+    print(f"* First Release : 2024-11-11")
+    print(f"*  Current ver. : 2025-07-10")
+    print("*")
+    print(f"*" * 50)
+    print()
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+            print(license_content)
+    except FileNotFoundError:
+        print("Error: License file not found.") ; sys.exit(1)
+
 def run_program(program_name, args):
-    program_dict = {"md_run", "GEprep", "Ens_Ana", "PCAaxis", "PCAproj", "distrib", "pdb_alignfit", "nt_gen", "nt_conv", "conmut", "pick_conf", "ttp_se", "genlist", "MSPER"}
+    program_dict = {"md_run", "GEprep", "Ens_Ana", "PCAaxis", "PCAproj", "distrib", "pdb_alignfit", "nt_gen", "nt_conv", "conmut", "pick_conf", "ttp_se", "genlist", "MSPER", "initpep", "gen_db", "prep", "batch_set", "pdb_movie", "get_tmpl", "manual"}
     program_dict_nohelp = {"md_run", "GEprep", "Ens_Ana"}
     try:
         sys.stdout.flush()
@@ -24,31 +43,6 @@ def run_program(program_name, args):
     except subprocess.CalledProcessError as e:
         print(f"Error occurred while running {program_name}: {e}") ; sys.exit(1)
 
-def display_credits():
-    program_name = "j_presto"
-    author = "Jinzen Ikebe"
-    version = "1.1.0"
-    first_release_date = "2024-11-11"
-    current_release_date = "2025-05-23"
-    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
-    print("*" * 50)
-    print("*")
-    print(f"*    {program_name} (Version {version})")
-    print("*")
-    print(f"*                         Author : {author}")
-    print(f"*             First Release Date : {first_release_date}")
-    print(f"*  Release Date for Current ver. : {current_release_date}")
-    print("*")
-    print(f"*" * 50)
-    print()
-    try:
-        with open(license_path, "r", encoding="utf-8") as file:
-            license_content = file.read()
-            print(license_content)
-    except:
-        print("Error: License file not found.")
-        sys.exit()
-
 def main():
     if len(sys.argv) < 2:
         print("Usage: j_presto <program_name> <arguments>")
@@ -58,6 +52,7 @@ def main():
         print("Usage: j_presto <function> <arguments>\n")
         print("functions:")
         print("")
+        print("initpep         : Preperation of extended initial structures for folding simulation.")
         print("pdb_alignfit    : Superimposition of query structure to target one based on sequence alignment.")
         print("nt_gen          : Generation of atomic name correspondence table from a PREP and a PDB file.")
         print("nt_conv         : Convert residue and atom names in a PREP and a PDB file based on a name table.")
@@ -72,8 +67,11 @@ def main():
         print("distrib         : Generation of statistical distribution data from weighted input values for one- or two-dimensional variables.")
         print("pick_conf       : Extraction and ranking structures based on user-defined conditions and event timings.")
         print("ttp_se          : Calculation of weighted averages and standard errors of the data.")
+        print("pdb_movie       : Generation of a multi-model PDB file from sequential single-structure PDB files for trajectory visualization.")
+        print("MSPER           : Predict mutation sites to improve enzyme selectivity.")
         print("conmut          : Propose mutations to improve enzyme stability from input amino acid sequences using the consensus method.")
         print("get_tmpl        : Obtaining templates of input files and scripts for excuting j_presto.")
+        print("genlist         : Generate file path lists and data ranges for MD and analysis inputs.")
         print("manual          : Viewing the manual.")
         print("\n")
         sys.exit(1)

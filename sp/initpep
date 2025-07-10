@@ -1,0 +1,206 @@
+#!/usr/bin/env python3
+
+import argparse, os, sys, time
+from Bio import SeqIO
+from Bio.PDB import PDBParser, PDBIO
+from PeptideBuilder import Geometry, initialize_res, add_residue
+
+resname_3to1 = {
+    'ALA': 'A', 'CYS': 'C', 'ASP': 'D', 'GLU': 'E',
+    'PHE': 'F', 'GLY': 'G', 'HIS': 'H', 'ILE': 'I',
+    'LYS': 'K', 'LEU': 'L', 'MET': 'M', 'ASN': 'N',
+    'PRO': 'P', 'GLN': 'Q', 'ARG': 'R', 'SER': 'S',
+    'THR': 'T', 'VAL': 'V', 'TRP': 'W', 'TYR': 'Y'}
+
+def display_credits():
+    print("*" * 50)
+    print("*")
+    print(f"*    initpep (Version 1.0.0)")
+    print("*")
+    print(f"*        Author : Jinzen Ikebe")
+    print(f"* First Release : 2025-07-10")
+    print(f"*  Current ver. : 2025-07-10")
+    print("*")
+    print(f"*" * 50)
+    print()
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+    except FileNotFoundError:
+        print("Error: License file not found.") ; sys.exit(1)
+
+def extract_sequence_from_pdb(pdb_file):
+    parser = PDBParser(QUIET=True)
+    structure = parser.get_structure("input", pdb_file)
+    seq = ""
+    seen = set()
+    for model in structure:
+        for chain in model:
+            for residue in chain:
+                if residue.get_id()[0] != " ":
+                    continue
+                resname = residue.get_resname()
+                if resname in resname_3to1:
+                    res_id = residue.get_id()[1]
+                    if res_id not in seen:
+                        seq += resname_3to1[resname]
+                        seen.add(res_id)
+    return seq
+
+def extract_ssbond_pairs_from_pdb(pdb_file):
+    pairs = []
+    with open(pdb_file, 'r') as f:
+        for line in f:
+            if line.startswith("SSBOND"):
+                try:
+                    res1 = int(line[17:21].strip())
+                    res2 = int(line[31:35].strip())
+                    pair = tuple(sorted((res1, res2)))
+                    pairs.append(pair)
+                except Exception:
+                    continue
+    return pairs
+
+def parse_helix_ranges(helix_str, seqlen):
+    if not helix_str:
+        return set()
+
+    helix_set = set()
+    for part in helix_str.split(','):
+        try:
+            start, end = map(int, part.strip().split(':'))
+            assert 1 <= start <= end <= seqlen
+            helix_set.update(range(start - 1, end))
+        except Exception:
+            raise ValueError(f"Invalid helix range format: '{part}' (expected e.g. 5:10)")
+    return helix_set
+
+def parse_ssbond_pairs(ssbond_str):
+    pairs = []
+    if ssbond_str:
+        try:
+            for part in ssbond_str.split(','):
+                a, b = map(int, part.strip().split(':'))
+                pairs.append(tuple(sorted((a, b))))
+        except Exception:
+            raise ValueError(f"Invalid ssbond format: '{ssbond_str}' (expected e.g. 3:14,27:65)")
+    return pairs
+
+def parse_input(input_str):
+    if os.path.isfile(input_str):
+        ext = os.path.splitext(input_str)[1].lower()
+        if ext in ['.fasta', '.fa']:
+            record = next(SeqIO.parse(input_str, 'fasta'))
+            return str(record.seq)
+        elif ext == '.pdb':
+            return extract_sequence_from_pdb(input_str)
+        else:
+            raise ValueError("Unknown file extension: " + ext)
+    else:
+        return input_str.strip().upper()
+
+def build_linear_peptide(sequence, helix_range=set()):
+    geom = Geometry.geometry(sequence[0])
+    structure = initialize_res(geom)
+    prev_phi = 180
+    for i, aa in enumerate(sequence[1:], 1):
+        geom = Geometry.geometry(aa)
+        if i in helix_range:
+            phi, psi = -57, -47
+        elif aa == 'P':
+            phi, psi = -65, 135
+        else:
+            phi, psi = 180, 180
+        geom.phi = prev_phi ; geom.psi_im1 = psi
+        structure = add_residue(structure, geom)
+        prev_phi = phi
+    return structure
+
+def write_structure(structure, outname, ssbond_lines=None):
+    io = PDBIO()
+    io.set_structure(structure)
+    io.save(outname)
+
+    if ssbond_lines:
+        with open(outname, 'r') as f:
+            pdb_lines = f.readlines()
+        with open(outname, 'w') as f:
+            for line in ssbond_lines:
+                f.write(f"{line}\n")
+            for line in pdb_lines:
+                f.write(line)
+
+def main():
+    stime = time.perf_counter()
+    parser = argparse.ArgumentParser(description="Generate a linear peptide structure with optional helices and disulfide bonds.")
+    parser.add_argument("access_key", help=argparse.SUPPRESS)
+    parser.add_argument("input", help="Input: sequence string, FASTA, or PDB file")
+    parser.add_argument("-o", "--output", default="output.pdb", help="Output PDB file name")
+    parser.add_argument("-H", "--helix", type=str, default="", help="Helical region(s) like 5:10 or 5:10,20:30 (1-based)")
+    parser.add_argument("-s", "--ssbond", type=str, help="Disulfide bond(s) as 3:14 or 3:14,27:65 (1-based)")
+
+    args = parser.parse_args()
+    if args.access_key != "j_presto":
+        sys.exit(1)
+    display_credits()
+
+    try:
+        sequence = parse_input(args.input)
+        helix_range = parse_helix_ranges(args.helix, len(sequence))
+
+        ssbond_pairs_pdb = []
+        if os.path.isfile(args.input) and args.input.lower().endswith(".pdb"):
+            ssbond_pairs_pdb = extract_ssbond_pairs_from_pdb(args.input)
+
+        ssbond_pairs_arg = parse_ssbond_pairs(args.ssbond)
+        all_ssbond_pairs = set(ssbond_pairs_pdb)
+
+        for pair in ssbond_pairs_arg:
+            if pair not in all_ssbond_pairs:
+                all_ssbond_pairs.add(pair)
+
+        for res1, res2 in all_ssbond_pairs:
+            if res1 > len(sequence) or res2 > len(sequence):
+                raise ValueError(f"SSBOND residues out of range: {res1}, {res2}")
+            if sequence[res1 - 1] != 'C' or sequence[res2 - 1] != 'C':
+                raise ValueError(f"SSBOND pair ({res1}, {res2}) does not consist of cysteines")
+
+        ssbond_lines = []
+        for idx, (res1, res2) in enumerate(sorted(all_ssbond_pairs), 1):
+            line = (
+                f"SSBOND  {idx:>3} CYS A{res1:>4}    CYS A{res2:>4}                          "
+                "1555   1555  2.03"
+            )
+            ssbond_lines.append(line)
+
+        print("Parsed sequence:\n")
+        for i in range(0, len(sequence), 50):
+            seq_chunk = sequence[i:i+50]
+            seq_with_spaces = ' '.join([seq_chunk[j:j+10] for j in range(0, len(seq_chunk), 10)])
+            print(seq_with_spaces)
+            if helix_range:
+                mark_line = ''.join(['*' if i + j in helix_range else '-' for j in range(len(seq_chunk))])
+                mark_with_spaces = ' '.join([mark_line[j:j+10] for j in range(0, len(mark_line), 10)])
+                print(mark_with_spaces)
+            print()
+
+        if ssbond_lines:
+            print("SSBOND lines:")
+            for line in ssbond_lines:
+                print(line)
+
+        structure = build_linear_peptide(sequence, helix_range)
+        write_structure(structure, args.output, ssbond_lines)
+        print(f"\nLinear peptide structure written to {args.output}")
+
+    except Exception as e:
+        print(f"Error: {e}")
+
+    etime = time.perf_counter()
+    print(f"\nExecution time : {etime - stime:.2f} (S)")
+    print(f"\n+++ Program j_presto initpep normally ended +++")
+
+if __name__ == "__main__":
+    main()
+
