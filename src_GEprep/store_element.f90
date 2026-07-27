@@ -151,10 +151,9 @@
           lmd_rewei = sqrt(lmd_rewei2)
         endif
 
-        ! min & max values for reweighting of ALSD (element 16-23)
-        if ( ELEMNT(16).ne." " .and. ELEMNT(17).ne." " .and.           &
-             ELEMNT(18).ne." " .and. ELEMNT(19).ne." " .and.           &
-             ELEMNT(20).ne." " .and. ELEMNT(21).ne." " ) then
+        ! min & max values for reweighting of ALSD (element 16-21)
+        ! Number of lambda bins and binsize of EAA and EAB (element 22-24)
+        if ( ELEMNT(16).ne." " .and. ELEMNT(17).ne." " ) then
           reweight_flg = .true.
           read(ELEMNT(16),*)minlmd ; read(ELEMNT(17),*)maxlmd
           read(ELEMNT(18),*)minEAA ; read(ELEMNT(19),*)maxEAA
@@ -168,18 +167,12 @@
           if ( minlmd.gt.maxlmd .or. minEAA.gt.maxEAA .or.             &
              minEAB.gt.maxEAB ) call error(10215)
 
-          nlmd = 20 ! 100 = # of bins for lambda
-          !nlmd = 40 ! 100 = # of bins for lambda
+          read(ELEMNT(22),*)nlmd
           slmd = (maxlmd-minlmd) / nlmd
-          !sEAA = 4.d0
-          sEAA = 1.d0
-          rtmp = (maxEAA-minEAA)/sEAA
-          nEAA = idint(rtmp)
+          read(ELEMNT(23),*)sEAA ; read(ELEMNT(24),*)sEAB
+          rtmp = (maxEAA-minEAA)/sEAA ; nEAA = idint(rtmp)
           if ( abs(rtmp-nEAA) .gt. 0.0001d0 ) nEAA = nEAA + 1
-          !sEAB = 4.5d0
-          sEAB = 1.d0
-          rtmp = (maxEAB-minEAB)/sEAB
-          nEAB = idint(rtmp)
+          rtmp = (maxEAB-minEAB)/sEAB ; nEAB = idint(rtmp)
           if ( abs(rtmp-nEAB) .gt. 0.0001d0 ) nEAB = nEAB + 1
           nlmd=nlmd+1 ; nEAA=nEAA+1 ; nEAB=nEAB+1
           write(6,'(2x,a)')"* Bin size & number for reweighting ALSD"
@@ -189,20 +182,20 @@
         endif
       endif
 
-      ! Acceleration by flatness & the rate (element 24 & 25)
-      if ( ELEMNT(22)(1:1).eq."Y" .or. ELEMNT(22)(1:1).eq."y" ) then
+      ! Acceleration by flatness & the rate (element 25 & 26)
+      if ( ELEMNT(25)(1:1).eq."Y" .or. ELEMNT(25)(1:1).eq."y" ) then
         accele = .true.
       else
         accele = .false.
       endif
       if ( accele .and. (METHOD.eq."MULT" .or. METHOD(1:4).eq."ALSD") ) then
         write(6,'(2x,a)')"* Acceleration by flatness is available"
-        read(ELEMNT(23),*)accrat
+        read(ELEMNT(26),*)accrat
         write(6,'(8x,a,f8.3)')"scaling factor = ",accrat
       endif
 
-      ! Acceleration for the whole region & the rate (element 26 & 27)
-      if ( ELEMNT(24)(1:1).eq."Y" .or. ELEMNT(24)(1:1).eq."y" ) then
+      ! Acceleration for the whole region & the rate (element 27 & 28)
+      if ( ELEMNT(27)(1:1).eq."Y" .or. ELEMNT(27)(1:1).eq."y" ) then
         accel2 = .true.
       else
         accel2 = .false.
@@ -210,17 +203,17 @@
       if ( accel2 .and. (METHOD.eq."MULT" .or. METHOD(1:4).eq."ALSD") ) then
         write(6,'(2x,a)')"* Acceleration for the whole region is"//    &
                          " available"
-        read(ELEMNT(25),*)accrt2
+        read(ELEMNT(28),*)accrt2
         write(6,'(8x,a,f8.3)')"scaling factor = ",accrt2
       endif
 
-      ! Acceleration for LAB (element 28)
-      if ( ELEMNT(26)(1:1).eq."Y" .or. ELEMNT(26)(1:1).eq."y" ) then
+      ! Acceleration for LAB
+      if ( ELEMNT(29)(1:1).eq."Y" .or. ELEMNT(29)(1:1).eq."y" ) then
         acclab = .true.
-        read(ELEMNT(27),*)accrtl
+        read(ELEMNT(30),*)accrtl
         if ( accrtl .le. 0.d0 ) accrtl = 1.d0
-        read(ELEMNT(28),*)accthl
-        if ( accthl .le. 0.d0 ) accthl = 1.d0
+        read(ELEMNT(31),*)accthl
+        if ( accthl .le. 0.d0 ) accthl = 0.d0
       else
         acclab = .false.
       endif
@@ -231,19 +224,19 @@
       endif
 
       ! Flag of neglect out of the range
-      if ( ELEMNT(29)(1:1).eq."Y" .or. ELEMNT(29)(1:1).eq."y" .or.     &
-           ELEMNT(29)(1:4).eq."BOTH" .or.                              &
-           ELEMNT(29)(1:4).eq."both") then
+      if ( ELEMNT(32)(1:1).eq."Y" .or. ELEMNT(32)(1:1).eq."y" .or.     &
+           ELEMNT(32)(1:4).eq."BOTH" .or.                              &
+           ELEMNT(32)(1:4).eq."both") then
         write(6,'(2x,a)')"* fitting of dlnP for out of the range is"// &
                          " ignored"
         FneglectH = .true. ; FneglectL = .true.
-      elseif ( ELEMNT(29)(1:3).eq."LOW" .or.                           &
-               ELEMNT(29)(1:3).eq."low" ) then
+      elseif ( ELEMNT(32)(1:3).eq."LOW" .or.                           &
+               ELEMNT(32)(1:3).eq."low" ) then
         write(6,'(2x,a)')"* fitting of dlnP for out of the LOWER "//   &
                          "range is ignored"
         FneglectH = .false. ; FneglectL = .true.
-      elseif ( ELEMNT(29)(1:4).eq."HIGH" .or.                          &
-               ELEMNT(29)(1:4).eq."high" ) then
+      elseif ( ELEMNT(32)(1:4).eq."HIGH" .or.                          &
+               ELEMNT(32)(1:4).eq."high" ) then
         write(6,'(2x,a)')"* fitting of dlnP for out of the HIGHER "//  &
                          "range is ignored"
         FneglectH = .true. ; FneglectL = .false.
@@ -254,9 +247,9 @@
       ! force size for out of the range for ALSD
       if ( METHOD(1:4).eq."ALSD" .or. METHOD(1:4).eq."CLMD" ) then
         forcel = 0.d0 ; forceh = 0.d0
-        if ( ELEMNT(31) .ne. " " ) read(ELEMNT(31),*)forcel
-        if ( ELEMNT(32) .ne. " " ) read(ELEMNT(32),*)forceh
-        read(ELEMNT(30),*)forces
+        if ( ELEMNT(34) .ne. " " ) read(ELEMNT(34),*)forcel
+        if ( ELEMNT(35) .ne. " " ) read(ELEMNT(35),*)forceh
+        read(ELEMNT(33),*)forces
         if ( forcel .eq. 0.d0 ) forcel = forces
         if ( forceh .eq. 0.d0 ) forceh = forces
         if ( forcel .eq. forceh ) then
@@ -272,7 +265,7 @@
 
       ! ignore nodata bin flag
       if ( METHOD(1:4).eq."MULT" .or. METHOD(1:4).eq."ALSD") then
-        if ( ELEMNT(33)(1:1).eq."Y" .or. ELEMNT(33)(1:1).eq."y" ) then
+        if ( ELEMNT(36)(1:1).eq."Y" .or. ELEMNT(36)(1:1).eq."y" ) then
           igndat = .true.
           write(6,'(2x,a)')"* energy or lambda bins with no data are"//&
                            " ignored in the dlnN fitting"
@@ -285,7 +278,7 @@
 
       ! adjust energy for ALSD simulation
       if ( reweight_flg ) then
-        if ( ELEMNT(34)(1:1).eq."Y" .or. ELEMNT(34)(1:1).eq."y" ) then
+        if ( ELEMNT(37)(1:1).eq."Y" .or. ELEMNT(37)(1:1).eq."y" ) then
           adjene = .true.
           write(6,'(2x,a)')"* Energy ranges for ALSD reweighting is "//&
             "automatically set."

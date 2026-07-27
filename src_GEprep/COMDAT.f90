@@ -17,7 +17,7 @@
       implicit none
 
       ! Max number of elements
-        integer(4),parameter:: nELM = 34
+        integer(4),parameter:: nELM = 37
 
       ! Control parameter for calc.
         character(130),save:: ELEMNT(nELM) = (/                   &
@@ -41,8 +41,10 @@
                     "1.d0","1.d0",                                &
         ! min & max values for reweighting
                     "","","-1.0","1.0","-1.0","1.0",              &
+        ! Number of lambda bins and binsize of EAA and EAB
+                     "20","1.d0","1.d0",                          &
         ! acceleration & the rate
-                    "N","1.d0","N","1.d0","N","1.d0","1.5d0",     &
+                    "N","1.d0","N","1.d0","N","1.d0","0.8d0",     &
         ! flag of neglect out of the range
                     "N",                                          &
         ! force size for out of the range for ALSD
@@ -75,6 +77,8 @@
         ! min & max values for reweighting
                      "MINLMD","MAXLMD","MINEAA","MAXEAA",         &
                      "MINEAB","MAXEAB",                           &
+        ! Number of lambda bins and binsize of EAA and EAB
+                     "NBNLMD","SBNEAA","SBNEAB",                  &
         ! acceleration & the rate
                      "ACCELE","ACCRAT","ACCEL2","ACCRT2","ACCLAB",&
                      "ACCRTL","ACCTHL",                           &

@@ -24,10 +24,10 @@
 
 !***********************************************************************
 
-      ! Separate '+' sign
+      ! Separate '_' sign
       kk = 0 ; jj = 1
       do
-        ii = index(specifiers(kk+1:),"+")
+        ii = index(specifiers(kk+1:),"_")
         if ( ii .ne. 0 ) then
           jj = jj + 1 ; kk = ii
         else
@@ -37,7 +37,7 @@
       allocate(specifier(jj),sum_list(natm*jj))
       kk = 0 ; jj = 0
       do
-        ii = index(specifiers(kk+1:),"+")
+        ii = index(specifiers(kk+1:),"_")
         if ( ii .ne. 0 ) then
           jj = jj + 1
           specifier(jj) = specifiers(kk+1:kk+ii-1)

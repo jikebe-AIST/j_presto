@@ -12,8 +12,8 @@
       ! For interaction table (emprical coefficients)
       real(8),parameter:: COEn15mxEL = 0.15d0
       real(8),parameter:: COEn15mx = 0.15d0
-      real(8),parameter:: COEnvdw = 0.025d0
-      real(8),parameter:: COEipmax = 0.25d0
+      real(8),parameter:: COEnvdw = 0.027d0
+      real(8),parameter:: COEipmax = 0.27d0
 
       integer(4):: n15mxEL,n15mx,nvdw,ipmax
       integer(4):: n15mxEL_max = 0

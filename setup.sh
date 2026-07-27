@@ -6,7 +6,7 @@ DEFAULT_DEST_DIR="$HOME/local/bin"
 DEFAULT_COMPILER="ifort"
 
 # Define required Python modules manually
-REQUIRED_PYTHON_MODULES=("argparse" "os" "sys" "math" "re" "subprocess" "shutil" "time" "itertools" "numpy" "statistics" "concurrent" "mpi4py" "Bio" "collections" "networkx" "decimal" "shlex" "scipy" "sklearn" "PeptideBuilder" "gzip" "glob" "natsort" "tqdm")
+REQUIRED_PYTHON_MODULES=("argparse" "os" "sys" "math" "re" "subprocess" "shutil" "time" "itertools" "numpy" "statistics" "concurrent" "mpi4py" "Bio" "collections" "networkx" "decimal" "shlex" "scipy" "sklearn" "PeptideBuilder" "gzip" "fnmatch" "natsort" "tqdm" "textwrap" "io" "struct" "json" "hashlib" "base64" "zlib" "csv" "tempfile" "types" "ast" "pickle" "heapq" "pathlib" "typing" "dataclasses" "matplotlib" "numba" "igraph" "leidenalg" "rdkit" "MDAnalysis")
 
 # Check if required Python modules are installed
 MISSING_MODULES=()
@@ -102,7 +102,7 @@ if [ $? -eq 0 ]; then
     echo "The $SP_DIR directory has been copied to $PRESTO_DIR."
 
     # Copy other necessary files to the J_PRESTO directory
-    cp LICENSE.md j_presto* manual.txt "$PRESTO_DIR"
+    cp LICENSE.md j_presto* manual.txt manual_ja.txt "$PRESTO_DIR"
     cp -r template "$PRESTO_DIR"
     cp -r database "$PRESTO_DIR"
 
@@ -165,6 +165,8 @@ if [ $? -eq 0 ]; then
     echo "    export J_PRESTO_PATH=\"$DEST_DIR/$PRESTO_DIR\""
     echo "    export J_PRESTO_AMBER_DATABASE_PATH=\"<path_to_your_amber_database>\""
     echo "    export PATH=\"\$PATH:\$J_PRESTO_PATH\""
+    echo "    # Optional: use the Japanese manual by default"
+    echo "    export J_PRESTO_LANG=ja"
     echo
 else
     echo "An error occurred during the creation of the module."

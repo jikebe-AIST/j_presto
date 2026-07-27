@@ -15,7 +15,7 @@
 !*******************************************************************
 
       use COMBAS ; use COMERG ; use COMMIS ; use COMCMM
-      use COMPSC ; use COMMOL ; use PHYCNS
+      use COMPSC ; use COMMOL ; use PHYCNS ; use COMCMMC,only: cord
 
       implicit none
 
@@ -55,7 +55,7 @@
           'R','R','C','C','R','I','R',   'R','R','C','C','R','R','R',  &
           'I','I','I','R','R','R','I',   'D','D','R','C','C','C','D',  &
           'C','I','I','D','C','I','C',   'R','R','I','C','R','R','R',  &
-          'R','R','R','R','R','R','I',   'R','R','R','I','C','I','I',  &
+          'R','R','R','R','R','R','I',   'R','R','R','D','C','I','I',  &
           'C'/)
 
       character(4):: datcon(maxcon,numele)
@@ -90,7 +90,7 @@
       character(80):: line,space
       integer(4):: posele(mxelel),iwork(mxelel),intele(numele)
       real(8):: reaele(numele)
-      character(80):: chaele(numele)
+      character(999):: chaele(numele)
 
       logical(1):: onlist
 
@@ -102,8 +102,12 @@
       character(80):: cval(maxvl)
 
       integer(4):: efcol,numerr,icol,nelel,iele,numval,numint,numrea,  &
-                   numcha,icon,ierr
+                   numcha,icon,ierr,i,ncou
       real(8):: rtmp,celbuf,ellbuf
+
+      ! heap memory
+      integer(4),allocatable:: tlist(:),ilist(:),tnCHN(:)
+      character(1),allocatable:: tCHN(:)
 
       space = ' '
 
@@ -151,7 +155,7 @@
       intele(77) = 0
       reaele(78) = CAPbuff
       reaele(79:80) = 0.d0
-      intele(81) = iynvar
+      chaele(81) = '*'
       intele(82) = 2 ; intele(83) = 0 ; intele(84) = 1
       intele(85) = 1
 
@@ -298,7 +302,7 @@
           lambda = reaele(80)
         endif
       endif
-      outatm = intele(81)
+      outatm = chaele(81)
       high_para = intele(82)
       i_vec = intele(83)
       nstpcn = intele(84)
@@ -403,14 +407,31 @@
         write(iprint,*)' '
       endif
 
+      ! For outatm
+      allocate(ilist(ixnatm),tnCHN(ixnatm),tCHN(ixnatm),tlist(ixnatm))
+      !$OMP parallel default (none)                                  & !
+      !$OMP private(i)                                               & !
+      !$OMP shared(ixnatm,ilist,tnCHN,tCHN)
+      !$OMP do schedule (static)
+      do i = 1,ixnatm
+        ilist(i) = i ; tnCHN(i) = 1 ; tCHN(i) = " "
+      enddo
+      !$OMP end do
+      !$OMP end parallel
+      call atom_specifier(len(trim(outatm)),trim(outatm),ixnatm,ilist, &
+        cxatmn,absres,cxresn,tnCHN,tCHN,cord,ncou,tlist)
+      allocate(outatm_list(ncou)) ; outatm_list(:) = tlist(1:ncou)
+
       if ( idfacc.ge.0 .and. iducrd.gt.0 .and. idmonc.gt.0 ) then
         write(iprint,*)'         COORDINATE FILE (OUTPUT) '
         write(iprint,'(12x,a4,10x,a2,a)')"NAME",": ",trim(cdncrd)
         write(iprint,*)'           LOGICAL UNIT  : ',iducrd
         write(iprint,*)'           OUTPUT F.eq.  : ',idmonc
         write(iprint,*)'           FORMAT OF FILE: ',datcon(idfacc+2,21)
-        if ( outatm .ne. iynvar ) then
-          write(iprint,*)'             OUTPUT ATOM : 1 - ',outatm
+        if ( ncou .ne. iynvar+3 ) then
+          write(iprint,*)'             OUTPUT ATOM : '
+          call output_specifier_log(ncou,"s",ixnatm,ilist,cxatmn,      &
+            absres,cxresn,tnCHN,tCHN,tlist)
         endif
         write(iprint,*)' '
       else
@@ -425,8 +446,10 @@
         write(iprint,*)'           LOGICAL UNIT  : ',iduvel
         write(iprint,*)'           OUTPUT F.eq.  : ',idmonv
         write(iprint,*)'           FORMAT OF FILE: ',datcon(idfacv+2,53)
-        if ( outatm .ne. iynvar ) then
-          write(iprint,*)'             OUTPUT ATOM : 1 - ',outatm
+        if ( ncou .ne. iynvar ) then
+          write(iprint,*)'             OUTPUT ATOM : '
+          call output_specifier_log(ncou,"s",ixnatm,ilist,cxatmn,      &
+            absres,cxresn,tnCHN,tCHN,tlist)
         endif
         write(iprint,*)' '
       else
@@ -434,6 +457,7 @@
         write(iprint,*)' '
         idfacv = -1
       endif
+      deallocate(ilist,tnCHN,tCHN,tlist)
 
       if ( idface.ge.0 .and. iduerg.gt.0 .and. idmone.gt.0 ) then
         write(iprint,*)'         ENERGY FILE (OUTPUT) '

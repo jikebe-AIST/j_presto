@@ -298,7 +298,7 @@
                     iat2 = inum(ipcl(kk,j,jx,jy,jz))
                     dcod(1:3) = TTcod(1:3) - Tcord(1:3,iat2)
                     dcod(1:3) = dcod(1:3) -                  & ! #SLC2 #PB
-                      fxcell(1:3)*nint(dcod(1:3)*invcel(1:3))  ! #SLC2 #PB
+                      fxcell(1:3)*anint(dcod(1:3)*invcel(1:3)) ! #SLC2 #PB
                     dd = dcod(1)*dcod(1) + dcod(2)*dcod(2) +           &
                          dcod(3)*dcod(3)
                     if ( dd .le. rlim2 ) then
@@ -312,7 +312,7 @@
                     iat2 = inum(ipcl(kk,j,jx,jy,jz))
                     dcod(1:3) = TTcod(1:3) - Tcord(1:3,iat2)
                     dcod(1:3) = dcod(1:3) -                  & ! #SLC2 #PB
-                      fxcell(1:3)*nint(dcod(1:3)*invcel(1:3))  ! #SLC2 #PB
+                      fxcell(1:3)*anint(dcod(1:3)*invcel(1:3)) ! #SLC2 #PB
                     dd = dcod(1)*dcod(1) + dcod(2)*dcod(2) +           &
                          dcod(3)*dcod(3)
                     if ( dd .le. rlim2 ) then
@@ -463,7 +463,7 @@
                     iat2 = inum(ipcl(kk,j,jx,jy,jz))
                     dcod(1:3) = TTcod(1:3) - Tcord(1:3,iat2)
                     dcod(1:3) = dcod(1:3) -                  & ! #SLC2 #PB
-                      fxcell(1:3)*nint(dcod(1:3)*invcel(1:3))  ! #SLC2 #PB
+                      fxcell(1:3)*anint(dcod(1:3)*invcel(1:3)) ! #SLC2 #PB
                     dd = dcod(1)*dcod(1) + dcod(2)*dcod(2) +           &
                          dcod(3)*dcod(3)
                     if ( dd .le. rlim2 ) then
@@ -477,7 +477,7 @@
                     iat2 = inum(ipcl(kk,j,jx,jy,jz))
                     dcod(1:3) = TTcod(1:3) - Tcord(1:3,iat2)
                     dcod(1:3) = dcod(1:3) -                  & ! #SLC2 #PB
-                      fxcell(1:3)*nint(dcod(1:3)*invcel(1:3))  ! #SLC2 #PB
+                      fxcell(1:3)*anint(dcod(1:3)*invcel(1:3)) ! #SLC2 #PB
                     dd = dcod(1)*dcod(1) + dcod(2)*dcod(2) +           &
                          dcod(3)*dcod(3)
                     if ( dd .le. rlim2 ) then

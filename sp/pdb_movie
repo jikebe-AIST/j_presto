@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 
-import os, argparse, sys, time, gzip
-from glob import glob
+import os, argparse, sys, time, gzip, fnmatch
 from natsort import natsorted
 from tqdm import tqdm
 
 def display_credits():
     print("*" * 50)
     print("*")
-    print(f"*    pdb_movie (Version 1.0.0)")
+    print(f"*    pdb_movie (Version 1.1.0)")
     print("*")
     print(f"*        Author : Jinzen Ikebe")
     print(f"* First Release : 2025-07-10")
-    print(f"*  Current ver. : 2025-07-10")
+    print(f"*  Current ver. : 2026-07-27")
     print("*")
     print(f"*" * 50)
     print()
@@ -29,11 +28,15 @@ def open_pdb_file(filepath):
     else:
         return open(filepath, 'r')
 
-def collect_pdbs_to_model_block(input_dir, output_file, pattern):
-    pdb_files = natsorted(
-        glob(os.path.join(input_dir, pattern)) +
-        glob(os.path.join(input_dir, pattern + '.gz'))
-    )
+def collect_pdbs_to_model_block(input_dir, output_file, pattern, atom_start=None, atom_end=None):
+    pdb_files = []
+    for root, _, files in os.walk(input_dir):
+        for name in files:
+            if name.endswith(".pdb") or name.endswith(".pdb.gz"):
+                if fnmatch.fnmatch(name, pattern) or fnmatch.fnmatch(name, pattern + ".gz"):
+                    pdb_files.append(os.path.join(root, name))
+    pdb_files = natsorted(pdb_files)
+
     if not pdb_files:
         raise ValueError(f"No matching PDB files found in {input_dir} with pattern '{pattern}'")
 
@@ -43,7 +46,17 @@ def collect_pdbs_to_model_block(input_dir, output_file, pattern):
             out_f.write(f"REMARK   Original file: {os.path.basename(pdb_file)}\n")
             with open_pdb_file(pdb_file) as in_f:
                 for line in in_f:
-                    if not line.startswith(('END', 'MODEL', 'ENDMDL')):
+                    if line.startswith(('ATOM', 'HETATM')):
+                        try:
+                            serial = int(line.split()[1])
+                        except ValueError:
+                            continue
+                        if atom_start is not None and serial < atom_start:
+                            continue
+                        if atom_end is not None and serial > atom_end:
+                            continue
+                        out_f.write(line)
+                    elif not line.startswith(('END', 'MODEL', 'ENDMDL')):
                         out_f.write(line)
             out_f.write("ENDMDL\n")
 
@@ -56,12 +69,23 @@ def main():
     parser.add_argument('input_dir', help='Directory containing .pdb or .pdb.gz files to combine.')
     parser.add_argument('-o', '--output', default='movie.pdb', help='Output PDB file (default: movie.pdb)')
     parser.add_argument('-p', '--pattern', default='*.pdb', help='Glob pattern for file selection (default: "*.pdb")')
+    parser.add_argument('-r', '--range', type=str, default=None, help='Range of atom numbers to output, format: START:END (e.g. 1:1000, :500, 300: )')
 
     args = parser.parse_args()
     if args.access_key != "j_presto":
         sys.exit(1)
     display_credits()
-    collect_pdbs_to_model_block(args.input_dir, args.output, args.pattern)
+
+    atom_start = atom_end = None
+    if args.range:
+        try:
+            start_str, end_str = args.range.split(':')
+            atom_start = int(start_str) if start_str.strip() else None
+            atom_end = int(end_str) if end_str.strip() else None
+        except ValueError:
+            print("Error: Invalid --range format. Use format START:END (e.g., 1:1000)") ; sys.exit(1)
+
+    collect_pdbs_to_model_block(args.input_dir, args.output, args.pattern, atom_start, atom_end)
 
     etime = time.perf_counter()
     print(f"\nExecution time : {etime - stime} (S)")

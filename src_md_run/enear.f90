@@ -125,9 +125,9 @@
             xv=Tcord(1,j_atoms); yv=Tcord(2,j_atoms);zv=Tcord(3,j_atoms)
             chgv = Tcord(4,j_atoms)
             dxv = xi - xv ; dyv = yi - yv ; dzv = zi - zv
-            dxv = dxv - fxcell(1) * nint(dxv*invcel(1))      ! #SLC2 #PB
-            dyv = dyv - fxcell(2) * nint(dyv*invcel(2))      ! #SLC2 #PB
-            dzv = dzv - fxcell(3) * nint(dzv*invcel(3))      ! #SLC2 #PB
+            dxv = dxv - fxcell(1) * anint(dxv*invcel(1))     ! #SLC2 #PB
+            dyv = dyv - fxcell(2) * anint(dyv*invcel(2))     ! #SLC2 #PB
+            dzv = dzv - fxcell(3) * anint(dzv*invcel(3))     ! #SLC2 #PB
             dd2iv = 1.d0 / (dxv*dxv + dyv*dyv + dzv*dzv)     ! #SLC2 #CMM #ACT
             dd2v = dxv*dxv + dyv*dyv + dzv*dzv               ! #SLC2 #ZD
             dd2iv = 1.d0 / dd2v                              ! #SLC2 #ZD
@@ -154,9 +154,9 @@
           do j = itmp+1,ntbEL(ii,i)
             kk = itbEL(j,ii,i)
             dx=xi-Tcord(1,kk) ; dy=yi-Tcord(2,kk) ; dz=zi-Tcord(3,kk)
-            dx = dx - fxcell(1) * nint(dx*invcel(1))     ! #SLC2 #PB
-            dy = dy - fxcell(2) * nint(dy*invcel(2))     ! #SLC2 #PB
-            dz = dz - fxcell(3) * nint(dz*invcel(3))     ! #SLC2 #PB
+            dx = dx - fxcell(1) * anint(dx*invcel(1))    ! #SLC2 #PB
+            dy = dy - fxcell(2) * anint(dy*invcel(2))    ! #SLC2 #PB
+            dz = dz - fxcell(3) * anint(dz*invcel(3))    ! #SLC2 #PB
             dd2i = 1.d0 / (dx*dx + dy*dy + dz*dz)        ! #SLC2 #CMM #ACT
             dd2 = dx*dx + dy*dy + dz*dz                  ! #SLC2 #ZD
             dd2i = 1.d0 / dd2                            ! #SLC2 #ZD
@@ -186,9 +186,9 @@
             xv=Tcord(1,j_atoms); yv=Tcord(2,j_atoms);zv=Tcord(3,j_atoms)
             chgv = Tcord(4,j_atoms)
             dxv = xi - xv ; dyv = yi - yv ; dzv = zi - zv
-            dxv = dxv - fxcell(1) * nint(dxv*invcel(1))      ! #SLC2 #PB
-            dyv = dyv - fxcell(2) * nint(dyv*invcel(2))      ! #SLC2 #PB
-            dzv = dzv - fxcell(3) * nint(dzv*invcel(3))      ! #SLC2 #PB
+            dxv = dxv - fxcell(1) * anint(dxv*invcel(1))     ! #SLC2 #PB
+            dyv = dyv - fxcell(2) * anint(dyv*invcel(2))     ! #SLC2 #PB
+            dzv = dzv - fxcell(3) * anint(dzv*invcel(3))     ! #SLC2 #PB
             vdw6v = fynbpp(1,Tixatyp(j_atoms),it1)
             vdw12v = fynbpp(2,Tixatyp(j_atoms),it1)
             dd2iv = 1.d0 / (dxv*dxv + dyv*dyv + dzv*dzv)     ! #SLC2 #CMM #ACT
@@ -224,9 +224,9 @@
           do j = itmp+1,ntb(ii,i)
             kk = itb(j,ii,i)
             dx=xi-Tcord(1,kk) ; dy=yi-Tcord(2,kk) ; dz=zi-Tcord(3,kk)
-            dx = dx - fxcell(1) * nint(dx*invcel(1))    ! #SLC2 #PB
-            dy = dy - fxcell(2) * nint(dy*invcel(2))    ! #SLC2 #PB
-            dz = dz - fxcell(3) * nint(dz*invcel(3))    ! #SLC2 #PB
+            dx = dx - fxcell(1) * anint(dx*invcel(1))   ! #SLC2 #PB
+            dy = dy - fxcell(2) * anint(dy*invcel(2))   ! #SLC2 #PB
+            dz = dz - fxcell(3) * anint(dz*invcel(3))   ! #SLC2 #PB
             dd2i = 1.d0 / (dx*dx + dy*dy + dz*dz)       ! #SLC2 #CMM #ACT
             dd2 = dx*dx + dy*dy + dz*dz                 ! #SLC2 #ZD
             dd2i = 1.d0 / dd2                           ! #SLC2 #ZD
@@ -373,9 +373,9 @@
               xv=Tcord(1,j_atoms) ; yv=Tcord(2,j_atoms)
               zv=Tcord(3,j_atoms) ; chgv = Tcord(4,j_atoms)
               dxv = xi - xv ; dyv = yi - yv ; dzv = zi - zv
-              dxv = dxv - fxcell(1) * nint(dxv*invcel(1))      ! #SLC2 #PB
-              dyv = dyv - fxcell(2) * nint(dyv*invcel(2))      ! #SLC2 #PB
-              dzv = dzv - fxcell(3) * nint(dzv*invcel(3))      ! #SLC2 #PB
+              dxv = dxv - fxcell(1) * anint(dxv*invcel(1))     ! #SLC2 #PB
+              dyv = dyv - fxcell(2) * anint(dyv*invcel(2))     ! #SLC2 #PB
+              dzv = dzv - fxcell(3) * anint(dzv*invcel(3))     ! #SLC2 #PB
               vdw6v = fynbpp(3,Tixatyp(j_atoms),it1)
               vdw12v = fynbpp(4,Tixatyp(j_atoms),it1)
               dd2iv = 1.d0 / (dxv*dxv + dyv*dyv + dzv*dzv)     ! #SLC2 #CMM #ACT
@@ -412,9 +412,9 @@
             do j = itmp+1,ntbhyd(ii,i)
               kk = itbhyd(j,ii,i) ; it2 = Tixatyp(kk)
               dx=xi-Tcord(1,kk) ; dy=yi-Tcord(2,kk) ; dz=zi-Tcord(3,kk)
-              dx = dx - fxcell(1) * nint(dx*invcel(1))    ! #SLC2 #PB
-              dy = dy - fxcell(2) * nint(dy*invcel(2))    ! #SLC2 #PB
-              dz = dz - fxcell(3) * nint(dz*invcel(3))    ! #SLC2 #PB
+              dx = dx - fxcell(1) * anint(dx*invcel(1))   ! #SLC2 #PB
+              dy = dy - fxcell(2) * anint(dy*invcel(2))   ! #SLC2 #PB
+              dz = dz - fxcell(3) * anint(dz*invcel(3))   ! #SLC2 #PB
               dd2i = 1.d0 / (dx*dx + dy*dy + dz*dz)       ! #SLC2 #CMM #ACT
               dd2 = dx*dx + dy*dy + dz*dz                 ! #SLC2 #ZD
               dd2i = 1.d0 / dd2                           ! #SLC2 #ZD
@@ -533,9 +533,9 @@
           dx = cord(1,it1) - cord(1,it2)                     ! #SLC2 #ZD
           dy = cord(2,it1) - cord(2,it2)                     ! #SLC2 #ZD
           dz = cord(3,it1) - cord(3,it2)                     ! #SLC2 #ZD
-          dx = dx - fxcell(1) * nint(dx*invcel(1))           ! #SLCT #ZD #REDU #HIGH #DOUB #PB
-          dy = dy - fxcell(2) * nint(dy*invcel(2))           ! #SLCT #ZD #REDU #HIGH #DOUB #PB
-          dz = dz - fxcell(3) * nint(dz*invcel(3))           ! #SLCT #ZD #REDU #HIGH #DOUB #PB
+          dx = dx - fxcell(1) * anint(dx*invcel(1))          ! #SLCT #ZD #REDU #HIGH #DOUB #PB
+          dy = dy - fxcell(2) * anint(dy*invcel(2))          ! #SLCT #ZD #REDU #HIGH #DOUB #PB
+          dz = dz - fxcell(3) * anint(dz*invcel(3))          ! #SLCT #ZD #REDU #HIGH #DOUB #PB
           dd2 = dx*dx + dy*dy + dz*dz                        ! #SLC2 #ZD
           cc = chgmod(it1) * chgmod(it2)                     ! #SLC2 #ZD
           Eexc(ii) = Eexc(ii) + cc * bcoeff * dd2            ! #SLC2 #ZD

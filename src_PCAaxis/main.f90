@@ -15,7 +15,7 @@
 
      write(6,*)'**************************************************'
      write(6,*)'*'
-     write(6,*)'*    PCAaxis (Version 1.0.1)'
+     write(6,*)'*    PCAaxis (Version 1.1.0)'
      write(6,*)'*'
      write(6,*)'*        Author : Jinzen Ikebe'
      write(6,*)'* First Release : 2025-01-28'

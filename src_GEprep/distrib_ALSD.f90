@@ -24,6 +24,10 @@
         EEAB(:),flt(:),lmdrng(:,:),eP(:,:),F(:),rF(:),w(:),P(:),lnP(:),&
         COEold(:,:),low_old(:),high_old(:),ttw(:,:,:),weit(:,:),       &
         lnPc(:),tempF(:),COE(:,:),tEE(:),wei(:)
+      !IKEBE
+      real(8),allocatable:: eF(:,:),eP_save(:,:)
+      real(8):: tsumw,tsumwv,tsumwv2,pratio,vj
+      !IKEBE
       character(9999):: line
       logical(1):: fwflg
 
@@ -49,9 +53,11 @@
       ! Heap memory
       allocate(aveEAA(nAB),aveEAB(nAB),TTPdist(3,nAB),F(nAB),rF(nAB),  &
                w(nAB))
+      allocate(eF(nAB,i)) !IKEBE
 9999  aveEAA(:) = 0.d0 ; aveEAB(:) = 0.d0 ; l = 0 ; n = 0
       eP(:,:) = 0.d0 ; iset = 0 ; TTPdist(:,:) = 0 ; F(:) = 0.d0
       rF(:) = 0.d0 ; w(:) = 0.d0
+      eF(:,:) = 0.d0 !IKEBE
       if ( reweight_flg ) then
         allocate(Pc(nlmd,nEAA,nEAB),ELMD(nlmd),EEAA(nEAA),EEAB(nEAB))
         Pc(1:nlmd,1:nEAA,1:nEAB) = 0
@@ -161,6 +167,9 @@
       write(3,*)maxE,-3.d0
       close(3)
 
+      !IKEBE
+      allocate(eP_save(nAB,iset)) ; eP_save(:,:) = eP(:,:)
+      !IKEBE
       ! Individual distribution
       do i = 1,iset
         rtmp = maxval(eP(:, i))
@@ -382,6 +391,39 @@
         rF(i) = -rF(i) / P(i) * rtmp
         F(i) = -F(i) / w(i) * rtmp
       enddo
+      !IKEBE
+      if ( acclab ) then
+        do i = 1,nAB
+          rtmp2 = EE(i) + 0.5d0*EbinSZ
+          if ( rtmp2 .le. accthl ) cycle
+          if ( P(i) .eq. 0.d0 ) cycle
+          tsumw = 0.d0 ; tsumwv = 0.d0 ; tsumwv2 = 0.d0
+          do j = 1,iset
+            if ( eP_save(i,j) .eq. 0.d0 ) cycle
+            pratio = eP_save(i,j)
+            vj = -eF(i,j) * rtmp
+            tsumw = tsumw + pratio
+            tsumwv = tsumwv + pratio * vj
+            tsumwv2 = tsumwv2 + pratio * vj * vj
+          enddo
+
+          if ( tsumw .gt. 0.d0 ) then
+            F(i) = F(i) + accrtl * ((rtmp2-accrtl)/(maxE-accrtl)) * &
+                   sqrt(max(0.d0, (tsumwv2 / tsumw) - F(i)*F(i)))
+          endif
+        enddo
+      endif
+
+      ! Output average EAB for each lambda
+      open(unit=1,file=trim(PROJNM)//".LAB",status="replace")
+      do i = 1,nAB
+        if ( P(i) .eq. 0.d0 ) cycle
+        write(1,'(3(f,x))')EE(i)+0.5d0*EbinSZ,                         &
+                 aveEAA(i)/sum(eP_save(i,:)),                          &
+                 aveEAB(i)/sum(eP_save(i,:))
+      enddo
+      close(1)
+      !IKEBE
 
       ! Output dlnP Function (*.nf)
       allocate(tEE(nAB),tempF(nAB),COE(0:NfitDIM,Nwindow),wei(nAB))
@@ -461,7 +503,7 @@
         else
           rtmp3 = rtmp
         endif
-        if ( fwflg ) then
+        if ( fwflg .or. acclab ) then
           write(1,'(5(e15.8,x))')rtmp2,F(i),rtmp,rtmp3,rF(i)
         else
           write(1,'(4(e15.8,x))')rtmp2,F(i),rtmp,rtmp3
@@ -661,6 +703,7 @@
         else
           F(:) = F(:) + tF(:) ; w(:) = w(:) + tw(:)
         endif
+        eF(:,iset) = tF(:) / tw(:) !IKEBE
 
         ! For TTPdist
         do ii = 1,nAB

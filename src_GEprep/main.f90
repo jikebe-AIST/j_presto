@@ -14,7 +14,7 @@
 
      write(6,*)'**************************************************'
      write(6,*)'*'
-     write(6,*)'*    GEprep (Version 1.1.0)'
+     write(6,*)'*    GEprep (Version 1.2.0)'
      write(6,*)'*'
      write(6,*)'*        Author : Jinzen Ikebe'
      write(6,*)'* First Release : 2024-11-11'

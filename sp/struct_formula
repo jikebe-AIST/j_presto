@@ -1,0 +1,1142 @@
+#!/usr/bin/env python3
+"""Draw 2D molecular structure formulae from SMILES with optional PDB-derived atom names.
+
+The molecular graph and stereochemistry are always defined by SMILES.  When a
+PDB file is supplied, it is used only as a source of atom names/serials and as a
+connectivity hint for matching those names onto the SMILES-defined molecule.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import io
+import math
+import os
+import re
+import platform
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Optional, Sequence, Set, Tuple
+
+import numpy as np
+import networkx as nx
+from rdkit import Chem, RDLogger, rdBase
+from rdkit.Chem import AllChem, Draw, rdCoordGen
+
+try:
+    from PIL import Image
+    PIL_VERSION = Image.__version__
+except Exception:  # pragma: no cover
+    Image = None
+    PIL_VERSION = "not available"
+
+try:
+    import cairosvg
+    CAIROSVG_VERSION = getattr(cairosvg, "__version__", "available")
+except Exception:  # pragma: no cover
+    cairosvg = None
+    CAIROSVG_VERSION = "not available"
+
+VERSION = "1.0.0"
+PROGRAM_NAME = "struct_formula"
+FIRST_RELEASE = "2026-07-27"
+CURRENT_DATE = "2026-07-27"
+AUTHOR = "Jinzen Ikebe"
+
+
+@dataclass
+class PDBAtom:
+    serial: int
+    name: str
+    resname: str
+    chain: str
+    resid: str
+    icode: str
+    element: str
+    coord: np.ndarray
+    original_index: int
+
+
+def _strip_j_presto_access_key(argv: Sequence[str]) -> Tuple[bool, List[str]]:
+    if len(argv) > 1 and argv[1] == "j_presto":
+        return True, [argv[0]] + list(argv[2:])
+    return False, list(argv)
+
+
+def display_credits() -> None:
+    print("*" * 50)
+    print("*")
+    print(f"*    {PROGRAM_NAME} (Version {VERSION})")
+    print("*")
+    print(f"*        Author : {AUTHOR}")
+    print(f"* First Release : {FIRST_RELEASE}")
+    print(f"*  Current ver. : {CURRENT_DATE}")
+    print("*")
+    print("*" * 50)
+    print()
+
+
+def sha256_8(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()[:8]
+
+
+def get_program_path() -> str:
+    return str(Path(__file__).resolve())
+
+
+def print_runtime_header(via_j_presto: bool) -> None:
+    display_credits()
+    program_path = get_program_path()
+    print(f'{"Program SHA256_8 : ".rjust(20)}{sha256_8(program_path)}')
+    print(f'{"Python : ".rjust(20)}{platform.python_version()} ({sys.executable})')
+    print(f'{"NumPy : ".rjust(20)}{np.__version__}')
+    print(f'{"RDKit : ".rjust(20)}{rdBase.rdkitVersion}')
+    print(f'{"Pillow : ".rjust(20)}{PIL_VERSION}')
+    print(f'{"CairoSVG : ".rjust(20)}{CAIROSVG_VERSION}')
+    print(f'{"Working dir : ".rjust(20)}{os.getcwd()}')
+    print()
+
+
+def infer_element(atom_name: str, element_field: str = "") -> str:
+    elem = element_field.strip()
+    if elem:
+        return elem[0].upper() + elem[1:].lower()
+    name = atom_name.strip()
+    letters = "".join(ch for ch in name if ch.isalpha())
+    if not letters:
+        return "C"
+    letters = letters.capitalize()
+    two_letter = {"Cl", "Br", "Na", "Mg", "Ca", "Zn", "Fe", "Cu", "Mn", "Co", "Ni", "Se", "Si", "Li", "Al"}
+    if len(letters) >= 2 and letters[:2] in two_letter:
+        return letters[:2]
+    return letters[0]
+
+
+def read_pdb_atoms(
+    pdb_file: str,
+    resname: Optional[str] = None,
+    chain: Optional[str] = None,
+    resid: Optional[str] = None,
+) -> Tuple[List[PDBAtom], Dict[int, int], List[Tuple[int, int]]]:
+    atoms: List[PDBAtom] = []
+    all_serial_to_selected: Dict[int, int] = {}
+    raw_conect: List[Tuple[int, int]] = []
+
+    with open(pdb_file, "r", encoding="utf-8", errors="replace") as handle:
+        for raw_i, line in enumerate(handle):
+            record = line[:6].strip()
+            if record in {"ATOM", "HETATM"}:
+                try:
+                    serial = int(line[6:11])
+                except ValueError:
+                    serial = raw_i + 1
+                atom_name = line[12:16].strip()
+                atom_resname = line[17:20].strip()
+                atom_chain = line[21:22].strip()
+                atom_resid = line[22:26].strip()
+                atom_icode = line[26:27].strip()
+
+                if resname is not None and atom_resname != resname:
+                    continue
+                if chain is not None and atom_chain != chain:
+                    continue
+                if resid is not None and atom_resid != str(resid):
+                    continue
+
+                try:
+                    x = float(line[30:38])
+                    y = float(line[38:46])
+                    z = float(line[46:54])
+                except ValueError as exc:
+                    raise ValueError(f"Could not read coordinates from PDB line {raw_i + 1}: {line.rstrip()}") from exc
+
+                element = infer_element(atom_name, line[76:78] if len(line) >= 78 else "")
+                all_serial_to_selected[serial] = len(atoms)
+                atoms.append(
+                    PDBAtom(
+                        serial=serial,
+                        name=atom_name,
+                        resname=atom_resname,
+                        chain=atom_chain,
+                        resid=atom_resid,
+                        icode=atom_icode,
+                        element=element,
+                        coord=np.array([x, y, z], dtype=float),
+                        original_index=raw_i,
+                    )
+                )
+            elif record == "CONECT":
+                parts = line.split()
+                if len(parts) >= 3:
+                    try:
+                        src = int(parts[1])
+                        for dst_s in parts[2:]:
+                            dst = int(dst_s)
+                            if src != dst:
+                                raw_conect.append((src, dst))
+                    except ValueError:
+                        continue
+
+    selected_conect: List[Tuple[int, int]] = []
+    seen = set()
+    for src, dst in raw_conect:
+        if src in all_serial_to_selected and dst in all_serial_to_selected:
+            i = all_serial_to_selected[src]
+            j = all_serial_to_selected[dst]
+            edge = tuple(sorted((i, j)))
+            if edge not in seen:
+                selected_conect.append(edge)
+                seen.add(edge)
+
+    if not atoms:
+        selector = []
+        if resname is not None:
+            selector.append(f"resname={resname}")
+        if chain is not None:
+            selector.append(f"chain={chain}")
+        if resid is not None:
+            selector.append(f"resid={resid}")
+        selector_text = ", ".join(selector) if selector else "no selector"
+        raise ValueError(f"No atoms were read from {pdb_file} ({selector_text}).")
+
+    return atoms, all_serial_to_selected, selected_conect
+
+
+COVALENT_RADII = {
+    "H": 0.31, "C": 0.76, "N": 0.71, "O": 0.66, "F": 0.57,
+    "P": 1.07, "S": 1.05, "Cl": 1.02, "Br": 1.20, "I": 1.39,
+    "B": 0.85, "Si": 1.11, "Se": 1.20, "Na": 1.66, "Mg": 1.41,
+    "K": 2.03, "Ca": 1.76, "Fe": 1.24, "Zn": 1.22,
+}
+
+
+def covalent_radius(element: str) -> float:
+    return COVALENT_RADII.get(element, 0.77)
+
+
+def infer_bonds_by_distance(
+    atoms: Sequence[PDBAtom],
+    threshold_scale: float = 1.25,
+    threshold_add: float = 0.15,
+) -> List[Tuple[int, int]]:
+    bonds: List[Tuple[int, int]] = []
+    n = len(atoms)
+    for i in range(n):
+        for j in range(i + 1, n):
+            ei = atoms[i].element
+            ej = atoms[j].element
+            if ei == "H" and ej == "H":
+                continue
+            dist = float(np.linalg.norm(atoms[i].coord - atoms[j].coord))
+            max_dist = (covalent_radius(ei) + covalent_radius(ej)) * threshold_scale + threshold_add
+            if 0.35 <= dist <= max_dist:
+                bonds.append((i, j))
+    return bonds
+
+
+def make_mol_from_pdb_atoms(
+    atoms: Sequence[PDBAtom],
+    conect_bonds: Sequence[Tuple[int, int]],
+    bond_source: str = "auto",
+    threshold_scale: float = 1.25,
+    threshold_add: float = 0.15,
+) -> Chem.Mol:
+    rw = Chem.RWMol()
+    for atom in atoms:
+        rd_atom = Chem.Atom(atom.element)
+        rd_atom.SetProp("pdb_atom_name", atom.name)
+        rd_atom.SetProp("pdb_resname", atom.resname)
+        rd_atom.SetProp("pdb_serial", str(atom.serial))
+        rw.AddAtom(rd_atom)
+
+    if bond_source == "none":
+        bonds = []
+    elif bond_source == "conect":
+        bonds = list(conect_bonds)
+        if not bonds:
+            raise ValueError("-bs/--bond-source conect was requested, but no selected CONECT bonds were found.")
+    elif bond_source == "distance":
+        bonds = infer_bonds_by_distance(atoms, threshold_scale, threshold_add)
+    elif bond_source == "auto":
+        bonds = list(conect_bonds) if conect_bonds else infer_bonds_by_distance(atoms, threshold_scale, threshold_add)
+    else:
+        raise ValueError(f"Unknown bond source: {bond_source}")
+
+    for i, j in bonds:
+        if rw.GetBondBetweenAtoms(int(i), int(j)) is None:
+            rw.AddBond(int(i), int(j), Chem.BondType.SINGLE)
+
+    mol = rw.GetMol()
+    conf = Chem.Conformer(len(atoms))
+    for i, atom in enumerate(atoms):
+        conf.SetAtomPosition(i, Chem.rdGeometry.Point3D(float(atom.coord[0]), float(atom.coord[1]), float(atom.coord[2])))
+    mol.AddConformer(conf, assignId=True)
+    try:
+        Chem.SanitizeMol(mol)
+    except Exception:
+        pass
+    return mol
+
+
+def graph_node_token(element: str) -> str:
+    return str(element).strip().capitalize()
+
+
+def one_layer_token(elements: Sequence[str]) -> str:
+    filtered = [graph_node_token(elem) for elem in elements if graph_node_token(elem) != "H"]
+    filtered.sort()
+    return "|".join(filtered)
+
+
+def build_smiles_graph_info(mol: Chem.Mol) -> Dict[int, Dict[str, object]]:
+    graphs: Dict[int, Dict[str, object]] = {}
+    for atom in mol.GetAtoms():
+        graphs[atom.GetIdx()] = {
+            "element": atom.GetSymbol(),
+            "bonded": [nbr.GetIdx() for nbr in atom.GetNeighbors()],
+        }
+    return graphs
+
+
+def build_pdb_graph_info(atoms: Sequence[PDBAtom], bonds: Sequence[Tuple[int, int]]) -> Dict[int, Dict[str, object]]:
+    graphs: Dict[int, Dict[str, object]] = {i: {"element": atom.element, "bonded": []} for i, atom in enumerate(atoms)}
+    for i, j in bonds:
+        graphs[int(i)]["bonded"].append(int(j))
+        graphs[int(j)]["bonded"].append(int(i))
+    return graphs
+
+
+def representer_generator_graph(graphs: Dict[int, Dict[str, object]]) -> None:
+    for target_idx, info in graphs.items():
+        checklist = {atom_idx: False for atom_idx in graphs}
+        representer: List[str] = []
+        current_nodes = [target_idx]
+        while True:
+            next_nodes: List[int] = []
+            layer_elements: List[str] = []
+            for current_idx in current_nodes:
+                checklist[current_idx] = True
+                for bonded_idx in graphs[current_idx]["bonded"]:
+                    if not checklist[bonded_idx]:
+                        next_nodes.append(bonded_idx)
+                        checklist[bonded_idx] = True
+                        layer_elements.append(str(graphs[bonded_idx]["element"]))
+            token = one_layer_token(layer_elements)
+            if token:
+                representer.append(token)
+                current_nodes = next_nodes
+            else:
+                break
+        info["representer"] = representer
+
+
+def correspondence_from_representers(
+    smiles_graphs: Dict[int, Dict[str, object]],
+    pdb_graphs: Dict[int, Dict[str, object]],
+) -> Tuple[Dict[int, int], Dict[Tuple[str, ...], Tuple[List[int], List[int]]]]:
+    smiles_groups: Dict[Tuple[str, ...], List[int]] = {}
+    pdb_groups: Dict[Tuple[str, ...], List[int]] = {}
+    for idx, info in smiles_graphs.items():
+        rep = tuple(info.get("representer", []))
+        smiles_groups.setdefault(rep, []).append(idx)
+    for idx, info in pdb_graphs.items():
+        rep = tuple(info.get("representer", []))
+        pdb_groups.setdefault(rep, []).append(idx)
+
+    fixed_pairs: Dict[int, int] = {}
+    ambiguous: Dict[Tuple[str, ...], Tuple[List[int], List[int]]] = {}
+    for rep, smiles_indices in smiles_groups.items():
+        pdb_indices = pdb_groups.get(rep, [])
+        if len(smiles_indices) == 1 and len(pdb_indices) == 1:
+            fixed_pairs[smiles_indices[0]] = pdb_indices[0]
+        elif smiles_indices or pdb_indices:
+            ambiguous[rep] = (list(smiles_indices), list(pdb_indices))
+    return fixed_pairs, ambiguous
+
+
+def build_networkx_graph(graphs: Dict[int, Dict[str, object]]) -> nx.Graph:
+    G = nx.Graph()
+    for idx, info in graphs.items():
+        G.add_node(int(idx), element=graph_node_token(str(info["element"])))
+    for idx, info in graphs.items():
+        for bonded_idx in info["bonded"]:
+            if int(idx) < int(bonded_idx):
+                G.add_edge(int(idx), int(bonded_idx))
+    return G
+
+
+def graph_match_smiles_to_pdb(
+    smiles_graphs: Dict[int, Dict[str, object]],
+    pdb_graphs: Dict[int, Dict[str, object]],
+    fixed_pairs: Dict[int, int],
+    max_matches: int = 256,
+) -> Tuple[Dict[int, int], int]:
+    Gs = build_networkx_graph(smiles_graphs)
+    Gp = build_networkx_graph(pdb_graphs)
+    matcher = nx.algorithms.isomorphism.GraphMatcher(
+        Gs, Gp, node_match=lambda a, b: a.get("element") == b.get("element")
+    )
+    valid_matches: List[Dict[int, int]] = []
+    total = 0
+    for mapping in matcher.isomorphisms_iter():
+        ok = True
+        for s_idx, p_idx in fixed_pairs.items():
+            if mapping.get(int(s_idx)) != int(p_idx):
+                ok = False
+                break
+        if ok:
+            valid_matches.append({int(k): int(v) for k, v in mapping.items()})
+            total += 1
+            if len(valid_matches) >= max_matches:
+                break
+    if not valid_matches:
+        raise ValueError("No element-preserving graph isomorphism was found between the explicit-H SMILES graph and the PDB distance graph.")
+    return valid_matches[0], max(total, len(valid_matches))
+
+
+def attach_pdb_labels_to_smiles_mol(
+    smiles: str,
+    atoms: Sequence[PDBAtom],
+    conect_bonds: Sequence[Tuple[int, int]],
+    bond_source: str = "auto",
+    threshold_scale: float = 1.25,
+    threshold_add: float = 0.15,
+) -> Chem.Mol:
+    template = Chem.MolFromSmiles(smiles)
+    if template is None:
+        raise ValueError(f"Invalid SMILES representation: {smiles}")
+    template = Chem.AddHs(template)
+    Chem.AssignStereochemistry(template, cleanIt=True, force=True)
+
+    if bond_source == "none":
+        pdb_bonds: List[Tuple[int, int]] = []
+    elif bond_source == "conect":
+        pdb_bonds = list(conect_bonds)
+        if not pdb_bonds:
+            raise ValueError("-bs/--bond-source conect was requested, but no selected CONECT bonds were found.")
+    elif bond_source == "distance":
+        pdb_bonds = infer_bonds_by_distance(atoms, threshold_scale, threshold_add)
+    elif bond_source == "auto":
+        pdb_bonds = list(conect_bonds) if conect_bonds else infer_bonds_by_distance(atoms, threshold_scale, threshold_add)
+    else:
+        raise ValueError(f"Unknown bond source: {bond_source}")
+
+    if template.GetNumAtoms() != len(atoms):
+        raise ValueError(
+            "SMILES/PDB atom-count mismatch: explicit-H SMILES has "
+            f"{template.GetNumAtoms()} atoms, but selected PDB atoms are {len(atoms)}. "
+            "Use a PDB selection containing exactly the same atoms as the SMILES molecule."
+        )
+
+    tmpl_elems = sorted(atom.GetSymbol() for atom in template.GetAtoms())
+    pdb_elems = sorted(atom.element for atom in atoms)
+    if tmpl_elems != pdb_elems:
+        raise ValueError(
+            "SMILES/PDB element mismatch. The selected PDB atoms and the explicit-H SMILES do not contain the same element composition."
+        )
+
+    smiles_graphs = build_smiles_graph_info(template)
+    pdb_graphs = build_pdb_graph_info(atoms, pdb_bonds)
+    representer_generator_graph(smiles_graphs)
+    representer_generator_graph(pdb_graphs)
+    fixed_pairs, ambiguous = correspondence_from_representers(smiles_graphs, pdb_graphs)
+
+    try:
+        mapping, nmatch = graph_match_smiles_to_pdb(smiles_graphs, pdb_graphs, fixed_pairs)
+    except Exception as exc:
+        diag = [
+            f"SMILES atoms={template.GetNumAtoms()}, PDB atoms={len(atoms)}",
+            f"SMILES bonds={template.GetNumBonds()}, PDB inferred bonds={len(pdb_bonds)}",
+            f"Unique representer pairs={len(fixed_pairs)}",
+        ]
+        if ambiguous:
+            diag.append(f"Ambiguous representer groups={len(ambiguous)}")
+        raise ValueError(
+            "Could not match the SMILES molecule to the selected PDB atoms. "
+            + "; ".join(diag)
+            + ". Check the selected PDB atoms and try adjusting -bs/--bond-source, -ts/--threshold-scale, or -ta/--threshold-add."
+        ) from exc
+
+    draw_mol = Chem.Mol(template)
+    for template_idx, pdb_idx in mapping.items():
+        pdb_atom = atoms[pdb_idx]
+        rd_atom = draw_mol.GetAtomWithIdx(template_idx)
+        rd_atom.SetProp("pdb_atom_name", pdb_atom.name)
+        rd_atom.SetProp("pdb_resname", pdb_atom.resname)
+        rd_atom.SetProp("pdb_serial", str(pdb_atom.serial))
+        rd_atom.SetProp("pdb_chain", pdb_atom.chain)
+        rd_atom.SetProp("pdb_resid", pdb_atom.resid)
+        rd_atom.SetIntProp("orig_idx", template_idx)
+    draw_mol.SetIntProp("pdb_mapping_unique_pairs", len(fixed_pairs))
+    draw_mol.SetIntProp("pdb_mapping_match_count", int(nmatch))
+    draw_mol.SetIntProp("pdb_mapping_ambiguous_groups", len(ambiguous))
+    Chem.AssignStereochemistry(draw_mol, cleanIt=True, force=True)
+    return draw_mol
+
+def calculate_distance(coords: np.ndarray, atom1: int, atom2: int) -> float:
+    return float(np.linalg.norm(coords[atom1] - coords[atom2]))
+
+
+def calculate_angle(coords: np.ndarray, atom1: int, atom2: int, atom3: int) -> float:
+    v1 = coords[atom1] - coords[atom2]
+    v2 = coords[atom3] - coords[atom2]
+    denom = np.linalg.norm(v1) * np.linalg.norm(v2)
+    if denom == 0:
+        return 0.0
+    cos_val = np.dot(v1, v2) / denom
+    cos_val = np.clip(cos_val, -1.0, 1.0)
+    return float(np.degrees(np.arccos(cos_val)))
+
+
+def calculate_dihedral(coords: np.ndarray, atom1: int, atom2: int, atom3: int, atom4: int) -> float:
+    b1 = coords[atom2] - coords[atom1]
+    b2 = coords[atom3] - coords[atom2]
+    b3 = coords[atom4] - coords[atom3]
+    v1 = np.cross(b1, b2)
+    v2 = np.cross(b2, b3)
+    return float(np.degrees(np.arctan2(np.linalg.norm(np.cross(v1, v2)), np.dot(v1, v2))))
+
+
+def get_bonded_atoms(mol: Chem.Mol) -> Dict[int, List[int]]:
+    bonded_atoms: Dict[int, List[int]] = {}
+    for bond in mol.GetBonds():
+        atom1_idx = bond.GetBeginAtomIdx()
+        atom2_idx = bond.GetEndAtomIdx()
+        bonded_atoms.setdefault(atom1_idx, []).append(atom2_idx)
+        bonded_atoms.setdefault(atom2_idx, []).append(atom1_idx)
+    return bonded_atoms
+
+
+def convert_to_z_matrix(mol: Chem.Mol, coords: np.ndarray) -> List[List[float]]:
+    bonded_atoms = get_bonded_atoms(mol)
+    num_atoms = mol.GetNumAtoms()
+    z_matrix = []
+    for i in range(num_atoms):
+        ibond = -1
+        iangle = -1
+        idihedral = -1
+        if i in bonded_atoms:
+            candidates = [j for j in bonded_atoms[i] if j < i]
+            if candidates:
+                ibond = candidates[0]
+        if ibond in bonded_atoms:
+            candidates = [j for j in bonded_atoms[ibond] if j < ibond]
+            if candidates:
+                iangle = candidates[0]
+        if iangle in bonded_atoms:
+            candidates = [j for j in bonded_atoms[iangle] if j < iangle]
+            if candidates:
+                idihedral = candidates[0]
+        bond_length = calculate_distance(coords, ibond, i) if ibond != -1 else 0.0
+        angle = calculate_angle(coords, iangle, ibond, i) if iangle != -1 else 0.0
+        dihedral = calculate_dihedral(coords, idihedral, iangle, ibond, i) if idihedral != -1 else 0.0
+        z_matrix.append([i, ibond, iangle, idihedral, bond_length, angle, dihedral])
+    return z_matrix
+
+
+def z_matrix_to_cartesian(coords: np.ndarray, z_matrix: Sequence[Sequence[float]]) -> np.ndarray:
+    coords = np.array(coords, dtype=float, copy=True)
+    for entry in z_matrix:
+        atom, ibond, iangle, idihedral, bond_length, angle, dihedral = entry
+        atom = int(atom)
+        ibond = int(ibond)
+        iangle = int(iangle)
+        idihedral = int(idihedral)
+        if ibond != -1 and iangle != -1 and idihedral != -1:
+            angle_rad = np.radians(180.0 - angle)
+            dihedral_rad = np.radians(dihedral)
+            tcod = np.array([
+                bond_length * math.cos(angle_rad),
+                bond_length * math.cos(dihedral_rad) * math.sin(angle_rad),
+                bond_length * math.sin(dihedral_rad) * math.sin(angle_rad),
+            ])
+            cod = [coords[idx] for idx in [idihedral, iangle, ibond]]
+            dist2 = np.linalg.norm(np.array(cod[1]) - np.array(cod[2]))
+            if dist2 == 0:
+                continue
+            m1 = (np.array(cod[2]) - np.array(cod[1])) / dist2
+            tm = np.array(cod[1]) - np.array(cod[0])
+            m3 = np.cross(tm, m1)
+            norm_m3 = np.linalg.norm(m3)
+            if norm_m3 == 0:
+                continue
+            m3 /= norm_m3
+            m2 = np.cross(m3, m1)
+            m = np.vstack([m1, m2, m3])
+            coords[atom] = m.T @ tcod + cod[2]
+    return coords
+
+
+def rotate_bonds(mol: Chem.Mol, coords: np.ndarray, bond_indices: Sequence[Sequence[int]]) -> np.ndarray:
+    z_matrix = convert_to_z_matrix(mol, coords)
+    for bond_index in bond_indices:
+        atom1, atom2 = int(bond_index[0]), int(bond_index[1])
+        if atom1 > atom2:
+            atom1, atom2 = atom2, atom1
+        for entry in z_matrix:
+            if int(entry[1]) == atom2 and int(entry[2]) == atom1:
+                entry[6] = (float(entry[6]) + 180.0) % 360.0
+    return z_matrix_to_cartesian(coords, z_matrix)
+
+
+def rotate_coordinates(coords: np.ndarray, angles: Tuple[float, float, float]) -> np.ndarray:
+    radians = np.radians(angles)
+    rz = np.array([[np.cos(radians[2]), -np.sin(radians[2]), 0], [np.sin(radians[2]), np.cos(radians[2]), 0], [0, 0, 1]])
+    rx = np.array([[1, 0, 0], [0, np.cos(radians[0]), -np.sin(radians[0])], [0, np.sin(radians[0]), np.cos(radians[0])]])
+    ry = np.array([[np.cos(radians[1]), 0, np.sin(radians[1])], [0, 1, 0], [-np.sin(radians[1]), 0, np.cos(radians[1])]])
+    return np.dot(np.dot(np.dot(coords, rz.T), rx.T), ry.T)
+
+
+def ensure_conformer_and_layout(mol: Chem.Mol, layout: str = "2d") -> Chem.Mol:
+    mol = Chem.Mol(mol)
+    Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
+    if layout == "2d" or mol.GetNumConformers() == 0:
+        rdCoordGen.AddCoords(mol)
+    return mol
+
+
+def set_conformer_positions(mol: Chem.Mol, coords: np.ndarray) -> None:
+    if mol.GetNumConformers() == 0:
+        mol.AddConformer(Chem.Conformer(mol.GetNumAtoms()), assignId=True)
+    conf = mol.GetConformer()
+    for i in range(mol.GetNumAtoms()):
+        conf.SetAtomPosition(i, Chem.rdGeometry.Point3D(float(coords[i, 0]), float(coords[i, 1]), float(coords[i, 2])))
+
+
+def resolve_atom_identifier(mol: Chem.Mol, identifier: str) -> int:
+    ident = str(identifier)
+    if ident.isdigit():
+        value = int(ident)
+        if 0 <= value < mol.GetNumAtoms():
+            return value
+        if 1 <= value <= mol.GetNumAtoms():
+            return value - 1
+        for atom in mol.GetAtoms():
+            if atom.HasProp("pdb_serial") and int(atom.GetProp("pdb_serial")) == value:
+                return atom.GetIdx()
+    matches = [atom.GetIdx() for atom in mol.GetAtoms() if atom.HasProp("pdb_atom_name") and atom.GetProp("pdb_atom_name") == ident]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise ValueError(f"Atom name '{ident}' is not unique in the selected molecule.")
+    raise ValueError(f"Could not resolve atom identifier '{identifier}'.")
+
+
+def orient_coordinates_to_atom(coords: np.ndarray, atom_index: int, target: str) -> np.ndarray:
+    if atom_index < 0 or atom_index >= len(coords):
+        return coords
+    center = coords.mean(axis=0)
+    vec = coords[atom_index] - center
+    if np.linalg.norm(vec[:2]) < 1e-8:
+        return coords
+    angle = math.atan2(vec[1], vec[0])
+    targets = {
+        "right": 0.0,
+        "up": math.pi / 2.0,
+        "left": math.pi,
+        "down": -math.pi / 2.0,
+    }
+    delta = targets[target] - angle
+    rot = np.array([[math.cos(delta), -math.sin(delta), 0.0], [math.sin(delta), math.cos(delta), 0.0], [0.0, 0.0, 1.0]])
+    shifted = coords - center
+    return shifted @ rot.T + center
+
+
+def apply_explicit_stereo_bonds(
+    mol: Chem.Mol,
+    wedge_bonds: Sequence[Sequence[str]],
+    dash_bonds: Sequence[Sequence[str]],
+) -> None:
+    for bond in mol.GetBonds():
+        bond.SetBondDir(Chem.rdchem.BondDir.NONE)
+    try:
+        Chem.WedgeMolBonds(mol, mol.GetConformer())
+    except Exception:
+        pass
+    requests = []
+    for pair in wedge_bonds:
+        requests.append((pair[0], pair[1], Chem.rdchem.BondDir.BEGINWEDGE))
+    for pair in dash_bonds:
+        requests.append((pair[0], pair[1], Chem.rdchem.BondDir.BEGINDASH))
+    for a1, a2, bdir in requests:
+        i = resolve_atom_identifier(mol, a1)
+        j = resolve_atom_identifier(mol, a2)
+        bond = mol.GetBondBetweenAtoms(i, j)
+        if bond is None:
+            raise ValueError(f"Could not find a bond between '{a1}' and '{a2}' for stereo-bond styling.")
+        if bond.GetBeginAtomIdx() != i:
+            i, j = j, i
+            bond = mol.GetBondBetweenAtoms(i, j)
+        bond.SetBondDir(bdir)
+
+
+def parse_highlight_groups(highlight_groups: Sequence[Sequence[str]]) -> List[Tuple[List[str], str, str]]:
+    parsed: List[Tuple[List[str], str, str]] = []
+    for group in highlight_groups:
+        if len(group) != 3:
+            continue
+        items = [tok for tok in str(group[0]).replace(",", " ").split() if tok]
+        color = str(group[1])
+        weight = str(group[2]).lower()
+        if weight not in {"normal", "bold"}:
+            raise ValueError(f"Unsupported highlight weight '{weight}'. Use 'normal' or 'bold'.")
+        parsed.append((items, color, weight))
+    return parsed
+
+
+def build_label_style_map(mol: Chem.Mol, highlight_groups: Sequence[Sequence[str]]) -> Dict[int, Dict[str, str]]:
+    style_map: Dict[int, Dict[str, str]] = {}
+    for items, color, weight in parse_highlight_groups(highlight_groups):
+        for item in items:
+            idx = resolve_atom_identifier(mol, item)
+            style_map[idx] = {"color": color, "weight": weight}
+    return style_map
+
+
+def style_svg_atom_paths(svg_text: str, style_map: Dict[int, Dict[str, str]]) -> str:
+    for idx, style in style_map.items():
+        color = style.get("color", "#000000")
+        weight = style.get("weight", "normal")
+        repl = f"fill='{color}'"
+        if weight == "bold":
+            repl += f" stroke='{color}' stroke-width='0.8px' stroke-linejoin='round'"
+        pattern = rf"(<path class='atom-{idx}'[^>]*?) fill='[^']+'"
+        svg_text = re.sub(pattern, rf"\1 {repl}", svg_text)
+    return svg_text
+
+
+def apply_requested_bond_orders(
+    mol: Chem.Mol,
+    bond_orders: Sequence[Sequence[str]],
+    double_bonds: Sequence[Sequence[str]],
+) -> Chem.Mol:
+    if not bond_orders and not double_bonds:
+        return mol
+    rw = Chem.RWMol(mol)
+    requests: List[Tuple[str, str, str]] = []
+    for item in bond_orders:
+        requests.append((item[0], item[1], item[2]))
+    for item in double_bonds:
+        requests.append((item[0], item[1], "2"))
+    order_map = {
+        "1": Chem.BondType.SINGLE,
+        "single": Chem.BondType.SINGLE,
+        "2": Chem.BondType.DOUBLE,
+        "double": Chem.BondType.DOUBLE,
+        "3": Chem.BondType.TRIPLE,
+        "triple": Chem.BondType.TRIPLE,
+        "aromatic": Chem.BondType.AROMATIC,
+    }
+    for a1, a2, order in requests:
+        i = resolve_atom_identifier(rw, a1)
+        j = resolve_atom_identifier(rw, a2)
+        bond = rw.GetBondBetweenAtoms(i, j)
+        bond_type = order_map.get(str(order).lower(), Chem.BondType.SINGLE)
+        if bond is None:
+            rw.AddBond(i, j, bond_type)
+        else:
+            bond.SetBondType(bond_type)
+    new_mol = rw.GetMol()
+    try:
+        Chem.SanitizeMol(new_mol)
+    except Exception:
+        pass
+    Chem.AssignStereochemistry(new_mol, cleanIt=True, force=True)
+    return new_mol
+
+
+def _parse_identifier_tokens(items: Sequence[str]) -> List[str]:
+    tokens: List[str] = []
+    for item in items:
+        if item is None:
+            continue
+        for token in str(item).replace(",", " ").split():
+            if token:
+                tokens.append(token)
+    return tokens
+
+
+def determine_label_indices(
+    mol: Chem.Mol,
+    label_scope: str,
+    show_items: Sequence[str],
+    hide_items: Sequence[str],
+) -> Set[int]:
+    all_indices = set(range(mol.GetNumAtoms()))
+    show_tokens = _parse_identifier_tokens(show_items)
+    hide_tokens = _parse_identifier_tokens(hide_items)
+
+    show_set: Set[int] = set(resolve_atom_identifier(mol, token) for token in show_tokens)
+    hide_set: Set[int] = set(resolve_atom_identifier(mol, token) for token in hide_tokens)
+
+    if label_scope == "auto":
+        if show_set:
+            chosen = set(show_set)
+        elif hide_set:
+            chosen = set(all_indices)
+        else:
+            chosen = set()
+    elif label_scope == "all":
+        chosen = set(all_indices)
+    elif label_scope == "selected":
+        chosen = set(show_set)
+    else:
+        raise ValueError(f"Unknown label scope: {label_scope}")
+
+    chosen -= hide_set
+    return chosen
+
+
+def build_label_text(atom: Chem.Atom, atom_index: int, label_mode: str) -> str:
+    if label_mode == "atom_name":
+        return atom.GetProp("pdb_atom_name") if atom.HasProp("pdb_atom_name") else f"{atom.GetSymbol()}{atom_index + 1}"
+    if label_mode == "element_atom_name":
+        atom_name = atom.GetProp("pdb_atom_name") if atom.HasProp("pdb_atom_name") else str(atom_index + 1)
+        return f"{atom.GetSymbol()}{atom_name}"
+    if label_mode == "serial":
+        return atom.GetProp("pdb_serial") if atom.HasProp("pdb_serial") else str(atom_index + 1)
+    if label_mode == "index":
+        return str(atom_index)
+    raise ValueError(f"Unknown label mode: {label_mode}")
+
+
+def prepare_display_molecule(
+    mol: Chem.Mol,
+    label_mode: str,
+    label_scope: str,
+    show_items: Sequence[str],
+    hide_items: Sequence[str],
+    highlight_groups: Sequence[Sequence[str]],
+    keep_all_hydrogens: bool = False,
+) -> Tuple[Chem.Mol, Dict[int, str], Dict[int, Dict[str, str]]]:
+    highlight_atoms = [item for items, _color, _weight in parse_highlight_groups(highlight_groups) for item in items]
+
+    if label_mode == "none":
+        chosen_old_indices: Set[int] = set()
+    else:
+        merged_show = list(show_items) + highlight_atoms
+        chosen_old_indices = determine_label_indices(mol, label_scope, merged_show, hide_items)
+
+    if keep_all_hydrogens or any(atom.GetSymbol() == "H" for atom in mol.GetAtoms() if atom.GetIdx() in chosen_old_indices):
+        keep_old_indices = [atom.GetIdx() for atom in mol.GetAtoms() if (keep_all_hydrogens or atom.GetSymbol() != "H" or atom.GetIdx() in chosen_old_indices)]
+    else:
+        keep_old_indices = [atom.GetIdx() for atom in mol.GetAtoms() if atom.GetSymbol() != "H"]
+
+    if len(keep_old_indices) == mol.GetNumAtoms():
+        display_mol = Chem.Mol(mol)
+        labels = {idx: build_label_text(display_mol.GetAtomWithIdx(idx), idx, label_mode) for idx in chosen_old_indices}
+        label_styles = build_label_style_map(display_mol, highlight_groups)
+        return display_mol, labels, label_styles
+
+    old_to_new: Dict[int, int] = {}
+    rw = Chem.RWMol()
+    for old_idx in keep_old_indices:
+        old_atom = mol.GetAtomWithIdx(old_idx)
+        new_atom = Chem.Atom(old_atom)
+        if new_atom.GetSymbol() != "H":
+            new_atom.SetNoImplicit(False)
+        new_idx = rw.AddAtom(new_atom)
+        old_to_new[old_idx] = new_idx
+
+    for bond in mol.GetBonds():
+        i = bond.GetBeginAtomIdx()
+        j = bond.GetEndAtomIdx()
+        if i in old_to_new and j in old_to_new:
+            rw.AddBond(old_to_new[i], old_to_new[j], bond.GetBondType())
+            new_bond = rw.GetBondBetweenAtoms(old_to_new[i], old_to_new[j])
+            if new_bond is not None:
+                new_bond.SetBondDir(bond.GetBondDir())
+                new_bond.SetStereo(bond.GetStereo())
+
+    display_mol = rw.GetMol()
+    try:
+        Chem.SanitizeMol(display_mol)
+    except Exception:
+        pass
+    for old_idx, new_idx in old_to_new.items():
+        old_atom = mol.GetAtomWithIdx(old_idx)
+        if old_atom.GetChiralTag() != Chem.rdchem.ChiralType.CHI_UNSPECIFIED:
+            display_mol.GetAtomWithIdx(new_idx).SetChiralTag(old_atom.GetChiralTag())
+    Chem.AssignStereochemistry(display_mol, cleanIt=False, force=True)
+
+    labels: Dict[int, str] = {}
+    if label_mode != "none":
+        for old_idx in chosen_old_indices:
+            if old_idx in old_to_new:
+                new_idx = old_to_new[old_idx]
+                labels[new_idx] = build_label_text(display_mol.GetAtomWithIdx(new_idx), new_idx, label_mode)
+
+    temp_style_map = build_label_style_map(mol, highlight_groups)
+    label_styles: Dict[int, Dict[str, str]] = {}
+    for old_idx, sty in temp_style_map.items():
+        if old_idx in old_to_new:
+            label_styles[old_to_new[old_idx]] = dict(sty)
+    return display_mol, labels, label_styles
+
+
+
+def apply_custom_labels(drawer, labels: Dict[int, str]) -> None:
+    opts = drawer.drawOptions()
+    for idx, label in labels.items():
+        opts.atomLabels[int(idx)] = label
+
+
+def draw_and_save_molecule(
+    mol: Chem.Mol,
+    output_file: str,
+    mono: bool = False,
+    image_size: Tuple[int, int] = (600, 600),
+    dpi: int = 300,
+    rotation_angles: Tuple[float, float, float] = (0, 0, 0),
+    font_size: int = 100,
+    bond_width: float = 1.5,
+    bond_indices: Sequence[Sequence[int]] = (),
+    labels: Optional[Dict[int, str]] = None,
+    label_styles: Optional[Dict[int, Dict[str, str]]] = None,
+    layout: str = "2d",
+    orient_up: Optional[str] = None,
+    orient_right: Optional[str] = None,
+    wedge_bonds: Sequence[Sequence[str]] = (),
+    dash_bonds: Sequence[Sequence[str]] = (),
+) -> None:
+    mol = ensure_conformer_and_layout(mol, layout=layout)
+    conf = mol.GetConformer()
+    coords = np.asarray(conf.GetPositions(), dtype=float)
+    if orient_up is not None:
+        coords = orient_coordinates_to_atom(coords, resolve_atom_identifier(mol, orient_up), "up")
+    if orient_right is not None:
+        coords = orient_coordinates_to_atom(coords, resolve_atom_identifier(mol, orient_right), "right")
+    rotated_coords = rotate_coordinates(coords, rotation_angles)
+    if bond_indices:
+        rotated_coords = rotate_bonds(mol, rotated_coords, bond_indices)
+    set_conformer_positions(mol, rotated_coords)
+    apply_explicit_stereo_bonds(mol, wedge_bonds, dash_bonds)
+
+    ext = os.path.splitext(output_file)[1].lower().lstrip(".")
+    if not ext:
+        ext = "svg"
+        output_file = output_file + ".svg"
+
+    if ext == "svg":
+        drawer = Draw.MolDraw2DSVG(int(image_size[0]), int(image_size[1]))
+        if mono:
+            drawer.drawOptions().useBWAtomPalette()
+        drawer.drawOptions().fixedFontSize = int(font_size)
+        drawer.drawOptions().bondLineWidth = float(bond_width)
+        apply_custom_labels(drawer, labels or {})
+        drawer.DrawMolecule(mol)
+        drawer.FinishDrawing()
+        svg_text = drawer.GetDrawingText()
+        if label_styles:
+            svg_text = style_svg_atom_paths(svg_text, label_styles)
+        with open(output_file, "w", encoding="utf-8") as handle:
+            handle.write(svg_text)
+    elif ext in {"png", "jpg", "jpeg", "tif", "tiff"}:
+        if label_styles:
+            if cairosvg is None:
+                raise RuntimeError("Styled label highlighting for raster output requires CairoSVG. Either output SVG or install cairosvg.")
+            drawer = Draw.MolDraw2DSVG(int(image_size[0]), int(image_size[1]))
+            if mono:
+                drawer.drawOptions().useBWAtomPalette()
+            drawer.drawOptions().fixedFontSize = int(font_size)
+            drawer.drawOptions().bondLineWidth = float(bond_width)
+            apply_custom_labels(drawer, labels or {})
+            drawer.DrawMolecule(mol)
+            drawer.FinishDrawing()
+            svg_text = drawer.GetDrawingText()
+            svg_text = style_svg_atom_paths(svg_text, label_styles)
+            png_bytes = cairosvg.svg2png(bytestring=svg_text.encode('utf-8'), output_width=int(image_size[0]), output_height=int(image_size[1]), dpi=dpi)
+            if ext == "png":
+                with open(output_file, 'wb') as handle:
+                    handle.write(png_bytes)
+            else:
+                if Image is None:
+                    raise RuntimeError("Pillow is required for JPG/TIFF output.")
+                img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+                img.save(output_file, dpi=(dpi, dpi))
+        else:
+            drawer = Draw.MolDraw2DCairo(int(image_size[0]), int(image_size[1]))
+            if mono:
+                drawer.drawOptions().useBWAtomPalette()
+            drawer.drawOptions().fixedFontSize = int(font_size)
+            drawer.drawOptions().bondLineWidth = float(bond_width)
+            apply_custom_labels(drawer, labels or {})
+            drawer.DrawMolecule(mol)
+            drawer.FinishDrawing()
+            png_bytes = drawer.GetDrawingText()
+            if ext == "png":
+                if Image is not None:
+                    img = Image.open(io.BytesIO(png_bytes))
+                    img.save(output_file, dpi=(dpi, dpi))
+                else:
+                    with open(output_file, "wb") as handle:
+                        handle.write(png_bytes)
+            else:
+                if Image is None:
+                    raise RuntimeError("Pillow is required for JPG/TIFF output. Use PNG/SVG or install Pillow.")
+                img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+                img.save(output_file, dpi=(dpi, dpi))
+    else:
+        raise ValueError(f"Unsupported output extension '.{ext}'. Use svg, png, jpg, jpeg, tif, or tiff.")
+
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Draw a molecular structure formula from SMILES and optionally copy atom names from a matching PDB file."
+    )
+    parser.add_argument("smiles", help="Input SMILES notation. This is always the primary molecular input.")
+    parser.add_argument("-o", "--output", type=str, default="molecule_image.svg", help="Output file name: svg, png, jpg, or tiff. Default: molecule_image.svg")
+    parser.add_argument("-m", "--mono", action="store_true", help="Output the image in monochrome-like mode")
+    parser.add_argument("-x", "--rotate_x", type=float, default=0.0, help="Rotate the molecule around the x-axis. Default: 0.0 degrees")
+    parser.add_argument("-y", "--rotate_y", type=float, default=0.0, help="Rotate the molecule around the y-axis. Default: 0.0 degrees")
+    parser.add_argument("-z", "--rotate_z", type=float, default=0.0, help="Rotate the molecule around the z-axis. Default: 0.0 degrees")
+    parser.add_argument("-f", "--font_size", type=int, default=100, help="Font size for custom labels. Default: 100")
+    parser.add_argument("-bw", "--bond_width", type=float, default=1.5, help="Bond width in output structure. Default: 1.5")
+    parser.add_argument("-bi", "--bond_indices", action="append", nargs=2, type=int, default=[], help="Zero-based atom-index pair whose downstream branch is rotated by 180 degrees. Can be used repeatedly.")
+    parser.add_argument("-w", "--width", type=int, default=600, help="Image width in pixels/SVG units. Default: 600")
+    parser.add_argument("-ht", "--height", type=int, default=600, help="Image height in pixels/SVG units. Default: 600")
+    parser.add_argument("-dpi", "--dpi", type=int, default=300, help="DPI metadata for raster image output. Default: 300")
+
+    pdb_group = parser.add_argument_group("Optional PDB atom-name source")
+    pdb_group.add_argument("-p", "--pdb", type=str, help="Optional PDB file used only as a source of atom names/serials and as a connectivity hint for matching to the SMILES.")
+    pdb_group.add_argument("-rn", "--resname", type=str, help="Select only atoms with this residue name")
+    pdb_group.add_argument("-ch", "--chain", type=str, help="Select only atoms in this chain ID")
+    pdb_group.add_argument("-ri", "--resid", type=str, help="Select only atoms with this residue number")
+    pdb_group.add_argument("-bs", "--bond-source", choices=["auto", "conect", "distance", "none"], default="auto", help="How to build the temporary connectivity graph for PDB/SMILES matching. auto uses CONECT if present, otherwise distance. Default: auto")
+    pdb_group.add_argument("-ts", "--threshold-scale", type=float, default=1.25, help="Scale factor for covalent-radii distance bond inference. Default: 1.25")
+    pdb_group.add_argument("-ta", "--threshold-add", type=float, default=0.15, help="Additional tolerance in Angstrom for distance bond inference. Default: 0.15")
+
+    label_group = parser.add_argument_group("Label display control")
+    label_group.add_argument("-lm", "--label-mode", choices=["atom_name", "element_atom_name", "serial", "index", "none"], default="atom_name", help="What text to show for custom labels. Default: atom_name")
+    label_group.add_argument("-ls", "--label-scope", choices=["auto", "all", "selected"], default="auto", help="Which atoms receive custom labels. auto = no labels by default; labels are drawn only when -sl/--show-label or -hl/--hide-label is specified. Default: auto")
+    label_group.add_argument("-sl", "--show-label", action="append", default=[], metavar="ATOM", help="Show labels only for these atoms (repeat or use comma-separated list). ATOM may be a PDB atom name, serial, zero-based index, or one-based index.")
+    label_group.add_argument("-hl", "--hide-label", action="append", default=[], metavar="ATOM", help="Hide labels for these atoms from the current label set (repeat or use comma-separated list).")
+    label_group.add_argument("-kah", "--keep-all-hydrogens", action="store_true", help="Draw all explicit hydrogens after PDB matching. Default: draw only selected/labeled hydrogens, matching the original line-angle style.")
+    label_group.add_argument("-hg", "--highlight-group", action="append", nargs=3, metavar=("ATOMS", "COLOR", "WEIGHT"), default=[], help="Highlight a comma-separated atom list with a label color and weight (normal or bold). Example: -hg H8,C5 red bold")
+
+    tweak_group = parser.add_argument_group("Optional bond-order overrides")
+    tweak_group.add_argument("-ly", "--layout", choices=["2d", "pdb"], default="2d", help="Use RDKit 2D coordinates or projected source coordinates. Default: 2d")
+    tweak_group.add_argument("-ou", "--orient-up", type=str, help="Rotate the molecule so that the specified atom points upward from the molecular center.")
+    tweak_group.add_argument("-or", "--orient-right", type=str, help="Rotate the molecule so that the specified atom points to the right from the molecular center.")
+    tweak_group.add_argument("-wg", "--wedge-bond", action="append", nargs=2, metavar=("ATOM1", "ATOM2"), default=[], help="Draw the bond from ATOM1 toward ATOM2 as a solid wedge. Repeatable.")
+    tweak_group.add_argument("-dg", "--dash-bond", action="append", nargs=2, metavar=("ATOM1", "ATOM2"), default=[], help="Draw the bond from ATOM1 toward ATOM2 as a dashed wedge. Repeatable.")
+    tweak_group.add_argument("-bo", "--bond-order", action="append", nargs=3, metavar=("ATOM1", "ATOM2", "ORDER"), default=[], help="Override a bond order after SMILES/PDB matching. ATOM may be a PDB atom name, serial, zero-based index, or one-based index; ORDER is 1, 2, 3, single, double, triple, or aromatic.")
+    tweak_group.add_argument("-db", "--double-bond", action="append", nargs=2, metavar=("ATOM1", "ATOM2"), default=[], help="Shortcut for -bo/--bond-order ATOM1 ATOM2 2. Can be used repeatedly.")
+    return parser
+
+
+def main() -> None:
+    stime = time.perf_counter()
+    via_j_presto, stripped_argv = _strip_j_presto_access_key(sys.argv)
+    sys.argv = stripped_argv
+
+    parser = build_arg_parser()
+    args = parser.parse_args()
+
+    print_runtime_header(via_j_presto)
+
+    print(f'{"Input SMILES : ".rjust(20)}{args.smiles}')
+    if args.pdb:
+        atoms, _serial_map, conect_bonds = read_pdb_atoms(args.pdb, args.resname, args.chain, args.resid)
+        mol = attach_pdb_labels_to_smiles_mol(
+            args.smiles,
+            atoms,
+            conect_bonds,
+            bond_source=args.bond_source,
+            threshold_scale=args.threshold_scale,
+            threshold_add=args.threshold_add,
+        )
+        print(f'{"Input PDB : ".rjust(20)}{args.pdb}')
+        if args.resname or args.chain or args.resid:
+            print(f'{"Selection : ".rjust(20)}resname={args.resname or "*"}, chain={args.chain or "*"}, resid={args.resid or "*"}')
+        print(f'{"Selected atoms : ".rjust(20)}{len(atoms)}')
+        print(f'{"Bond graph : ".rjust(20)}{args.bond_source}')
+        print(f'{"Name mapping : ".rjust(20)}PDB atom names mapped onto the SMILES-defined molecule')
+        if mol.HasProp("pdb_mapping_unique_pairs"):
+            print(f'{"Unique pairs : ".rjust(20)}{mol.GetIntProp("pdb_mapping_unique_pairs")}')
+            print(f'{"Ambiguous groups : ".rjust(20)}{mol.GetIntProp("pdb_mapping_ambiguous_groups")}')
+            print(f'{"Graph matches : ".rjust(20)}{mol.GetIntProp("pdb_mapping_match_count")}')
+    else:
+        mol = Chem.MolFromSmiles(args.smiles)
+        if mol is None:
+            raise ValueError(f"Invalid SMILES representation: {args.smiles}")
+
+    mol = apply_requested_bond_orders(mol, args.bond_order, args.double_bond)
+    mol, labels, label_styles = prepare_display_molecule(
+        mol,
+        label_mode=args.label_mode,
+        label_scope=args.label_scope,
+        show_items=args.show_label,
+        hide_items=args.hide_label,
+        highlight_groups=args.highlight_group,
+        keep_all_hydrogens=args.keep_all_hydrogens,
+    )
+
+    print(f'{"Output file : ".rjust(20)}{args.output}')
+    print(f'{"Monochrome : ".rjust(20)}{args.mono}')
+    print(f'{"Rotation : ".rjust(20)}X={args.rotate_x}, Y={args.rotate_y}, Z={args.rotate_z}')
+    print(f'{"Font size : ".rjust(20)}{args.font_size}')
+    print(f'{"Bond width : ".rjust(20)}{args.bond_width}')
+    print(f'{"Label mode : ".rjust(20)}{args.label_mode}')
+    print(f'{"Label scope : ".rjust(20)}{args.label_scope}')
+    if args.show_label:
+        print(f'{"Show label : ".rjust(20)}{args.show_label}')
+    if args.hide_label:
+        print(f'{"Hide label : ".rjust(20)}{args.hide_label}')
+    if args.highlight_group:
+        print(f'{"Highlight : ".rjust(20)}{args.highlight_group}')
+    if args.bond_indices:
+        print(f'{"Bond indices : ".rjust(20)}{args.bond_indices}')
+    if args.bond_order:
+        print(f'{"Bond orders : ".rjust(20)}{args.bond_order}')
+    if args.double_bond:
+        print(f'{"Double bonds : ".rjust(20)}{args.double_bond}')
+    if args.orient_up:
+        print(f'{"Orient up : ".rjust(20)}{args.orient_up}')
+    if args.orient_right:
+        print(f'{"Orient right : ".rjust(20)}{args.orient_right}')
+    if args.wedge_bond:
+        print(f'{"Wedge bonds : ".rjust(20)}{args.wedge_bond}')
+    if args.dash_bond:
+        print(f'{"Dash bonds : ".rjust(20)}{args.dash_bond}')
+    print(f'{"Keep all H : ".rjust(20)}{args.keep_all_hydrogens}')
+    print(f'{"Custom labels : ".rjust(20)}{len(labels)}')
+
+    draw_and_save_molecule(
+        mol,
+        args.output,
+        mono=args.mono,
+        image_size=(args.width, args.height),
+        dpi=args.dpi,
+        rotation_angles=(args.rotate_x, args.rotate_y, args.rotate_z),
+        font_size=args.font_size,
+        bond_width=args.bond_width,
+        bond_indices=args.bond_indices,
+        labels=labels,
+        label_styles=label_styles,
+        layout=args.layout,
+        orient_up=args.orient_up,
+        orient_right=args.orient_right,
+        wedge_bonds=args.wedge_bond,
+        dash_bonds=args.dash_bond,
+    )
+
+    etime = time.perf_counter()
+    print(f'\n{"Execution time : ".rjust(20)}{etime - stime:.3f} (s)')
+    print("+++ Program struct_formula normally ended +++")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)

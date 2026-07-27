@@ -1,0 +1,1582 @@
+#!/usr/bin/env python3
+"""Convert structure/trajectory files between j_presto COD and MDAnalysis formats.
+
+The program is intentionally distributed as a single file so that it follows the
+layout of other j_presto Python subprograms.  j_presto COD/CODS I/O and the
+j_presto atom-specifier parser are implemented here; other formats are handled
+through MDAnalysis.
+"""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import dataclasses
+import math
+import os
+from pathlib import Path
+import struct
+import sys
+import time
+import warnings
+from typing import BinaryIO, Iterator, Sequence
+
+import numpy as np
+
+
+PROGRAM_NAME = "traj_conv"
+PROGRAM_VERSION = "1.0.0"
+AUTHOR = "Jinzen Ikebe"
+FIRST_RELEASE = "2026-07-27"
+CURRENT_VERSION_DATE = "2026-07-27"
+COD_HEADER_BYTES = 56
+COD_FLOAT_BYTES = 4
+COD_COORD_BYTES_PER_ATOM = 3 * COD_FLOAT_BYTES
+SUPPORTED_PBC = ("none", "nojump", "unwrap")
+
+
+class TrajConvError(RuntimeError):
+    """A user-facing conversion error."""
+
+
+@dataclasses.dataclass(frozen=True)
+class PDBAtom:
+    index: int
+    serial: int
+    atom_name: str
+    residue_name: str
+    residue_number: int
+    chain_name: str
+    chain_number: int
+    coordinate: np.ndarray
+    original_line: str
+
+
+@dataclasses.dataclass(frozen=True)
+class PDBReference:
+    path: Path
+    atoms: tuple[PDBAtom, ...]
+
+    @property
+    def coordinates(self) -> np.ndarray:
+        return np.asarray([atom.coordinate for atom in self.atoms], dtype=np.float32)
+
+
+@dataclasses.dataclass(frozen=True)
+class CODHeader:
+    step: int
+    simulation_time_fs: float
+    elapsed_seconds: float
+    total_energy: float
+    kinetic_energy: float
+    temperature: float
+    potential_energy: float
+    lambda_value: float
+    iyn15v: int
+    iyn15h: int
+    rmsd: float
+    tepotcc1: float
+    tepotcc2: float
+    tepotcc3: float
+
+    @classmethod
+    def default_from_mda(cls, ts: object, source_frame_1based: int) -> "CODHeader":
+        data = getattr(ts, "data", {}) or {}
+        raw_step = data.get("step", source_frame_1based)
+        try:
+            step = int(raw_step)
+        except (TypeError, ValueError, OverflowError):
+            step = source_frame_1based
+        raw_time = getattr(ts, "time", 0.0)
+        try:
+            time_ps = float(raw_time)
+        except (TypeError, ValueError, OverflowError):
+            time_ps = 0.0
+        if not math.isfinite(time_ps):
+            time_ps = 0.0
+        return cls(
+            step=step,
+            simulation_time_fs=time_ps * 1000.0,
+            elapsed_seconds=0.0,
+            total_energy=0.0,
+            kinetic_energy=0.0,
+            temperature=0.0,
+            potential_energy=0.0,
+            lambda_value=1.0,
+            iyn15v=0,
+            iyn15h=0,
+            rmsd=0.0,
+            tepotcc1=0.0,
+            tepotcc2=0.0,
+            tepotcc3=0.0,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class CODFormat:
+    stream: bool
+    endian: str
+    marker_bytes: int
+    atom_count: int
+    frame_count: int
+    frame_bytes: int
+
+    @property
+    def label(self) -> str:
+        if self.stream:
+            return f"j_presto CODS stream ({'little' if self.endian == '<' else 'big'} endian)"
+        return (
+            "j_presto COD sequential "
+            f"({self.marker_bytes}-byte record marker, "
+            f"{'little' if self.endian == '<' else 'big'} endian)"
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class FramePlan:
+    begin: int
+    end: int
+    stride: int
+    output_count: int
+
+    def includes(self, frame_1based: int) -> bool:
+        return self.begin <= frame_1based <= self.end and (
+            (frame_1based - self.begin) % self.stride == 0
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class ConversionSummary:
+    input_format: str
+    input_frames: int
+    source_atoms: int
+    selected_atoms: int
+    frame_plan: FramePlan
+    output_format: str
+    output_pdb: Path | None
+    periodic_box_present: bool
+    estimated_cod_bytes: int | None
+
+
+# ---------------------------------------------------------------------------
+# Display and argument parsing
+# ---------------------------------------------------------------------------
+
+
+def display_credits() -> None:
+    print("*" * 50)
+    print("*")
+    print(f"*    {PROGRAM_NAME} (Version {PROGRAM_VERSION})")
+    print("*")
+    print(f"*        Author : {AUTHOR}")
+    print(f"* First Release : {FIRST_RELEASE}")
+    print(f"*  Current ver. : {CURRENT_VERSION_DATE}")
+    print("*")
+    print("*" * 50)
+    print()
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="j_presto traj_conv",
+        formatter_class=argparse.RawTextHelpFormatter,
+        description=(
+            "Convert molecular structure and trajectory coordinate files.\n"
+            "The input/output formats are inferred from their file extensions.\n"
+            "j_presto COD/CODS is handled internally; other formats use MDAnalysis."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  j_presto traj_conv -i md.xtc -r reference.pdb -o md.cod\n"
+            "  j_presto traj_conv -i md.xtc -r reference.pdb -o md.cod \\\n"
+            "      -b 1001 -e END -s 10 -as '1<300:*&!H*,h*'\n"
+            "  j_presto traj_conv -i md.cod -r reference.pdb -o md.xtc\n\n"
+            "Atom selection uses the common j_presto atom specifier.\n"
+            "Quote an atom specifier with single quotes in the shell."
+        ),
+    )
+    parser.add_argument("access_key", nargs="?", help=argparse.SUPPRESS)
+    parser.add_argument("-i", "--input", required=True, help="Input structure or trajectory file.")
+    parser.add_argument(
+        "-r",
+        "--reference_pdb",
+        required=True,
+        help="Reference PDB supplying atom identities and atom order.",
+    )
+    parser.add_argument("-o", "--output", required=True, help="Output structure or trajectory file.")
+    parser.add_argument(
+        "-b",
+        "--begin",
+        type=int,
+        default=1,
+        help="First source frame to output (1-based, inclusive; default: 1).",
+    )
+    parser.add_argument(
+        "-e",
+        "--end",
+        default="END",
+        help="Last source frame to output (1-based, inclusive; default: END).",
+    )
+    parser.add_argument(
+        "-s",
+        "--stride",
+        type=int,
+        default=1,
+        help="Keep every Nth frame beginning at --begin (default: 1).",
+    )
+    parser.add_argument(
+        "-as",
+        "--atom_specifier",
+        default="*",
+        help="j_presto atom specifier for fixed atom selection (default: *).",
+    )
+    parser.add_argument(
+        "-p",
+        "--pbc",
+        choices=SUPPORTED_PBC,
+        default="none",
+        help=(
+            "Periodic-boundary treatment for non-COD input: none, nojump, or unwrap\n"
+            "(default: none). 'unwrap' requires bond information in the reference PDB."
+        ),
+    )
+    parser.add_argument(
+        "-op",
+        "--output_pdb",
+        help=(
+            "Companion PDB for the selected atoms. For COD/CODS output, the default\n"
+            "is OUTPUT with its extension replaced by .pdb (or _reference.pdb when\n"
+            "that name would overwrite an input file)."
+        ),
+    )
+    parser.add_argument(
+        "-c",
+        "--check_only",
+        action="store_true",
+        help="Inspect and validate the requested conversion without writing output.",
+    )
+    parser.add_argument(
+        "-f",
+        "--force",
+        action="store_true",
+        help="Overwrite existing output files.",
+    )
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"{PROGRAM_NAME} {PROGRAM_VERSION}",
+        help="Show the program version and exit.",
+    )
+    return parser
+
+
+def normalize_access_key(argv: Sequence[str]) -> list[str]:
+    """Permit direct execution while remaining compatible with the j_presto launcher."""
+    args = list(argv)
+    if args and args[0] == "j_presto":
+        return args
+    return ["direct"] + args
+
+
+# ---------------------------------------------------------------------------
+# PDB handling
+# ---------------------------------------------------------------------------
+
+
+def _parse_int_field(text: str, label: str, line_number: int, path: Path) -> int:
+    try:
+        return int(text.strip())
+    except ValueError as exc:
+        raise TrajConvError(
+            f"Cannot parse {label} in reference PDB at line {line_number}: {path}\n"
+            f"Field value: {text!r}"
+        ) from exc
+
+
+def read_reference_pdb(path: Path) -> PDBReference:
+    if not path.is_file():
+        raise TrajConvError(f"Reference PDB does not exist: {path}")
+    atoms: list[PDBAtom] = []
+    chain_number = 0
+    previous_chain: str | None = None
+    model_count = 0
+    active_model = True
+    saw_model = False
+
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line_number, raw_line in enumerate(handle, start=1):
+            line = raw_line.rstrip("\n\r")
+            record = line[0:6] if len(line) >= 6 else line
+            if record.startswith("MODEL"):
+                saw_model = True
+                model_count += 1
+                active_model = model_count == 1
+                continue
+            if record.startswith("ENDMDL"):
+                if active_model:
+                    active_model = False
+                continue
+            if saw_model and not active_model:
+                continue
+            if record not in ("ATOM  ", "HETATM"):
+                continue
+            padded = line.ljust(80)
+            serial = _parse_int_field(padded[6:12], "atom serial", line_number, path)
+            atom_name = padded[12:16].strip()
+            residue_name = padded[17:21].strip()
+            chain_name = padded[21:22]
+            residue_number = _parse_int_field(
+                padded[22:30], "residue number", line_number, path
+            )
+            try:
+                coordinate = np.asarray(
+                    [float(padded[30:38]), float(padded[38:46]), float(padded[46:54])],
+                    dtype=np.float32,
+                )
+            except ValueError as exc:
+                raise TrajConvError(
+                    f"Cannot parse coordinates in reference PDB at line {line_number}: {path}"
+                ) from exc
+            if previous_chain is None or chain_name != previous_chain:
+                chain_number += 1
+                previous_chain = chain_name
+            atoms.append(
+                PDBAtom(
+                    index=len(atoms),
+                    serial=serial,
+                    atom_name=atom_name,
+                    residue_name=residue_name,
+                    residue_number=residue_number,
+                    chain_name=chain_name,
+                    chain_number=chain_number,
+                    coordinate=coordinate,
+                    original_line=line,
+                )
+            )
+
+    if model_count > 1:
+        raise TrajConvError(
+            f"The reference PDB contains {model_count} MODEL records.\n"
+            "Use a single-model PDB as the reference so that atom identities and order are unambiguous."
+        )
+    if not atoms:
+        raise TrajConvError(f"No ATOM/HETATM records were found in reference PDB: {path}")
+    return PDBReference(path=path, atoms=tuple(atoms))
+
+
+def write_selected_pdb(path: Path, reference: PDBReference, indices: Sequence[int]) -> None:
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(f"REMARK Generated by j_presto {PROGRAM_NAME} {PROGRAM_VERSION}\n")
+        handle.write(f"REMARK Atom specifier selection from {reference.path.name}\n")
+        previous_chain_number: int | None = None
+        for index in indices:
+            atom = reference.atoms[index]
+            if previous_chain_number is not None and atom.chain_number != previous_chain_number:
+                handle.write("TER\n")
+            handle.write(atom.original_line.rstrip("\n\r") + "\n")
+            previous_chain_number = atom.chain_number
+        handle.write("END\n")
+
+
+# ---------------------------------------------------------------------------
+# j_presto atom specifier
+# ---------------------------------------------------------------------------
+
+
+class AtomSpecifierParser:
+    """Python implementation of the common j_presto atom-specifier syntax."""
+
+    def __init__(self, reference: PDBReference):
+        self.reference = reference
+        self.natoms = len(reference.atoms)
+        self.coords = reference.coordinates
+
+    def select(self, specifier: str) -> list[int]:
+        if not specifier:
+            raise TrajConvError("The atom specifier is empty.")
+        if any(char.isspace() for char in specifier):
+            raise TrajConvError(
+                "The atom specifier must not contain spaces. Quote the entire expression in the shell."
+            )
+        segments = self._split_underscore(specifier)
+        combined: list[int] = []
+        seen: set[int] = set()
+        for segment in segments:
+            mask = self._evaluate_expression(segment)
+            selected = np.flatnonzero(mask).tolist()
+            for index in selected:
+                if index in seen:
+                    atom = self.reference.atoms[index]
+                    chain_display = atom.chain_name.strip() or "(blank)"
+                    raise TrajConvError(
+                        "The atom specifier selected the same atom more than once.\n"
+                        f"Duplicate: serial={atom.serial}, chain={chain_display}, "
+                        f"residue={atom.residue_number} {atom.residue_name}, atom={atom.atom_name}\n"
+                        "Revise underscore-concatenated blocks or use '|' for a union."
+                    )
+                combined.append(index)
+                seen.add(index)
+        if not combined:
+            raise TrajConvError(
+                f"No atoms were selected by atom specifier: {specifier}"
+            )
+        return combined
+
+    @staticmethod
+    def _split_underscore(text: str) -> list[str]:
+        parts = text.split("_")
+        if any(part == "" for part in parts):
+            raise TrajConvError(f"Invalid underscore concatenation in atom specifier: {text}")
+        return parts
+
+    def _evaluate_expression(self, text: str) -> np.ndarray:
+        terms, operators = self._split_top_level_operators(text)
+        result = self._evaluate_term(terms[0])
+        for operator, term in zip(operators, terms[1:]):
+            rhs = self._evaluate_term(term)
+            if operator == "&":
+                result = result & rhs
+            else:
+                result = result | rhs
+        return result
+
+    @staticmethod
+    def _split_top_level_operators(text: str) -> tuple[list[str], list[str]]:
+        terms: list[str] = []
+        operators: list[str] = []
+        start = 0
+        paren_depth = 0
+        bracket_depth = 0
+        for i, char in enumerate(text):
+            if char == "(":
+                paren_depth += 1
+            elif char == ")":
+                paren_depth -= 1
+                if paren_depth < 0:
+                    raise TrajConvError(f"Unmatched ')' in atom specifier: {text}")
+            elif char == "[":
+                bracket_depth += 1
+            elif char == "]":
+                bracket_depth -= 1
+                if bracket_depth < 0:
+                    raise TrajConvError(f"Unmatched ']' in atom specifier: {text}")
+            elif char in "&|" and paren_depth == 0 and bracket_depth == 0:
+                term = text[start:i]
+                if not term:
+                    raise TrajConvError(f"Missing block near '{char}' in atom specifier: {text}")
+                terms.append(term)
+                operators.append(char)
+                start = i + 1
+        if paren_depth != 0:
+            raise TrajConvError(f"Unmatched parentheses in atom specifier: {text}")
+        if bracket_depth != 0:
+            raise TrajConvError(f"Unmatched brackets in atom specifier: {text}")
+        final = text[start:]
+        if not final:
+            raise TrajConvError(f"Atom specifier ends with an operator: {text}")
+        terms.append(final)
+        return terms, operators
+
+    def _evaluate_term(self, text: str) -> np.ndarray:
+        negate = text.startswith("!")
+        if negate:
+            text = text[1:]
+            if not text:
+                raise TrajConvError("'!' must be followed by an atom-specifier block.")
+        if self._is_wrapped_parentheses(text):
+            result = self._evaluate_expression(text[1:-1])
+        else:
+            result = self._evaluate_block(text)
+        return ~result if negate else result
+
+    @staticmethod
+    def _is_wrapped_parentheses(text: str) -> bool:
+        if not (text.startswith("(") and text.endswith(")")):
+            return False
+        depth = 0
+        for i, char in enumerate(text):
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth == 0 and i != len(text) - 1:
+                    return False
+        return depth == 0
+
+    def _evaluate_block(self, text: str) -> np.ndarray:
+        if text.startswith("["):
+            if not text.endswith("]"):
+                raise TrajConvError(f"Coordinate-range block is not closed: {text}")
+            return self._coordinate_selector(text[1:-1])
+        if "(" in text or ")" in text or "[" in text or "]" in text:
+            raise TrajConvError(f"Invalid atom-specifier block: {text}")
+        return self._identity_selector(text)
+
+    def _identity_selector(self, condition: str) -> np.ndarray:
+        fields = condition.split(":")
+        if len(fields) == 1:
+            chains, residues, atoms = "*", "*", fields[0]
+        elif len(fields) == 2:
+            chains, residues, atoms = "*", fields[0], fields[1]
+        elif len(fields) == 3:
+            chains, residues, atoms = fields
+        else:
+            raise TrajConvError(
+                f"Identity block must have at most two ':' separators: {condition}"
+            )
+        chains = chains or "*"
+        residues = residues or "*"
+        atoms = atoms or "*"
+        chain_mask = self._field_mask(chains, "chain")
+        residue_mask = self._field_mask(residues, "residue")
+        atom_mask = self._field_mask(atoms, "atom")
+        return chain_mask & residue_mask & atom_mask
+
+    def _field_mask(self, text: str, kind: str) -> np.ndarray:
+        if text == "*":
+            return np.ones(self.natoms, dtype=bool)
+        alternatives = text.split(",")
+        if any(item == "" for item in alternatives):
+            raise TrajConvError(f"Empty comma-separated condition in atom specifier: {text}")
+        mask = np.zeros(self.natoms, dtype=bool)
+        for item in alternatives:
+            if all(char.isdigit() or char == "<" for char in item):
+                mask |= self._numeric_field_mask(item, kind)
+            else:
+                mask |= self._name_field_mask(item, kind)
+        return mask
+
+    def _numeric_field_mask(self, text: str, kind: str) -> np.ndarray:
+        pieces = text.split("<")
+        if len(pieces) == 1:
+            try:
+                lower = upper = int(pieces[0])
+            except ValueError as exc:
+                raise TrajConvError(f"Invalid numeric atom-specifier condition: {text}") from exc
+        elif len(pieces) == 2 and pieces[0] and pieces[1]:
+            try:
+                lower, upper = int(pieces[0]), int(pieces[1])
+            except ValueError as exc:
+                raise TrajConvError(f"Invalid numeric atom-specifier range: {text}") from exc
+            if lower > upper:
+                lower, upper = upper, lower
+        else:
+            raise TrajConvError(
+                f"Numeric atom-specifier ranges must be written as N or N<M: {text}"
+            )
+        if kind == "chain":
+            values = np.fromiter((a.chain_number for a in self.reference.atoms), dtype=int)
+        elif kind == "residue":
+            values = np.fromiter((a.residue_number for a in self.reference.atoms), dtype=int)
+        else:
+            values = np.fromiter((a.serial for a in self.reference.atoms), dtype=int)
+        return (values >= lower) & (values <= upper)
+
+    def _name_field_mask(self, text: str, kind: str) -> np.ndarray:
+        if "*" in text[:-1]:
+            raise TrajConvError(
+                f"The wildcard '*' is allowed only at the end of a name: {text}"
+            )
+        prefix_mode = text.endswith("*")
+        target = text[:-1] if prefix_mode else text
+        if kind == "chain":
+            values = [a.chain_name.strip() for a in self.reference.atoms]
+        elif kind == "residue":
+            values = [a.residue_name.strip() for a in self.reference.atoms]
+        else:
+            values = [a.atom_name.strip() for a in self.reference.atoms]
+        if prefix_mode:
+            if target == "":
+                return np.ones(self.natoms, dtype=bool)
+            return np.asarray([value.startswith(target) for value in values], dtype=bool)
+        return np.asarray([value == target for value in values], dtype=bool)
+
+    def _coordinate_selector(self, condition: str) -> np.ndarray:
+        fields = condition.split(":")
+        if len(fields) != 3:
+            raise TrajConvError(
+                f"Coordinate-range selector must be written as [x:y:z]: [{condition}]"
+            )
+        masks = [self._coordinate_dimension_mask(axis, field) for axis, field in enumerate(fields)]
+        return masks[0] & masks[1] & masks[2]
+
+    def _coordinate_dimension_mask(self, axis: int, text: str) -> np.ndarray:
+        if text == "":
+            return np.ones(self.natoms, dtype=bool)
+        mask = np.zeros(self.natoms, dtype=bool)
+        values = self.coords[:, axis]
+        for interval in text.split(","):
+            if interval.count("<") != 1:
+                raise TrajConvError(
+                    f"Coordinate ranges must contain one '<' separator: {interval}"
+                )
+            lower_text, upper_text = interval.split("<", 1)
+            try:
+                lower = float(lower_text) if lower_text else float(np.min(values))
+                upper = float(upper_text) if upper_text else float(np.max(values))
+            except ValueError as exc:
+                raise TrajConvError(f"Invalid coordinate range: {interval}") from exc
+            if lower > upper:
+                lower, upper = upper, lower
+            mask |= (values >= lower) & (values <= upper)
+        return mask
+
+
+# ---------------------------------------------------------------------------
+# COD/CODS binary I/O
+# ---------------------------------------------------------------------------
+
+
+def _header_struct(endian: str) -> struct.Struct:
+    # int32, seven float32, two int32, four float32
+    return struct.Struct(endian + "i7f2i4f")
+
+
+def pack_cod_header(header: CODHeader, endian: str) -> bytes:
+    return _header_struct(endian).pack(
+        int(header.step),
+        float(header.simulation_time_fs),
+        float(header.elapsed_seconds),
+        float(header.total_energy),
+        float(header.kinetic_energy),
+        float(header.temperature),
+        float(header.potential_energy),
+        float(header.lambda_value),
+        int(header.iyn15v),
+        int(header.iyn15h),
+        float(header.rmsd),
+        float(header.tepotcc1),
+        float(header.tepotcc2),
+        float(header.tepotcc3),
+    )
+
+
+def unpack_cod_header(payload: bytes, endian: str) -> CODHeader:
+    if len(payload) != COD_HEADER_BYTES:
+        raise TrajConvError(
+            f"COD header record has {len(payload)} bytes; expected {COD_HEADER_BYTES}."
+        )
+    values = _header_struct(endian).unpack(payload)
+    return CODHeader(
+        step=values[0],
+        simulation_time_fs=values[1],
+        elapsed_seconds=values[2],
+        total_energy=values[3],
+        kinetic_energy=values[4],
+        temperature=values[5],
+        potential_energy=values[6],
+        lambda_value=values[7],
+        iyn15v=values[8],
+        iyn15h=values[9],
+        rmsd=values[10],
+        tepotcc1=values[11],
+        tepotcc2=values[12],
+        tepotcc3=values[13],
+    )
+
+
+def _read_marker(handle: BinaryIO, marker_bytes: int, endian: str) -> int:
+    payload = handle.read(marker_bytes)
+    if len(payload) != marker_bytes:
+        raise TrajConvError("Unexpected end of COD file while reading a record marker.")
+    fmt = endian + ("i" if marker_bytes == 4 else "q")
+    return int(struct.unpack(fmt, payload)[0])
+
+
+def _pack_marker(value: int, marker_bytes: int, endian: str) -> bytes:
+    fmt = endian + ("i" if marker_bytes == 4 else "q")
+    return struct.pack(fmt, value)
+
+
+def detect_sequential_cod(path: Path, atom_count: int) -> CODFormat:
+    file_size = path.stat().st_size
+    coordinate_bytes = atom_count * COD_COORD_BYTES_PER_ATOM
+    with path.open("rb") as handle:
+        prefix = handle.read(8)
+    candidates: list[tuple[str, int]] = []
+    for endian in ("<", ">"):
+        if len(prefix) >= 4 and struct.unpack(endian + "i", prefix[:4])[0] == COD_HEADER_BYTES:
+            candidates.append((endian, 4))
+        if len(prefix) >= 8 and struct.unpack(endian + "q", prefix[:8])[0] == COD_HEADER_BYTES:
+            candidates.append((endian, 8))
+    valid: list[CODFormat] = []
+    for endian, marker_bytes in candidates:
+        frame_bytes = (
+            COD_HEADER_BYTES
+            + coordinate_bytes
+            + 4 * marker_bytes
+        )
+        if frame_bytes <= 0 or file_size == 0 or file_size % frame_bytes != 0:
+            continue
+        try:
+            with path.open("rb") as handle:
+                if _read_marker(handle, marker_bytes, endian) != COD_HEADER_BYTES:
+                    continue
+                header_payload = handle.read(COD_HEADER_BYTES)
+                if len(header_payload) != COD_HEADER_BYTES:
+                    continue
+                if _read_marker(handle, marker_bytes, endian) != COD_HEADER_BYTES:
+                    continue
+                if _read_marker(handle, marker_bytes, endian) != coordinate_bytes:
+                    continue
+                coord_payload = handle.read(coordinate_bytes)
+                if len(coord_payload) != coordinate_bytes:
+                    continue
+                if _read_marker(handle, marker_bytes, endian) != coordinate_bytes:
+                    continue
+                unpack_cod_header(header_payload, endian)
+                coordinates = np.frombuffer(coord_payload, dtype=np.dtype(endian + "f4"))
+                if coordinates.size != atom_count * 3 or not np.all(np.isfinite(coordinates)):
+                    continue
+        except (OSError, struct.error, TrajConvError):
+            continue
+        valid.append(
+            CODFormat(
+                stream=False,
+                endian=endian,
+                marker_bytes=marker_bytes,
+                atom_count=atom_count,
+                frame_count=file_size // frame_bytes,
+                frame_bytes=frame_bytes,
+            )
+        )
+    if len(valid) != 1:
+        if not valid:
+            raise TrajConvError(
+                "The input .cod file is not a recognized j_presto single-precision\n"
+                "Fortran sequential-unformatted trajectory for the atom count in the reference PDB."
+            )
+        raise TrajConvError(
+            "The COD record format could not be determined unambiguously."
+        )
+    return valid[0]
+
+
+def _stream_endian_score(
+    coordinate_payload: bytes, endian: str, reference_coordinates: np.ndarray
+) -> float:
+    coordinates = np.frombuffer(coordinate_payload, dtype=np.dtype(endian + "f4"))
+    if coordinates.size != reference_coordinates.size or not np.all(np.isfinite(coordinates)):
+        return float("inf")
+    coordinates = coordinates.reshape((-1, 3)).astype(np.float64, copy=False)
+    coordinate_scale = float(np.std(coordinates))
+    reference_scale = float(np.std(reference_coordinates.astype(np.float64)))
+    if coordinate_scale <= 1e-12 or coordinate_scale > 1e6 or reference_scale <= 1e-12:
+        return float("inf")
+    scale_score = abs(math.log10(coordinate_scale / reference_scale))
+    max_abs = float(np.max(np.abs(coordinates)))
+    if max_abs > 1e6:
+        return float("inf")
+    return scale_score
+
+
+def detect_stream_cod(path: Path, reference: PDBReference) -> CODFormat:
+    atom_count = len(reference.atoms)
+    coordinate_bytes = atom_count * COD_COORD_BYTES_PER_ATOM
+    frame_bytes = COD_HEADER_BYTES + coordinate_bytes
+    file_size = path.stat().st_size
+    if file_size == 0 or file_size % frame_bytes != 0:
+        raise TrajConvError(
+            "The .cods file size is inconsistent with the atom count in the reference PDB."
+        )
+    with path.open("rb") as handle:
+        header_payload = handle.read(COD_HEADER_BYTES)
+        coordinate_payload = handle.read(coordinate_bytes)
+    scores: list[tuple[float, str]] = []
+    for endian in ("<", ">"):
+        try:
+            header = unpack_cod_header(header_payload, endian)
+        except (struct.error, TrajConvError):
+            continue
+        header_values = (
+            header.simulation_time_fs,
+            header.elapsed_seconds,
+            header.total_energy,
+            header.kinetic_energy,
+            header.temperature,
+            header.potential_energy,
+            header.lambda_value,
+            header.rmsd,
+            header.tepotcc1,
+            header.tepotcc2,
+            header.tepotcc3,
+        )
+        if not all(math.isfinite(value) for value in header_values):
+            continue
+        score = _stream_endian_score(coordinate_payload, endian, reference.coordinates)
+        scores.append((score, endian))
+    finite_scores = sorted(item for item in scores if math.isfinite(item[0]))
+    if not finite_scores:
+        raise TrajConvError("The byte order of the .cods stream file could not be determined.")
+    endian = finite_scores[0][1]
+    return CODFormat(
+        stream=True,
+        endian=endian,
+        marker_bytes=0,
+        atom_count=atom_count,
+        frame_count=file_size // frame_bytes,
+        frame_bytes=frame_bytes,
+    )
+
+
+def detect_cod_format(path: Path, reference: PDBReference) -> CODFormat:
+    suffix = path.suffix.lower()
+    if suffix == ".cod":
+        return detect_sequential_cod(path, len(reference.atoms))
+    if suffix == ".cods":
+        return detect_stream_cod(path, reference)
+    raise TrajConvError(f"Not a COD/CODS path: {path}")
+
+
+class CODReader:
+    def __init__(self, path: Path, fmt: CODFormat):
+        self.path = path
+        self.format = fmt
+
+    def __enter__(self) -> "CODReader":
+        self.handle = self.path.open("rb")
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        self.handle.close()
+
+    def frames(self) -> Iterator[tuple[int, CODHeader, np.ndarray]]:
+        coordinate_bytes = self.format.atom_count * COD_COORD_BYTES_PER_ATOM
+        dtype = np.dtype(self.format.endian + "f4")
+        for frame_index in range(1, self.format.frame_count + 1):
+            if self.format.stream:
+                header_payload = self.handle.read(COD_HEADER_BYTES)
+                coordinate_payload = self.handle.read(coordinate_bytes)
+                if len(header_payload) != COD_HEADER_BYTES or len(coordinate_payload) != coordinate_bytes:
+                    raise TrajConvError(
+                        f"Unexpected end of CODS file at frame {frame_index}: {self.path}"
+                    )
+            else:
+                leading_header = _read_marker(
+                    self.handle, self.format.marker_bytes, self.format.endian
+                )
+                if leading_header != COD_HEADER_BYTES:
+                    raise TrajConvError(
+                        f"Invalid COD header record marker at frame {frame_index}: {leading_header}"
+                    )
+                header_payload = self.handle.read(COD_HEADER_BYTES)
+                trailing_header = _read_marker(
+                    self.handle, self.format.marker_bytes, self.format.endian
+                )
+                if trailing_header != COD_HEADER_BYTES:
+                    raise TrajConvError(
+                        f"Invalid trailing COD header marker at frame {frame_index}: {trailing_header}"
+                    )
+                leading_coordinates = _read_marker(
+                    self.handle, self.format.marker_bytes, self.format.endian
+                )
+                if leading_coordinates != coordinate_bytes:
+                    raise TrajConvError(
+                        f"Invalid COD coordinate record size at frame {frame_index}: "
+                        f"{leading_coordinates} (expected {coordinate_bytes})"
+                    )
+                coordinate_payload = self.handle.read(coordinate_bytes)
+                trailing_coordinates = _read_marker(
+                    self.handle, self.format.marker_bytes, self.format.endian
+                )
+                if trailing_coordinates != coordinate_bytes:
+                    raise TrajConvError(
+                        f"Invalid trailing COD coordinate marker at frame {frame_index}."
+                    )
+            header = unpack_cod_header(header_payload, self.format.endian)
+            coordinates = np.frombuffer(coordinate_payload, dtype=dtype).reshape((-1, 3))
+            coordinates = coordinates.astype(np.float32, copy=True)
+            if not np.all(np.isfinite(coordinates)):
+                raise TrajConvError(f"NaN or Inf coordinate found in COD frame {frame_index}.")
+            yield frame_index, header, coordinates
+
+
+class CODWriter:
+    def __init__(self, path: Path, stream: bool):
+        self.path = path
+        self.stream = stream
+        self.endian = "<"
+        self.marker_bytes = 4
+
+    def __enter__(self) -> "CODWriter":
+        self.handle = self.path.open("wb")
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        self.handle.close()
+
+    def write(self, header: CODHeader, coordinates: np.ndarray) -> None:
+        coordinates = np.asarray(coordinates, dtype=np.float32)
+        if coordinates.ndim != 2 or coordinates.shape[1] != 3:
+            raise TrajConvError(
+                f"Internal error: coordinate array has shape {coordinates.shape}, expected (N, 3)."
+            )
+        if not np.all(np.isfinite(coordinates)):
+            raise TrajConvError("NaN or Inf coordinate cannot be written to COD.")
+        header_payload = pack_cod_header(header, self.endian)
+        coordinate_payload = np.asarray(coordinates, dtype="<f4").tobytes(order="C")
+        if self.stream:
+            self.handle.write(header_payload)
+            self.handle.write(coordinate_payload)
+        else:
+            self.handle.write(_pack_marker(len(header_payload), self.marker_bytes, self.endian))
+            self.handle.write(header_payload)
+            self.handle.write(_pack_marker(len(header_payload), self.marker_bytes, self.endian))
+            self.handle.write(_pack_marker(len(coordinate_payload), self.marker_bytes, self.endian))
+            self.handle.write(coordinate_payload)
+            self.handle.write(_pack_marker(len(coordinate_payload), self.marker_bytes, self.endian))
+
+
+# ---------------------------------------------------------------------------
+# MDAnalysis integration
+# ---------------------------------------------------------------------------
+
+
+def import_mdanalysis() -> object:
+    warnings.filterwarnings(
+        "ignore",
+        message="DCDReader currently makes independent timesteps.*",
+        category=DeprecationWarning,
+    )
+    try:
+        import MDAnalysis as mda
+    except ImportError as exc:
+        raise TrajConvError(
+            "MDAnalysis is required for formats other than .cod/.cods.\n"
+            "Install it in the Python environment used to execute j_presto."
+        ) from exc
+    return mda
+
+
+def create_mda_universe(reference_pdb: Path, trajectory: Path, pbc: str) -> object:
+    mda = import_mdanalysis()
+    try:
+        universe = mda.Universe(str(reference_pdb), str(trajectory))
+    except Exception as exc:
+        raise TrajConvError(
+            f"MDAnalysis could not read input trajectory '{trajectory}' with reference PDB "
+            f"'{reference_pdb}'.\n{type(exc).__name__}: {exc}"
+        ) from exc
+    if pbc == "nojump":
+        try:
+            from MDAnalysis.transformations.nojump import NoJump
+
+            universe.trajectory.add_transformations(NoJump())
+        except Exception as exc:
+            raise TrajConvError(
+                "Failed to configure PBC no-jump transformation. The trajectory must contain "
+                f"valid periodic box information.\n{type(exc).__name__}: {exc}"
+            ) from exc
+    elif pbc == "unwrap":
+        try:
+            from MDAnalysis.transformations import unwrap
+
+            universe.trajectory.add_transformations(unwrap(universe.atoms))
+        except Exception as exc:
+            raise TrajConvError(
+                "Failed to configure PBC unwrap transformation. 'unwrap' requires molecular "
+                "connectivity (usually CONECT records) in the reference PDB.\n"
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
+    return universe
+
+
+def dimensions_present(ts: object) -> bool:
+    dimensions = getattr(ts, "dimensions", None)
+    if dimensions is None:
+        return False
+    array = np.asarray(dimensions, dtype=float)
+    return array.size >= 3 and np.all(np.isfinite(array[:3])) and np.all(array[:3] > 0.0)
+
+
+def make_mda_writer(output: Path, atom_count: int, frame_count: int) -> object:
+    mda = import_mdanalysis()
+    try:
+        return mda.Writer(str(output), n_atoms=atom_count, multiframe=frame_count > 1)
+    except Exception as exc:
+        if frame_count == 1:
+            try:
+                return mda.Writer(str(output), n_atoms=atom_count)
+            except Exception:
+                pass
+        raise TrajConvError(
+            f"MDAnalysis could not create a writer for output file '{output}'.\n"
+            f"The selected output format may not support {frame_count} frame(s).\n"
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+
+
+# ---------------------------------------------------------------------------
+# Validation, planning, and reporting
+# ---------------------------------------------------------------------------
+
+
+def parse_end(value: str, frame_count: int) -> int:
+    if value.upper() == "END":
+        return frame_count
+    try:
+        end = int(value)
+    except ValueError as exc:
+        raise TrajConvError("--end/-e must be an integer frame number or END.") from exc
+    return end
+
+
+def build_frame_plan(begin: int, end_text: str, stride: int, frame_count: int) -> FramePlan:
+    if frame_count < 1:
+        raise TrajConvError("The input contains no frames.")
+    if begin < 1:
+        raise TrajConvError("--begin/-b must be at least 1.")
+    if stride < 1:
+        raise TrajConvError("--stride/-s must be at least 1.")
+    end = parse_end(end_text, frame_count)
+    if end < begin:
+        raise TrajConvError(
+            f"The requested end frame ({end}) is smaller than the begin frame ({begin})."
+        )
+    if begin > frame_count:
+        raise TrajConvError(
+            f"The begin frame ({begin}) exceeds the number of input frames ({frame_count})."
+        )
+    if end > frame_count:
+        raise TrajConvError(
+            f"The end frame ({end}) exceeds the number of input frames ({frame_count})."
+        )
+    output_count = ((end - begin) // stride) + 1
+    return FramePlan(begin=begin, end=end, stride=stride, output_count=output_count)
+
+
+def output_kind(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if not suffix:
+        raise TrajConvError(f"Output file has no extension: {path}")
+    if suffix == ".cod":
+        return "cod"
+    if suffix == ".cods":
+        return "cods"
+    return "mda"
+
+
+def input_kind(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if not suffix:
+        raise TrajConvError(f"Input file has no extension: {path}")
+    if suffix in (".cod", ".cods"):
+        return "cod"
+    return "mda"
+
+
+def default_companion_pdb(
+    output: Path, explicit: str | None, input_path: Path, reference_path: Path
+) -> Path | None:
+    if explicit:
+        return Path(explicit).expanduser().resolve()
+    if output.suffix.lower() not in (".cod", ".cods"):
+        return None
+    candidate = output.with_suffix(".pdb")
+    source_paths = {input_path.resolve(), reference_path.resolve()}
+    if candidate.resolve() in source_paths:
+        candidate = output.with_name(output.stem + "_reference.pdb")
+    return candidate
+
+
+def ensure_input_files(input_path: Path, reference_path: Path) -> None:
+    if not input_path.is_file():
+        raise TrajConvError(f"Input file does not exist: {input_path}")
+    if not reference_path.is_file():
+        raise TrajConvError(f"Reference PDB does not exist: {reference_path}")
+
+
+def ensure_output_paths(
+    input_path: Path,
+    reference_path: Path,
+    output_path: Path,
+    output_pdb: Path | None,
+    force: bool,
+    check_only: bool,
+) -> None:
+    if check_only:
+        return
+    destinations = [output_path] + ([output_pdb] if output_pdb is not None else [])
+    resolved_destinations = [destination.resolve() for destination in destinations]
+    if len(set(resolved_destinations)) != len(resolved_destinations):
+        raise TrajConvError(
+            "The trajectory output and companion PDB must use different paths."
+        )
+    resolved_sources = {input_path.resolve(), reference_path.resolve()}
+    for destination in destinations:
+        assert destination is not None
+        if destination.resolve() in resolved_sources:
+            raise TrajConvError(
+                f"An output path would overwrite an input file: {destination}"
+            )
+        if destination.exists() and not force:
+            raise TrajConvError(
+                f"Output file already exists: {destination}\nUse --force/-f to overwrite it."
+            )
+        parent = destination.parent
+        if not parent.exists():
+            raise TrajConvError(f"Output directory does not exist: {parent}")
+        if not os.access(parent, os.W_OK):
+            raise TrajConvError(f"Output directory is not writable: {parent}")
+
+
+def estimate_cod_size(kind: str, frames: int, atoms: int) -> int | None:
+    if kind == "cod":
+        return frames * (COD_HEADER_BYTES + atoms * COD_COORD_BYTES_PER_ATOM + 16)
+    if kind == "cods":
+        return frames * (COD_HEADER_BYTES + atoms * COD_COORD_BYTES_PER_ATOM)
+    return None
+
+
+def human_size(size_bytes: int | None) -> str:
+    if size_bytes is None:
+        return "format-dependent"
+    value = float(size_bytes)
+    units = ("B", "KiB", "MiB", "GiB", "TiB")
+    unit = units[0]
+    for unit in units:
+        if value < 1024.0 or unit == units[-1]:
+            break
+        value /= 1024.0
+    return f"{value:.2f} {unit}"
+
+
+def report_selected_atoms(reference: PDBReference, indices: Sequence[int]) -> None:
+    print(f"Selected atoms     : {len(indices)} / {len(reference.atoms)}")
+    show: list[tuple[int, int]] = []
+    if len(indices) <= 6:
+        show = list(enumerate(indices, start=1))
+    else:
+        show.extend((i + 1, indices[i]) for i in range(3))
+        show.extend((len(indices) - 2 + i, indices[-3 + i]) for i in range(3))
+    for output_index, source_index in show:
+        atom = reference.atoms[source_index]
+        chain = atom.chain_name.strip() or "-"
+        print(
+            f"  {output_index:8d} : chain {atom.chain_number} {chain}  "
+            f"residue {atom.residue_number} {atom.residue_name}  "
+            f"atom {atom.serial} {atom.atom_name}"
+        )
+        if len(indices) > 6 and output_index == 3:
+            print("              ...")
+
+
+def report_summary(
+    input_path: Path,
+    reference_path: Path,
+    output_path: Path,
+    atom_specifier: str,
+    summary: ConversionSummary,
+) -> None:
+    print(f"Input trajectory  : {input_path}")
+    print(f"Input format      : {summary.input_format}")
+    print(f"Reference PDB     : {reference_path}")
+    print(f"Source atoms      : {summary.source_atoms}")
+    print(f"Input frames      : {summary.input_frames}")
+    print(f"Atom specifier    : {atom_specifier}")
+    print(f"Selected atoms    : {summary.selected_atoms}")
+    print("Frame extraction  :")
+    print(f"  begin           : {summary.frame_plan.begin}")
+    print(f"  end             : {summary.frame_plan.end}")
+    print(f"  stride          : {summary.frame_plan.stride}")
+    print(f"  output frames   : {summary.frame_plan.output_count}")
+    print(f"PBC box in input  : {'present' if summary.periodic_box_present else 'not detected'}")
+    print(f"Output trajectory : {output_path}")
+    print(f"Output format     : {summary.output_format}")
+    if summary.output_pdb is not None:
+        print(f"Companion PDB     : {summary.output_pdb}")
+    print(f"Estimated size    : {human_size(summary.estimated_cod_bytes)}")
+    print()
+
+
+def progress_update(done: int, total: int, last_percent: int) -> int:
+    if total <= 0:
+        return last_percent
+    percent = int(done * 100 / total)
+    if percent >= last_percent + 5 or done == total:
+        print(f"  Converting ... {percent:3d}% ({done}/{total} frames)")
+        return percent
+    return last_percent
+
+
+# ---------------------------------------------------------------------------
+# Conversion execution
+# ---------------------------------------------------------------------------
+
+
+def inspect_mda_input(
+    input_path: Path,
+    reference_path: Path,
+    reference: PDBReference,
+    pbc: str,
+) -> tuple[object, int, bool, str]:
+    universe = create_mda_universe(reference_path, input_path, pbc)
+    source_atoms = len(universe.atoms)
+    if source_atoms != len(reference.atoms):
+        raise TrajConvError(
+            "Atom count mismatch between the input trajectory and reference PDB.\n"
+            f"Trajectory : {source_atoms} atoms\n"
+            f"Reference  : {len(reference.atoms)} atoms"
+        )
+    try:
+        frame_count = len(universe.trajectory)
+    except Exception as exc:
+        raise TrajConvError(f"Could not determine the number of input frames: {exc}") from exc
+    if frame_count < 1:
+        raise TrajConvError("The input trajectory contains no frames.")
+    try:
+        first_ts = universe.trajectory[0]
+    except Exception as exc:
+        raise TrajConvError(f"Could not read the first input frame: {exc}") from exc
+    if not np.all(np.isfinite(first_ts.positions)):
+        raise TrajConvError("NaN or Inf coordinate found in the first input frame.")
+    periodic = dimensions_present(first_ts)
+    reader_name = type(universe.trajectory).__name__
+    return universe, frame_count, periodic, f"{input_path.suffix.lower()} via MDAnalysis ({reader_name})"
+
+
+def inspect_cod_input(
+    input_path: Path, reference: PDBReference
+) -> tuple[CODFormat, int, bool, str]:
+    fmt = detect_cod_format(input_path, reference)
+    with CODReader(input_path, fmt) as reader:
+        try:
+            _frame, _header, coords = next(reader.frames())
+        except StopIteration as exc:
+            raise TrajConvError("The COD input contains no frames.") from exc
+    if coords.shape[0] != len(reference.atoms):
+        raise TrajConvError("Internal COD atom count validation failed.")
+    return fmt, fmt.frame_count, False, fmt.label
+
+
+def _iter_mda_source_frames(
+    universe: object, plan: FramePlan, pbc: str
+) -> Iterator[tuple[int, object, np.ndarray]]:
+    trajectory = universe.trajectory
+    if pbc == "nojump":
+        # NoJump is path-dependent; visit all preceding frames in sequence.
+        for ts in trajectory[: plan.end]:
+            source_frame = int(ts.frame) + 1
+            if plan.includes(source_frame):
+                yield source_frame, ts, np.asarray(ts.positions, dtype=np.float32)
+    else:
+        for zero_based in range(plan.begin - 1, plan.end, plan.stride):
+            ts = trajectory[zero_based]
+            yield zero_based + 1, ts, np.asarray(ts.positions, dtype=np.float32)
+
+
+def convert_mda_to_cod(
+    universe: object,
+    output_path: Path,
+    output_stream: bool,
+    selected_indices: Sequence[int],
+    plan: FramePlan,
+    pbc: str,
+) -> None:
+    selected = np.asarray(selected_indices, dtype=int)
+    last_percent = -5
+    written = 0
+    with CODWriter(output_path, stream=output_stream) as writer:
+        for source_frame, ts, coordinates in _iter_mda_source_frames(universe, plan, pbc):
+            selected_coordinates = coordinates[selected, :]
+            header = CODHeader.default_from_mda(ts, source_frame)
+            writer.write(header, selected_coordinates)
+            written += 1
+            last_percent = progress_update(written, plan.output_count, last_percent)
+    if written != plan.output_count:
+        raise TrajConvError(
+            f"Only {written} frames were written; expected {plan.output_count}."
+        )
+
+
+def convert_mda_to_mda(
+    universe: object,
+    output_path: Path,
+    selected_indices: Sequence[int],
+    plan: FramePlan,
+    pbc: str,
+) -> None:
+    atom_group = universe.atoms[np.asarray(selected_indices, dtype=int)]
+    last_percent = -5
+    written = 0
+    with make_mda_writer(output_path, len(selected_indices), plan.output_count) as writer:
+        for _source_frame, _ts, _coordinates in _iter_mda_source_frames(universe, plan, pbc):
+            try:
+                writer.write(atom_group)
+            except Exception as exc:
+                raise TrajConvError(
+                    f"Failed while writing output frame {written + 1}:\n"
+                    f"{type(exc).__name__}: {exc}"
+                ) from exc
+            written += 1
+            last_percent = progress_update(written, plan.output_count, last_percent)
+    if written != plan.output_count:
+        raise TrajConvError(
+            f"Only {written} frames were written; expected {plan.output_count}."
+        )
+
+
+def convert_cod_to_cod(
+    input_path: Path,
+    input_format: CODFormat,
+    output_path: Path,
+    output_stream: bool,
+    selected_indices: Sequence[int],
+    plan: FramePlan,
+) -> None:
+    selected = np.asarray(selected_indices, dtype=int)
+    last_percent = -5
+    written = 0
+    with CODReader(input_path, input_format) as reader, CODWriter(
+        output_path, stream=output_stream
+    ) as writer:
+        for source_frame, header, coordinates in reader.frames():
+            if source_frame > plan.end:
+                break
+            if not plan.includes(source_frame):
+                continue
+            writer.write(header, coordinates[selected, :])
+            written += 1
+            last_percent = progress_update(written, plan.output_count, last_percent)
+    if written != plan.output_count:
+        raise TrajConvError(
+            f"Only {written} frames were written; expected {plan.output_count}."
+        )
+
+
+def convert_cod_to_mda(
+    input_path: Path,
+    input_format: CODFormat,
+    reference_path: Path,
+    output_path: Path,
+    selected_indices: Sequence[int],
+    plan: FramePlan,
+) -> None:
+    mda = import_mdanalysis()
+    try:
+        universe = mda.Universe(str(reference_path))
+    except Exception as exc:
+        raise TrajConvError(
+            f"MDAnalysis could not create a topology from reference PDB: {exc}"
+        ) from exc
+    if len(universe.atoms) != input_format.atom_count:
+        raise TrajConvError(
+            "MDAnalysis and the internal PDB parser obtained different atom counts from "
+            f"the reference PDB ({len(universe.atoms)} vs {input_format.atom_count})."
+        )
+    atom_group = universe.atoms[np.asarray(selected_indices, dtype=int)]
+    last_percent = -5
+    written = 0
+    with make_mda_writer(output_path, len(selected_indices), plan.output_count) as writer:
+        with CODReader(input_path, input_format) as reader:
+            for source_frame, header, coordinates in reader.frames():
+                if source_frame > plan.end:
+                    break
+                if not plan.includes(source_frame):
+                    continue
+                atom_group.positions = coordinates[np.asarray(selected_indices, dtype=int), :]
+                ts = universe.trajectory.ts
+                with contextlib.suppress(Exception):
+                    ts.time = float(header.simulation_time_fs) / 1000.0
+                with contextlib.suppress(Exception):
+                    ts.data["step"] = int(header.step)
+                try:
+                    writer.write(atom_group)
+                except Exception as exc:
+                    raise TrajConvError(
+                        f"Failed while writing output frame {written + 1}:\n"
+                        f"{type(exc).__name__}: {exc}"
+                    ) from exc
+                written += 1
+                last_percent = progress_update(written, plan.output_count, last_percent)
+    if written != plan.output_count:
+        raise TrajConvError(
+            f"Only {written} frames were written; expected {plan.output_count}."
+        )
+
+
+def validate_last_mda_frame(universe: object, frame_count: int, pbc: str) -> None:
+    if pbc == "nojump":
+        return
+    try:
+        ts = universe.trajectory[frame_count - 1]
+    except Exception as exc:
+        raise TrajConvError(f"Could not read the last input frame: {exc}") from exc
+    if not np.all(np.isfinite(ts.positions)):
+        raise TrajConvError("NaN or Inf coordinate found in the last input frame.")
+
+
+def cleanup_partial_outputs(paths: Sequence[Path | None]) -> None:
+    for path in paths:
+        if path is None:
+            continue
+        with contextlib.suppress(OSError):
+            if path.exists():
+                path.unlink()
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = build_parser()
+    raw_argv = sys.argv[1:] if argv is None else list(argv)
+    args = parser.parse_args(normalize_access_key(raw_argv))
+
+    display_credits()
+    started = time.perf_counter()
+
+    input_path = Path(args.input).expanduser().resolve()
+    reference_path = Path(args.reference_pdb).expanduser().resolve()
+    output_path = Path(args.output).expanduser().resolve()
+    ensure_input_files(input_path, reference_path)
+    reference = read_reference_pdb(reference_path)
+    selected_indices = AtomSpecifierParser(reference).select(args.atom_specifier)
+    in_kind = input_kind(input_path)
+    out_kind = output_kind(output_path)
+    companion_pdb = default_companion_pdb(
+        output_path, args.output_pdb, input_path, reference_path
+    )
+    ensure_output_paths(
+        input_path,
+        reference_path,
+        output_path,
+        companion_pdb,
+        args.force,
+        args.check_only,
+    )
+
+    universe = None
+    cod_format = None
+    if in_kind == "cod":
+        if args.pbc != "none":
+            raise TrajConvError(
+                "PBC correction cannot be applied to COD/CODS input because these formats do not "
+                "store periodic box vectors."
+            )
+        cod_format, frame_count, periodic_box, input_format_label = inspect_cod_input(
+            input_path, reference
+        )
+    else:
+        universe, frame_count, periodic_box, input_format_label = inspect_mda_input(
+            input_path, reference_path, reference, args.pbc
+        )
+        validate_last_mda_frame(universe, frame_count, args.pbc)
+
+    plan = build_frame_plan(args.begin, args.end, args.stride, frame_count)
+    output_format_label = (
+        "j_presto COD sequential (single precision, 4-byte markers, little endian)"
+        if out_kind == "cod"
+        else "j_presto CODS stream (single precision, little endian)"
+        if out_kind == "cods"
+        else f"{output_path.suffix.lower()} via MDAnalysis"
+    )
+    summary = ConversionSummary(
+        input_format=input_format_label,
+        input_frames=frame_count,
+        source_atoms=len(reference.atoms),
+        selected_atoms=len(selected_indices),
+        frame_plan=plan,
+        output_format=output_format_label,
+        output_pdb=companion_pdb,
+        periodic_box_present=periodic_box,
+        estimated_cod_bytes=estimate_cod_size(out_kind, plan.output_count, len(selected_indices)),
+    )
+    report_summary(
+        input_path,
+        reference_path,
+        output_path,
+        args.atom_specifier,
+        summary,
+    )
+    report_selected_atoms(reference, selected_indices)
+    print()
+
+    if periodic_box and out_kind in ("cod", "cods") and args.pbc == "none":
+        print("WARNING: The input trajectory contains periodic box information, but no PBC")
+        print("         correction was requested. Broken molecules can generate artificial")
+        print("         internal-distance differences in DISTIL.")
+        print()
+
+    if args.check_only:
+        elapsed = time.perf_counter() - started
+        print("Input and requested conversion passed the available checks.")
+        print(f"Execution time : {elapsed:.2f} s")
+        print(f"\n+++ Program j_presto {PROGRAM_NAME} normally ended +++")
+        return 0
+
+    temporary_outputs: list[Path | None] = [output_path, companion_pdb]
+    try:
+        if in_kind == "mda" and out_kind in ("cod", "cods"):
+            assert universe is not None
+            convert_mda_to_cod(
+                universe,
+                output_path,
+                output_stream=(out_kind == "cods"),
+                selected_indices=selected_indices,
+                plan=plan,
+                pbc=args.pbc,
+            )
+            print()
+            print("Note: The input format did not provide j_presto energy and generalized-")
+            print("      ensemble metadata. COD metadata fields were initialized for ordinary")
+            print("      coordinate analysis (lambda=1; energies and related fields=0).")
+        elif in_kind == "mda" and out_kind == "mda":
+            assert universe is not None
+            convert_mda_to_mda(
+                universe,
+                output_path,
+                selected_indices,
+                plan,
+                args.pbc,
+            )
+        elif in_kind == "cod" and out_kind in ("cod", "cods"):
+            assert cod_format is not None
+            convert_cod_to_cod(
+                input_path,
+                cod_format,
+                output_path,
+                output_stream=(out_kind == "cods"),
+                selected_indices=selected_indices,
+                plan=plan,
+            )
+        else:
+            assert cod_format is not None
+            convert_cod_to_mda(
+                input_path,
+                cod_format,
+                reference_path,
+                output_path,
+                selected_indices,
+                plan,
+            )
+        if companion_pdb is not None:
+            write_selected_pdb(companion_pdb, reference, selected_indices)
+    except Exception:
+        cleanup_partial_outputs(temporary_outputs)
+        raise
+
+    elapsed = time.perf_counter() - started
+    print()
+    print("Conversion completed successfully.")
+    if companion_pdb is not None and out_kind in ("cod", "cods"):
+        print("DISTIL-ready files:")
+        print(f"  Trajectory : {output_path}")
+        print(f"  Reference  : {companion_pdb}")
+    print(f"Execution time : {elapsed:.2f} s")
+    print(f"\n+++ Program j_presto {PROGRAM_NAME} normally ended +++")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except TrajConvError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+    except KeyboardInterrupt:
+        print("ERROR: Interrupted by user.", file=sys.stderr)
+        raise SystemExit(130)

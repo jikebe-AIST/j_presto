@@ -609,7 +609,7 @@
           write(6,'(6x,a)')"3D coordinates of the selected atoms"
         endif
 
-        if ( PCA_method.ne."cord" .or. PCA_method.ne."intercord" ) then
+        if ( PCA_method.ne."cord" .and. PCA_method.ne."intercord" ) then
           !! neighbor_residue_PCA
           read(ELEMNT(42),*)cut_resnum_PCA
           if ( cut_resnum_PCA .lt. 0 ) cut_resnum_PCA = 0

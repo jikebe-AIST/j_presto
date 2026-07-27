@@ -1,0 +1,3297 @@
+>
+   ##############################################################
+   #                                                            #
+   #  j_presto manual 日本語版（Version 1.6.0）                 #
+   #                         Author : Jinzen Ikebe              #
+   #                     First release : 2024-11-11             #
+   #               Current version date : 2026-07-27            #
+   #                                                            #
+   ##############################################################
+
+最初に、次のいずれかの項目を開いてください。
+    j_presto   : 収録されているプログラムとサブプログラムの一覧
+    tutorial   : インストールから解析までの目的別手順
+    FAQ        : プログラム別に整理されたトラブルシューティング
+
+移動と検索:
+    項目名を入力             その項目を表示
+    Tab                      項目名を補完
+    h または Home            このページへ戻る
+    f または FAQ             FAQの索引を開く
+    t または Tutorial        tutorialの索引を開く
+    s または Search          項目名と本文を全文検索
+    l または List            項目一覧を表示（先頭文字列で絞り込み可能）
+    p / n / u                前／次／上位の項目へ移動
+    lang en / lang ja        英語版／日本語版へ切り替え
+    q または Quit            マニュアルを終了
+
+入力例:
+    DISTIL
+    traj_conv -i
+    OUTATM
+    tutorial MD
+    FAQ md_run memory
+
+manual.txt内の項目名は大文字・小文字を区別します。ただし、入力した文字列が
+一意に対応する場合、manualプログラムは大文字・小文字を区別せずに一致させます。
+>j_presto
+j_prestoパッケージには、分子動力学（MD）シミュレーション、
+トラジェクトリ処理、構造解析、および分子設計のためのプログラムが含まれます。
+
+使用法:
+    j_presto SUBPROGRAM [arguments]
+
+詳細を確認するには、以下のサブプログラム名を入力してください。
+
+シミュレーション系の準備と実行:
+    initpep         folding simulation用の伸長ペプチド構造を作成
+    pdb_alignfit    配列アラインメントに基づいてquery構造をreferenceへ重ね合わせ
+    nt_gen          PREPファイルとPDBファイルから原子名対応表を作成
+    nt_conv         対応表に基づいて残基名・原子名を変換
+    gen_db          AMBERパラメータからトポロジーデータベース（*.tpldb）を作成
+    prep            PDB、トポロジー（*.tpl）、SHAKE（*.shk）入力を作成
+    pepchk          PDB構造中のペプチド結合ω角を検査
+    md_run          MDシミュレーションまたはエネルギー最小化を実行
+    batch_set       複数MD run用のファイルとディレクトリを準備
+    GEprep          一般化アンサンブル計算用パラメータファイル（*.nf）を作成
+
+トラジェクトリ処理と解析:
+    traj_conv       j_prestoのCOD/CODSと外部トラジェクトリ形式を相互変換
+    Ens_Ana         構造アンサンブルとトラジェクトリを解析
+    DISTIL          二つの構造アンサンブル間の差を検出・解釈
+    PCAaxis         主成分軸を計算
+    PCAproj         構造をPCA部分空間へ射影
+    distrib         分布、統計量、自由エネルギー地形を計算
+    pick_conf       反応座標の条件に基づいて構造を抽出・順位付け
+    ttp_se          TTPの独立run間で重み付き平均と標準誤差を計算
+    pdb_movie       連続したPDB構造をmulti-model PDBトラジェクトリへ結合
+
+分子設計と可視化:
+    MSPER           酵素の位置選択性を改善する変異部位を予測
+    conmut          コンセンサス配列解析から安定化変異を提案
+    struct_formula  SMILESから二次元分子構造式を描画し、必要に応じてPDB原子名を表示
+
+ユーティリティと文書:
+    get_tmpl        入力ファイルと実行スクリプトのtemplateをコピー
+    genlist         トラジェクトリファイルリストと解析範囲を作成
+    manual          この対話型マニュアルを開く
+
+並列実行ランチャー:
+    j_presto_mpi     複数のOpenMP MD runをembarrassingly parallelなMPI jobとして実行
+    j_presto_master  複数のOpenMP MD runをmaster-worker方式のMPI jobとして実行
+
+MDエンジンはOpenMP並列化に対応しています。GPUは直接使用せず、一つの
+md_runプロセス自体はMPI並列化されません。多数の独立OpenMP runをまとめて
+実行する場合は、上記の並列実行ランチャーを使用してください。
+>initpep
+@u:j_presto,n:pdb_alignfit
+"j_presto initpep"は、folding simulationの初期構造として使用する
+伸長ペプチド構造を作成します。通常のMDではPDBの実験構造やAlphaFold等の
+モデル構造を初期構造にしますが、folding simulationでは、完全にほどけた
+構造からnative構造へfoldする過程を調べるため、伸長構造が必要です。
+
+使用法: j_presto initpep INPUT [options]
+
+INPUTには、次のいずれかでアミノ酸配列を指定します。
+    1 : 一文字表記のアミノ酸配列文字列
+    2 : FASTAファイル
+    3 : PDBファイル
+PDBを入力した場合、座標は使用せず配列のみを読み取ります。PDBにSSBOND recordが
+含まれる場合、その情報は出力PDBへ引き継がれます。
+
+オプション:
+    initpep -o    出力PDBファイル
+    initpep -H    helixとして作成する領域
+    initpep -s    S-S結合を形成するCYSの組
+
+詳細は、例えば "initpep -o" を入力してください。
+>initpep -o
+@u:initpep,n:initpep -H
+使用法: j_presto initpep -o OUTPUT
+
+出力PDBファイル名を指定します。既定値は "output.pdb" です。
+>initpep -H
+@u:initpep,p:initpep -o,n:initpep -s
+使用法: j_presto initpep -H FIRST_RESIDUE:LAST_RESIDUE[,FIRST_RESIDUE2:LAST_RESIDUE2[,...]]
+
+initpepは通常、入力配列からφ = 180°、ψ = 180°の伸長構造を作成します。
+指定した領域をhelix構造にする場合、このオプションを使用します。
+例えば、残基1–10と20–30をhelixにする場合は次のように指定します。
+    j_presto initpep -H 1:10,20:30
+>initpep -s
+@u:initpep,p:initpep -H
+使用法: j_presto initpep -s CYS1:CYS2[,CYS3:CYS4[,...]]
+
+S-S結合を形成するCYS残基の組を指定します。指定内容は出力PDBのSSBOND recordに
+書き込まれます。入力PDBにSSBOND recordがある場合は自動的に継承されるため、
+再指定は不要です。一文字配列、FASTA、またはSSBOND情報のないPDBを入力する場合に
+使用します。
+
+この指定はSSBOND情報を追加するだけであり、出力座標は伸長構造（-H使用時は一部
+helix）のままです。指定したCYS間距離は自動的には短くなりません。CYS同士を
+近づけるには、出力PDBに対して "j_presto md_run" によるエネルギー最小化を
+行ってください。複数のS-S結合を同時に形成させる場合、距離拘束が競合して、
+すべての結合距離を満たす構造へ収束しないことがあります。
+>pdb_alignfit
+@u:j_presto,p:initpep,n:nt_gen
+"j_presto pdb_alignfit"は、二つのPDBファイルのアミノ酸配列を
+アラインメントし、その対応関係に基づいて構造を重ね合わせます。reference構造と
+query構造の配列一致率を計算し、query構造をreferenceへ重ね合わせた新しいPDBを
+出力します。
+
+Ens_Anaでも構造重ね合わせは可能ですが、pdb_alignfitは特に配列相同性の低い
+二つのタンパク質構造の比較用に設計されています。例えば、目的タンパク質Aの
+単体構造と、相同タンパク質Bのligand複合体構造がある場合、Aをreference、Bを
+queryとして重ね合わせることで、BのligandをA上へ配置した複合体モデルを作れます。
+
+本プログラムはインターネット接続を必要とせず、すべての処理をローカルで行います。
+配列データを外部へ送信しないため、機密情報を含む構造にも利用できます。
+
+使用法: j_presto pdb_alignfit REFERENCE_PDB_FILE QUERY_PDB_FILE [options]
+
+必須引数:
+    REFERENCE_PDB_FILE    重ね合わせの基準とするPDB
+    QUERY_PDB_FILE        referenceへ重ね合わせるPDB
+
+オプション:
+    pdb_alignfit -a      alignment mode
+    pdb_alignfit -s      重ね合わせに使用する原子（caまたはbackbone）
+    pdb_alignfit -ogs    gap opening score
+    pdb_alignfit -egs    gap extension score
+    pdb_alignfit -sm     substitution matrix
+    pdb_alignfit -o      出力PDBファイル名
+
+詳細は、例えば "pdb_alignfit -a" を入力してください。
+>pdb_alignfit -a
+@u:pdb_alignfit,n:pdb_alignfit -s
+使用法: j_presto pdb_alignfit -a {global, local}
+
+alignment modeをglobalまたはlocalに設定します。global alignmentは配列全体を
+対応付け、local alignmentは最もよく一致する部分配列を探索します。既定値はlocalです。
+長い配列ではglobal alignmentの計算量が大きくなることがあります。
+>pdb_alignfit -s
+@u:pdb_alignfit,p:pdb_alignfit -a,n:pdb_alignfit -ogs
+使用法: j_presto pdb_alignfit -s {ca, backbone}
+
+構造重ね合わせに使用する原子を指定します。"ca"はCα原子、"backbone"は
+主鎖原子（CA、C、N、O）を使用します。既定値は"ca"です。
+>pdb_alignfit -ogs
+@u:pdb_alignfit,p:pdb_alignfit -s,n:pdb_alignfit -egs
+使用法: j_presto pdb_alignfit -ogs OPEN_GAP_SCORE
+
+配列alignmentでgapを新たに導入する際のpenaltyを指定します。既定値は-10です。
+>pdb_alignfit -egs
+@u:pdb_alignfit,p:pdb_alignfit -ogs,n:pdb_alignfit -sm
+使用法: j_presto pdb_alignfit -egs EXTEND_GAP_SCORE
+
+配列alignmentで既存gapを延長する際のpenaltyを指定します。既定値は-0.2です。
+>pdb_alignfit -sm
+@u:pdb_alignfit,p:pdb_alignfit -egs,n:pdb_alignfit -o
+使用法: j_presto pdb_alignfit -sm MATRIX_NAME
+
+配列alignmentに使用するsubstitution matrixを指定します。異なるアミノ酸を
+対応付ける際のscoreを定義します。既定値は"BLOSUM62"です。
+>pdb_alignfit -o
+@u:pdb_alignfit,p:pdb_alignfit -sm
+使用法: j_presto pdb_alignfit -o OUTPUT_PDB_FILE_NAME
+
+reference構造へ重ね合わせたquery構造を保存するPDBファイル名を指定します。
+既定値は"superimposed_structure.pdb"です。
+>nt_gen
+@u:j_presto,p:pdb_alignfit,n:nt_conv
+"j_presto nt_gen"は、PREP残基定義とPDB構造の間で原子名の対応表を
+作成します。
+
+標準アミノ酸や核酸残基のパラメータは通常force field databaseに含まれますが、
+非標準残基や低分子ligandでは、外部parameterization workflowで独自PREPファイルを
+作る場合があります。その際、PREP内の原子名が元のPDBと異なることがあります。
+
+nt_genは分子の結合関係から原子対応を推定します。原子間距離から暫定的なPDB結合
+グラフを作り、PREPに記述されたtopologyと比較します。出力された表は
+"j_presto nt_conv"へ渡し、原子名と残基名を一貫して変換できます。
+
+使用法:
+    j_presto nt_gen INPUT.prep INPUT.pdb [options]
+
+必須入力:
+    INPUT.prep    PREP残基定義ファイル
+    INPUT.pdb     対応する分子を含むPDB構造
+
+オプション:
+    nt_gen -o    出力対応表。既定値: table.nt
+    nt_gen -t    PDBの暫定結合判定距離。既定値: 1.8 Å
+
+詳細は "nt_gen -o" または "nt_gen -t" を入力してください。
+>nt_gen -o
+@u:nt_gen,n:nt_gen -t
+使用法: j_presto nt_gen -o OUTPUT_FILE_NAME
+
+出力する原子名対応表を指定します。既定値は"table.nt"です。
+>nt_gen -t
+@u:nt_gen,p:nt_gen -o
+使用法: j_presto nt_gen -t THRESHOLD_DISTANCE
+
+PDB中の二原子間に共有結合があると判定する距離閾値を指定します。既定値は1.8 Åです。
+原子間距離がこの値未満の場合に結合ありと判定し、その結合情報とPREPの結合情報を
+比較して原子名の対応を推定します。
+>nt_conv
+@u:j_presto,p:nt_gen,n:gen_db
+標準20アミノ酸や核酸塩基のparameterは通常あらかじめ用意されていますが、
+特殊アミノ酸や低分子ligandでは独自PREPファイルが必要になります。外部プログラムで
+parameterを作成すると、元のPDBとPREPで原子名が変わり、手作業で対応付けるのは
+煩雑です。"j_presto nt_gen"で対応表を作成し、"j_presto nt_conv"でその表に
+基づいて名前を変換できます。
+
+nt_convは、指定したname tableに従ってPDBまたはPREP内の残基名・原子名を変換します。
+name tableでは左側が元の名前、右側が変換後の名前です。逆変換も可能です。
+
+使用法: j_presto nt_conv INPUT_TABLE_NAME INPUT_FILE_NAME [options]
+
+必須引数:
+    INPUT_TABLE_NAME    元名と新名の対応を記したname table
+    INPUT_FILE_NAME     変換対象のPDBまたはPREP
+
+オプション:
+    nt_conv -o      出力ファイル名
+    nt_conv -r      逆方向に変換
+    nt_conv -rh     変換対象残基のHを削除。allでPDB中の全Hを削除
+    nt_conv -ra     出力PDBのatom IDを連番へ変更
+    nt_conv -rr     出力PDBのresidue IDを連番へ変更
+    nt_conv -rph    PREP中のH原子名を結合相手に基づいて変更
+
+詳細は、例えば "nt_conv -o" を入力してください。
+>nt_conv -o
+@u:nt_conv,n:nt_conv -r
+使用法: j_presto nt_conv -o OUTPUT
+
+出力するPDBまたはPREPのファイル名を指定します。未指定時は"output.pdb"または
+"output.prep"です。
+>nt_conv -r
+@u:nt_conv,p:nt_conv -o,n:nt_conv -rh
+使用法: j_presto nt_conv -r
+
+変換方向を反転します。通常はname table左側の元名から右側の新名へ変換しますが、
+このオプションを指定すると新名から元名へ戻します。
+>nt_conv -rh
+@u:nt_conv,p:nt_conv -r,n:nt_conv -ra
+使用法: j_presto nt_conv -rh    または    j_presto nt_conv -rh all
+
+PDB中で名前を変換した残基に属するH原子を削除します。"all"を付けると、PDB中の
+すべてのH原子を削除します。
+>nt_conv -ra
+@u:nt_conv,p:nt_conv -rh,n:nt_conv -rr
+使用法: j_presto nt_conv -ra
+
+出力PDBのatom IDを1からの連番に付け直します。
+>nt_conv -rr
+@u:nt_conv,p:nt_conv -ra,n:nt_conv -rph
+使用法: j_presto nt_conv -rr
+
+出力PDBのresidue IDを1からの連番に付け直します。
+>nt_conv -rph
+@u:nt_conv,p:nt_conv -rr
+使用法: j_presto nt_conv -rph
+
+変換後PREP内のH原子名を、結合相手の原子に基づいて適切な形式へ変更します。
+PDBとPREPではH原子の命名規則が異なる場合があるため、シミュレーション入力として
+一貫した命名が必要なときに使用します。
+>gen_db
+@u:j_presto,p:nt_conv,n:prep
+"j_presto gen_db"は、j_presto用topology database（*.tpldb）と
+溶媒座標ファイル（*.slv）を作成します。AMBER形式のparameter fileを
+"j_presto gen_db -i"で指定します。
+
+オプション:
+    gen_db -i     入力AMBER parameter file
+    gen_db -o     出力ファイル名
+    gen_db -rr    残基名の変更
+    gen_db -s     出力する溶媒座標ファイル（*.slv）
+
+詳細は、例えば "gen_db -i" を入力してください。
+"j_presto get_tmpl gen_db"を実行すると、gen_db実行scriptのtemplateを取得できます。
+>gen_db -i
+@u:gen_db,n:gen_db -o
+使用法:
+    j_presto gen_db -i INPUT [INPUT ...]
+
+一つ以上のAMBER parameter fileを指定します。dat、in、prep、lib、frcmod、leaprc形式に
+対応します。同じparameterが複数回定義された場合、後から読み込んだ定義を優先します。
+
+環境変数J_PRESTO_AMBER_DATABASE_PATHにAmberTools parameter databaseのdirectoryを
+設定すると、その配下のファイルをfull pathなしで指定できます。
+
+AmberToolsはAMBER projectから別途配布されています。利用時は同projectのdocumentと
+licenseに従ってください。
+>gen_db -o
+@u:gen_db,p:gen_db -i,n:gen_db -rr
+使用法: j_presto gen_db -o OUTPUT
+
+出力ファイルのbasenameを指定します。未指定時は"test"で、例えばtest.tpldbが
+作成されます。
+>gen_db -rr
+@u:gen_db,p:gen_db -o,n:gen_db -s
+使用法: j_presto gen_db -rr RESIDUE_RENAME [RESIDUE_RENAME ...]
+
+AMBERで定義された残基名を変更します。旧名と新名をcolonで結びます。
+例: TIP3P水の"TP3"をtpldb内で"WAT"へ変更する場合
+    j_presto gen_db -rr TP3:WAT
+複数指定する場合:
+    j_presto gen_db -rr aaa:AAA bbb:BBB ...
+>gen_db -s
+@u:gen_db,p:gen_db -rr
+使用法: j_presto gen_db -s SOLVENT_BOX [SOLVENT_BOX ...]
+
+*.lib内の溶媒座標からj_presto用溶媒座標database（*.slv）を作成する場合、
+TIP3PBOXなどのsolvent box名を指定します。solvent box名は*.lib内で確認できます。
+複数名を指定すれば、複数のslvファイルを一度に出力できます。
+
+現在のj_prestoには圧力制御法がなく、定圧計算で溶媒密度を調整できません。そのため、
+*.libから作った*.slvより、300 K・1 atmで事前平衡化したj_prestoBOX.slvの使用を
+推奨します。"j_presto prep -sdb"を指定しない場合、j_prestoBOX.slvが既定で
+使用されます。
+>prep
+@u:j_presto,p:gen_db,n:pepchk
+"j_presto prep"は、入力PDB、gen_dbで作成したtopology database（*.tpldb）、
+必要に応じて溶媒座標（*.slv）を使用し、シミュレーション系を準備します。
+
+主な機能:
+    指定pHに基づく一部アミノ酸の電荷状態変更
+    系の一部の切り出し
+    protein N末端/C末端へのACE/NME付加
+    溶媒・ionの追加
+    系の重心移動
+    残基名変更
+    SHAKE入力の作成
+
+オプション:
+    prep -o      出力basename
+    prep -i      入力PDB
+    prep -db     topology database
+    prep -pH     pH
+    prep -nah    HIS protonationの自動判定を無効化
+    prep -dh     default histidine
+    prep -th     HIS protonation判定のH-bond距離閾値
+    prep -ts/-tc/-tr/-tb    trim形状・中心・半径・境界
+    prep -pair   DNA duplex pair
+    prep -ACE/-NME          protein末端cap
+    prep -s/-sdb/-ss/-sh/-sp/-sc/-sr/-sb    溶媒設定
+    prep -c      旧版互換の溶媒・ion追加法
+    prep -mc     系の中心を原点へ移動
+    prep -ia/-sd/-ie        ion名・濃度、溶媒密度、ion排除距離
+    prep -rr     残基名変更
+    prep -shake  SHAKE入力作成
+
+各引数の詳細は、例えば "prep -i" を入力してください。
+"j_presto get_tmpl prep"で実行scriptのtemplateを取得できます。
+>prep -o
+@u:prep,n:prep -i
+使用法: j_presto prep -o OUTPUT
+
+出力ファイルのbasenameを指定します。未指定時は"test"で、test.pdb、test.tplなどが
+作成されます。
+>prep -i
+@u:prep,p:prep -o,n:prep -db
+使用法: j_presto prep -i INPUT
+
+入力PDBファイル名を指定します。
+>prep -db
+@u:prep,p:prep -i,n:prep -pH
+使用法: j_presto prep -db TPLDB
+
+topology database（*.tpldb）を指定します。
+>prep -pH
+@u:prep,p:prep -db,n:prep -nah
+使用法: j_presto prep -pH PH_VALUE
+
+系のpHを指定します。未指定時は7.0です。この値に基づいてGlu、Lysなどの
+アミノ酸の電荷状態を決定します。
+>prep -nah
+@u:prep,p:prep -pH,n:prep -dh
+使用法: j_presto prep -nah
+
+通常、PDB中で"HIS"と記されたhistidineの状態は、系のpHと他残基とのH-bond状態から
+自動判定されます。この自動判定を行わず、すべてのHISを-dhで指定したdefault
+histidineにする場合、このオプションを指定します。
+>prep -dh
+@u:prep,p:prep -nah,n:prep -th
+使用法: j_presto prep -dh DEFAULT_HIS
+
+default histidine名（HIDまたはHIE）を指定します。-nahを指定した場合、またはpH・
+H-bond解析から状態を決定できない場合、PDB中のHISをこの残基へ変換します。
+既定値はHIEです。
+>prep -th
+@u:prep,p:prep -dh,n:prep -ts
+使用法: j_presto prep -th THRESHOLD_DISTANCE_HISPRO
+
+histidineの電荷状態判定でH-bond形成を判定する距離閾値を指定します。通常2.4–3.5 Å、
+既定値は3.0 Åです。
+>prep -ts
+@u:prep,p:prep -th,n:prep -tc
+使用法: j_presto prep -ts {CAP,BOX,ELL}
+
+系の一部を切り出す場合、境界形状を指定します。
+    CAP    球
+    BOX    直方体
+    ELL    楕円体
+残基は、その全原子が境界外にある場合だけ削除されます。一原子でも境界内なら残します。
+trimによってpeptide chainが切断された場合、新しいN末端とC末端へそれぞれACEとNMEを
+自動付加します。
+>prep -tc
+@u:prep,p:prep -ts,n:prep -tr
+使用法: j_presto prep -tc x y z
+
+"prep -ts CAP"または"prep -ts ELL"で使用する境界中心を、x、y、zの三つの実数で
+指定します。
+>prep -tr
+@u:prep,p:prep -tc,n:prep -tb
+使用法: j_presto prep -tr radius1 [radius2 radius3]
+
+CAPまたはELLでtrimする際の半径を指定します。CAPでは一つの正の実数、ELLでは
+x、y、z軸方向の三つの正の実数を指定します。
+>prep -tb
+@u:prep,p:prep -tr,n:prep -pair
+使用法: j_presto prep -tb x_min x_max y_min y_max z_min z_max
+
+BOXでtrimする際のx、y、z各軸の下限・上限を六つの実数で指定します。
+>prep -pair
+@u:prep,p:prep -tb,n:prep -ACE
+使用法: j_presto prep -pair DNA_DUPLEX_PAIR [DNA_DUPLEX_PAIR ...]
+
+DNAでduplex pairを形成するchain番号を指定します。prep -tsによるtrim時に、pairの
+片方だけが削除されることを防ぎ、両方を保持します。例えばchain 1–2と3–4がpairなら、
+次のように指定します。
+    j_presto prep -pair 1:2 3:4
+>prep -ACE
+@u:prep,p:prep -pair,n:prep -NME
+使用法: j_presto prep -ACE ADD_ACE [ADD_ACE ...]
+
+peptideのN末端へACEを付加する場合、対象chain番号を指定します。
+>prep -NME
+@u:prep,p:prep -ACE,n:prep -s
+使用法: j_presto prep -NME ADD_NME [ADD_NME ...]
+
+peptideのC末端へNMEを付加する場合、対象chain番号を指定します。
+>prep -s
+@u:prep,p:prep -NME,n:prep -sdb
+使用法: j_presto prep -s SOLVENT
+
+"prep -ss"で溶媒を加える際の溶媒残基名を指定します。その溶媒parameterが*.tpldbに
+含まれている必要があります。未指定時は"TP3"（TIP3P water）です。
+>prep -sdb
+@u:prep,p:prep -s,n:prep -ss
+使用法: j_presto prep -sdb SOLVENT_COORDINATE_DATABASE
+
+"prep -ss"で使用する溶媒座標databaseを指定します。"j_presto gen_db -s"でも作成
+できます。未指定時はj_prestoBOX.slvです。現行j_prestoは圧力制御を実装していないため、
+300 Kの定圧条件で事前平衡化されたj_prestoBOX.slvの使用を推奨します。
+>prep -ss
+@u:prep,p:prep -sdb,n:prep -sh
+使用法: j_presto prep -ss {CAP,BOX,ELL,PBC}
+
+系に溶媒を加える際の形状を指定します。
+    CAP    球
+    BOX    直方体
+    ELL    楕円体
+    PBC    直方体の周期境界条件
+>prep -sh
+@u:prep,p:prep -ss,n:prep -sp
+使用法: j_presto prep -sh
+
+通常、溶媒追加時の系の幾何中心、境界内外、solute-solvent overlapの判定にはheavy atom
+だけを使用します。このオプションを指定するとH原子も判定に含めます。
+>prep -sp
+@u:prep,p:prep -sh,n:prep -sc
+使用法: j_presto prep -sp SOLVENT_PADDING
+
+溶媒追加時のpadding長を指定します。CAPでは系中心から最遠原子までの距離、
+BOX/ELL/PBCでは各方向の最遠座標または楕円半径にpaddingを加えて境界を自動設定します。
+-srまたは-sbで境界を明示した場合は無視されます。-sr、-sb、-ssのいずれも明示しない
+場合、既定padding 12.0 Åを使用します。
+>prep -sc
+@u:prep,p:prep -sp,n:prep -sr
+使用法: j_presto prep -sc SOLVENT_CENTER [SOLVENT_CENTER ...]
+
+"prep -ss CAP"または"prep -ss ELL"の溶媒中心を指定します。
+    1) x、y、zの三実数: j_presto prep -sc x y z
+    2) chain番号一つ:   j_presto prep -sc 3
+後者ではchain 1から指定chainまでの原子の幾何中心を使用します。0なら全solute chainを
+使用します。未指定時は0です。trimでchain番号が変わる場合は、trim後のchain構成に
+基づいて指定してください。
+>prep -sr
+@u:prep,p:prep -sc,n:prep -sb
+使用法: j_presto prep -sr radius1 [radius2 radius3]
+
+溶媒領域の半径を指定します。CAPでは一つ、ELLではx、y、z軸方向の三つの正の実数を
+指定します。
+>prep -sb
+@u:prep,p:prep -sr,n:prep -c
+使用法: j_presto prep -sb x_min x_max y_min y_max z_min z_max
+
+"prep -ss BOX"または"prep -ss PBC"で、x、y、z各軸の下限・上限を六つの実数で
+指定します。
+>prep -c
+@u:prep,p:prep -sb,n:prep -mc
+使用法: j_presto prep -c
+
+旧versionの溶媒・ion追加法を使用する互換オプションです。過去の計算結果との比較を
+目的とし、通常は不要です。この方式では溶媒名は"WAT"に限定されます。
+>prep -mc
+@u:prep,p:prep -c,n:prep -ia
+使用法: j_presto prep -mc
+
+-prep -tcまたは-prep -scで設定した系の中心を原点[0, 0, 0]へ平行移動します。
+>prep -ia
+@u:prep,p:prep -mc,n:prep -sd
+使用法: j_presto prep -ia ion_name1 value1 [ion_name2 value2 ...]
+
+系へ加えるion名と個数または濃度を指定します。
+    j_presto prep -ia FE2 0 K+ 3 Na+ 0.153M Cl- 0.153M
+"M"はmol/Lです。個数を0にすると、系の総電荷を中和するために必要な最少数を
+追加します。
+>prep -sd
+@u:prep,p:prep -ia,n:prep -ie
+使用法: j_presto prep -sd SOLVENT_DENSITY
+
+"prep -ia"で濃度からion数を計算する際の溶媒密度（kg/L）を指定します。未指定時は
+水の1.0 kg/Lです。水以外の溶媒では適切な値を指定してください。
+>prep -ie
+@u:prep,p:prep -sd,n:prep -rr
+使用法: j_presto prep -ie ION_EXCLUSION_DISTANCE
+
+"prep -ia"でionを配置する際、各溶媒の代表heavy atom位置で電場を計算し、正ionは
+低電場側、負ionは高電場側の溶媒と置換します。一度配置したionの近傍では電場が強く
+なり、正負ionが交互に局所集積する場合があります。このオプションで指定した半径内の
+溶媒は、その後のion置換候補から除外し、ion同士を一定距離以上離します。既定値は
+9.0 Åです。
+>prep -rr
+@u:prep,p:prep -ie,n:prep -shake
+使用法: j_presto prep -rr RESIDUE_RENAME [RESIDUE_RENAME ...]
+
+残基名を変更します。例えばHOHをWATへ変える場合:
+    j_presto prep -rr HOH:WAT
+複数の変更を同時に指定できます。
+>prep -shake
+@u:prep,p:prep -rr
+使用法: j_presto prep -shake [{H,A}]
+
+共有結合へSHAKE制約を適用するための*.shkファイルを作成します。
+    prep -shake または prep -shake H    Hを含む共有結合だけを制約
+    prep -shake A                         すべての共有結合を制約
+SSBONDまたはLINKで指定した共有結合は、このオプションでは制約できません。
+>pepchk
+@u:j_presto,p:prep,n:md_run
+"j_presto pepchk"は、PDBファイル中のペプチド結合geometryを検査します。
+隣接する各残基対について、次のω二面角を計算します。
+
+    omega(i,i+1) = dihedral(CA_i, C_i, N_(i+1), CA_(i+1))
+
+既定では、|omega| <= 30°をcis、|omega| >= 150°をtrans、それ以外をtwistedと
+分類します。C_i--N_(i+1)距離が1.70 Åを超える残基対は、距離判定を無効にしない限り
+ペプチド結合として扱いません。
+
+使用法:
+    j_presto pepchk INPUT.pdb [options]
+
+オプション:
+    pepchk --model                解析するMODEL recordを選択
+    pepchk --csv                  全結果をCSVへ出力
+    pepchk --cis-cutoff           cis角度閾値
+    pepchk --trans-cutoff         trans角度閾値
+    pepchk --cn-max               peptide C--N距離上限
+    pepchk --ignore-cn-distance   C--N距離filterを無効化
+    pepchk --include-nonstandard  主鎖原子を持つ非標準残基も解析
+    pepchk --report-missing       欠損主鎖原子を報告
+    pepchk --fail-on-cis          cisまたはtwisted検出時にexit status 2を返す
+    pepchk --version              program versionを表示
+
+pepchkのversionは、他のj_prestoサブプログラムとは独立に管理されます。
+>pepchk --model
+@u:pepchk,n:pepchk --csv
+使用法:
+    j_presto pepchk INPUT.pdb --model MODEL_NUMBER
+
+解析するPDB MODEL recordを選択します。既定値はMODEL 1です。MODEL/ENDMDL recordの
+ないPDBは、一つのmodelとして扱います。
+>pepchk --csv
+@u:pepchk,p:pepchk --model,n:pepchk --cis-cutoff
+使用法:
+    j_presto pepchk INPUT.pdb --csv OUTPUT.csv
+
+検査した各残基対、C--N距離、ω角、分類結果をCSVファイルへ出力します。
+>pepchk --cis-cutoff
+@u:pepchk,p:pepchk --csv,n:pepchk --trans-cutoff
+使用法:
+    j_presto pepchk INPUT.pdb --cis-cutoff DEGREES
+
+|omega|がこの値以下の結合をcisと分類します。既定値は30°です。
+>pepchk --trans-cutoff
+@u:pepchk,p:pepchk --cis-cutoff,n:pepchk --cn-max
+使用法:
+    j_presto pepchk INPUT.pdb --trans-cutoff DEGREES
+
+|omega|がこの値以上の結合をtransと分類します。既定値は150°です。cisとtransの
+閾値の間はtwistedと分類します。
+>pepchk --cn-max
+@u:pepchk,p:pepchk --trans-cutoff,n:pepchk --ignore-cn-distance
+使用法:
+    j_presto pepchk INPUT.pdb --cn-max DISTANCE
+
+残基対をペプチド結合として扱うC_i--N_(i+1)距離上限（Å）を指定します。
+既定値は1.70 Åです。
+>pepchk --ignore-cn-distance
+@u:pepchk,p:pepchk --cn-max,n:pepchk --include-nonstandard
+使用法:
+    j_presto pepchk INPUT.pdb --ignore-cn-distance
+
+C_i--N_(i+1)距離filterを無効にします。異常に長いC--N距離を持つ残基対のω角を
+意図的に調べる場合だけ使用してください。
+>pepchk --include-nonstandard
+@u:pepchk,p:pepchk --ignore-cn-distance,n:pepchk --report-missing
+使用法:
+    j_presto pepchk INPUT.pdb --include-nonstandard
+
+必要な主鎖原子が存在する非標準残基も解析します。既定では標準アミノ酸と一般的な
+force field variantだけを検査します。
+>pepchk --report-missing
+@u:pepchk,p:pepchk --include-nonstandard,n:pepchk --fail-on-cis
+使用法:
+    j_presto pepchk INPUT.pdb --report-missing
+
+CA_i、C_i、N_(i+1)、CA_(i+1)のいずれかが欠けており、ω角を計算できない隣接残基対を
+報告します。
+>pepchk --fail-on-cis
+@u:pepchk,p:pepchk --report-missing,n:pepchk --version
+使用法:
+    j_presto pepchk INPUT.pdb --fail-on-cis
+
+cisまたはtwistedペプチド結合を一つ以上検出した場合、process exit status 2を返します。
+自動構造検証workflowで使用できます。
+>pepchk --version
+@u:pepchk,p:pepchk --fail-on-cis
+使用法:
+    j_presto pepchk --version
+
+独立管理されているpepchkのversionを表示して終了します。
+>md_run
+@u:j_presto,p:pepchk,n:batch_set
+"j_presto md_run"は、MDシミュレーションまたはエネルギー最小化を実行します。
+
+使用法:
+    j_presto md_run INPUT_FILE
+
+INPUT_FILEには計算条件を記述します。MD用入力は"md.inp"、エネルギー最小化用入力は
+"min.inp"の項目を参照してください。
+>md.inp
+@u:md_run
+MDシミュレーション用入力ファイルは、次の四つのEXECUTION blockからなります。
+    EXE> INPUT     入力ファイル設定
+    EXE> MD        MD条件
+    EXE> OUTPUT    出力設定
+    EXE> END       入力終了
+
+INPUT、MD、OUTPUT blockはEXE>行で開始し、QUITで終了します。
+    EXE> INPUT
+        OPTION1
+        OPTION2
+        ...
+    QUIT
+EXE> ENDはファイル全体の終了を表すため、QUITは不要です。
+
+"j_presto get_tmpl md.inp"でtemplateを取得し、必要な設定を変更する方法を推奨します。
+各blockの項目名を入力すると、設定可能なoptionを確認できます。
+>min.inp
+@u:md_run
+エネルギー最小化用入力ファイルは、次の四つのEXECUTION blockからなります。
+    EXE> INPUT     入力ファイル設定
+    EXE> MINI      最小化条件
+    EXE> OUTPUT    出力設定
+    EXE> END       入力終了
+
+INPUT、MINI、OUTPUT blockはEXE>行で開始し、QUITで終了します。
+    EXE> INPUT
+        OPTION1
+        OPTION2
+        ...
+    QUIT
+EXE> ENDはファイル全体の終了を表すため、QUITは不要です。
+
+"j_presto get_tmpl min.inp"でtemplateを取得し、必要な設定を変更する方法を推奨します。
+各blockの項目名を入力すると、設定可能なoptionを確認できます。
+>EXE> INPUT
+@u:md.inp,n:EXE> MINI
+"j_presto md_run"の計算に必要な入力ファイルとALSD/CMM関連条件を設定するblockです。
+md.inpとmin.inpの両方で使用します。
+
+設定形式:
+    OPTION_NAME= setting
+option名と=の間に空白を入れず、=と設定値の間には空白を入れてください。
+
+主なoption:
+    TOPOLO    入力topology file
+    COORDI    入力PDB
+    SETSHK    SHAKE設定
+    SETBOU    CAP boundary設定
+    REFCOO    position restraintのreference PDB
+    POSITI    position restraint設定
+    DISTAN    distance restraint設定
+    DIHEDR    dihedral restraint設定
+    CELLVL    CMMのcell level
+    CELSIZ    CMMのcell size
+    CELRES    CMMでresidue単位grid assignmentを行う原子
+    CLUSTA    ALSDで構造変化を促進するRegion A
+    GEPSME    GEPS method
+    SCALET    scalingするenergy term
+    LWEIGH    ALSDのlambda particle mass
+    LTCNTL    lambda particleの温度制御
+
+各option名を入力すると詳細を確認できます。
+>CAPbound.inp
+@u:SETBOU
+CAP boundary計算用の設定ファイルです。CAP boundaryでは、soluteとsolventが存在できる
+有限領域を定義し、分子が境界外へ出た場合に内側へ戻す力を加えます。系のcopyが
+無限に繰り返されるPBCと異なり、vacuum中に浮かぶdropletとして扱います。
+
+境界近傍はboundary forceの影響を受けるため、soluteと境界の間を十分に離してください
+（目安は12 Å以上）。protein等の疎水性soluteはwaterを避けてCAP境界へ付着しやすいため、
+solute boundaryをsolvent boundaryより小さくします。"BOUND> BUFFER"で両境界間の
+bufferを指定し、4 Å以上を推奨します。
+
+設定形式:
+    BOUND> OPTION_NAME
+    setting 1
+    setting 2
+    ...
+
+主なoption:
+    BOUND> SHAPE     CAP形状
+    BOUND> CENTER    CAP中心
+    BOUND> INCLUDE   solvent用CAPを適用する分子
+    BOUND> RADIUS    solvent用球CAP半径
+    BOUND> FORCE     solvent用CAP force constant
+    BOUND> LIST      solute用CAPを適用する原子
+    BOUND> BUFFER    solute/solvent boundary間buffer
+    BOUND> FORPRO    solute用CAP force constant
+
+詳細は、例えば "BOUND> SHAPE" を入力してください。
+>psr.inp
+@u:POSITI
+simulationでposition restraintを適用するための設定ファイルです。md.inpまたはmin.inpの
+"EXE> INPUT" blockでPOSITIに指定します。
+
+形式:
+    PSR> OPTION_NAME
+    ...
+    END
+
+利用可能なoption:
+    PSR> LIST
+    PSR> RADIUS
+
+position restraintは、simulation初期にprotein主鎖などの構造崩壊を防ぐ用途に有効です。
+"j_presto get_tmpl psr.inp"でtemplateを取得できます。
+>dsr.inp
+@u:DISTAN
+simulationでdistance restraintを適用するための設定ファイルです。md.inpまたはmin.inpの
+"EXE> INPUT" blockでDISTANに指定します。
+
+形式:
+    DSR> LIST
+    ...
+    END
+
+詳細は"DSR> LIST"を参照してください。"j_presto get_tmpl dsr.inp"でtemplateを
+取得できます。
+>dhr.inp
+@u:DIHEDR
+simulationでdihedral angle restraintを適用するための設定ファイルです。md.inpまたは
+min.inpの"EXE> INPUT" blockでDIHEDRに指定します。
+
+形式:
+    DHR> OPTION_NAME
+    ...
+    END
+
+利用可能なoption:
+    DHR> NUMBER
+    DHR> LIST
+
+詳細は、例えば"DHR> NUMBER"を参照してください。"j_presto get_tmpl dhr.inp"で
+templateを取得できます。
+>EXE> MD
+@u:md.inp,p:EXE> INPUT,n:EXE> OUTPUT
+md.inpでMD条件を設定するblockです。
+
+設定形式:
+    OPTION_NAME= setting
+option名と=の間に空白を入れず、=と設定値の間には空白を入れてください。
+
+主なoption:
+    METHOD / LOOPLI / TIMEST          計算method、step数、time step
+    UPDATE / CMMUPD                   neighbor listとCMM parameterの更新頻度
+    RESTAR / NAMERI / NAMERO          restart設定
+    TEMPCO / SETTEM / STARTT / HEATLO / RELAXA
+                                      温度制御
+    CAL15M / CUTLEN                    electrostatic methodとcutoff
+    INITIA / RANDOM                    初期速度
+    BOUNDA / XMINCL...ZMAXCL           PBC
+    STOPCE / NSTPCN                    重心の並進・回転停止
+    DIEVAL / TEMPER                    dielectric constant、restraint温度
+    WETPSR / WETDSR / WETDHR          restraint scale
+    COVSHK / LIMSHK                    SHAKE
+    NAMEGE / NAMETO / MNTRTO / LAMBDA ALSD/GE
+    PARALV / N_SIMD                    parallelization
+    OUTATM                              trajectory出力原子選択
+    NAMECO / MNTRCO / OUTCOO          coordinate出力
+    NAMEVE / MNTRVE / OUTVEL          velocity出力
+    NAMEEN / MNTREN / OUTENE          energy出力
+    OUTLOG / LOGFOR / FDEBUG          logとdebug
+
+各option名を入力すると詳細を確認できます。
+>EXE> MINI
+@u:min.inp,p:EXE> INPUT,n:EXE> OUTPUT
+min.inpでエネルギー最小化条件を設定するblockです。
+
+設定形式:
+    OPTION_NAME= setting
+
+主なoption:
+    METHOD / LOOPLI / UPDATE          method、step数、neighbor list更新
+    CONVGR / ISTEPL                   convergence閾値、初期step length
+    UPRATE / DOWNRA                   steepest descentのstep調整
+    LINESE / CONVLI                   conjugate gradient line search
+    CAL15M / CUTLEN                    electrostatic methodとcutoff
+    BOUNDA / XMINCL...ZMAXCL           PBC
+    DIEVAL / TEMPER                    dielectric constant、restraint温度
+    WETPSR / WETDSR / WETDHR          restraint scale
+    COVSHK / LIMSHK                    SHAKE
+    LAMBDA                              energy scaling
+    PARALV / N_SIMD                    parallelization
+    MONITO / LOGFOR                    log
+
+各option名を入力すると詳細を確認できます。
+>EXE> OUTPUT
+@u:md.inp,p:EXE> MD,n:EXE> END
+md.inpとmin.inpで計算結果の出力を設定するblockです。
+    OCOORD    最終構造の出力PDB
+詳細はOCOORDを参照してください。
+>EXE> END
+@u:md.inp,p:EXE> OUTPUT
+"j_presto md_run"入力ファイルの終了を宣言するblockです。
+>TOPOLO
+@u:EXE> INPUT,n:COORDI
+md.inpまたはmin.inpの"EXE> INPUT" blockで、入力topology file（*.tpl）を
+指定します。topologyは"j_presto prep"で作成できます。
+>COORDI
+@u:EXE> INPUT,p:TOPOLO,n:SETSHK
+md.inpまたはmin.inpの"EXE> INPUT" blockで、入力PDB（*.pdb）を指定します。
+j_presto用PDBは"j_presto prep"で作成できます。
+>OCOORD
+@u:EXE> OUTPUT
+md.inpまたはmin.inpの"EXE> OUTPUT" blockで、simulationまたはエネルギー
+最小化の最終構造を出力するPDBファイル名を指定します。
+>SETSHK
+@u:EXE> INPUT,p:COORDI,n:SETBOU
+md.inpまたはmin.inpの"EXE> INPUT" blockで、SHAKE設定ファイル（*.shk）を
+指定します。*.shkは"j_presto prep"で作成できます。
+>SETBOU
+@u:EXE> INPUT,p:SETSHK,n:REFCOO
+md.inpまたはmin.inpの"EXE> INPUT" blockで、CAP boundary設定ファイルを
+指定します。"j_presto get_tmpl CAPbound.inp"でtemplateを取得できます。
+ファイル形式は"CAPbound.inp"を参照してください。
+>REFCOO
+@u:EXE> INPUT,p:SETBOU,n:POSITI
+position restraintのreference構造を含むPDBを指定します。COORDIで指定した初期構造PDBと
+原子構成が一致している必要があります。position restraintを使用するには、REFCOOに加えて
+POSITIでpsr.inpも指定してください。
+>POSITI
+@u:EXE> INPUT,p:REFCOO,n:DISTAN
+position restraint設定ファイル（psr.inp）を指定します。
+    j_presto get_tmpl psr.inp
+でtemplateを取得できます。形式は"psr.inp"を参照してください。
+>DISTAN
+@u:EXE> INPUT,p:POSITI,n:DIHEDR
+distance restraint設定ファイル（dsr.inp）を指定します。
+    j_presto get_tmpl dsr.inp
+でtemplateを取得できます。形式は"dsr.inp"を参照してください。
+>DIHEDR
+@u:EXE> INPUT,p:DISTAN,n:CELLVL
+dihedral angle restraint設定ファイル（dhr.inp）を指定します。
+    j_presto get_tmpl dhr.inp
+でtemplateを取得できます。形式は"dhr.inp"を参照してください。
+>CELLVL
+@u:EXE> INPUT,p:DIHEDR,n:CELSIZ
+CAL15M=CMMでは空間を階層的なcell gridへ分割します。level 1は2×2×2の8 cell、
+その8個をまとめてlevel 2、さらに8個をまとめてlevel 3とします。近距離相互作用は
+厳密に、遠距離相互作用は上位levelのmultipoleで近似します。
+
+このoptionは最大cell levelを指定します。j_prestoはlevel 3–5に対応し、既定値は3です。
+指定値は系に応じて内部で調整される場合があります。
+>CELSIZ
+@u:EXE> INPUT,p:CELLVL,n:CELRES
+CAL15M=CMMで使用するlevel 1 cellの大きさを指定します。既定値は6.0 Åです。
+系に応じてj_prestoが内部で適切な値へ調整する場合があります。
+>CELRES
+@u:EXE> INPUT,p:CELSIZ,n:CLUSTA
+CMMで各atomが属するgridを決める際、指定した残基については個々のatom座標ではなく
+残基重心からgridを決定し、その残基の全atomを同じgridへ割り当てます。
+
+指定形式:
+    CELRES= atom_specifier
+指定原子を一つ以上含む残基が対象です。atom specifierの文法は"atom specifier"を
+参照してください。CMMでは"CELRES= WAT:*"を推奨します。
+>CLUSTA
+@u:EXE> INPUT,p:CELRES,n:GEPSME
+ALSDで構造変化を促進するRegion Aをatom specifierで指定します。
+    CLUSTA= atom_specifier
+文法は"atom specifier"を参照してください。
+>GEPSME
+@u:EXE> INPUT,p:CLUSTA,n:SCALET
+ALSDを実行する場合、次のように設定します。
+    GEPSME= LMD
+>SCALET
+@u:EXE> INPUT,p:GEPSME,n:LWEIGH
+ALSDでscalingするenergy termを四桁で指定します。
+    SCALET= 0010
+
+electrostaticとvan der Waals energyは常にscaleされます。四桁はbond、angle、torsion、
+improper torsionを順に表し、0は非scale、1はscaleです。torsionだけは2（peptide bondを
+除いてscale）または3（peptide bondを除くがXXX-PRO peptide bondはscale）も選べます。
+既定値は"0030"です。
+>LWEIGH
+@u:EXE> INPUT,p:SCALET,n:LTCNTL
+ALSDではscaling factor λもHamiltonianに従って運動します。このoptionはλ particleの
+massを指定します。未指定時はCLUSTAで選択したRegion A atomの総質量です。
+例:
+    LWEIGH= 1000.0
+>LTCNTL
+@u:EXE> INPUT,p:LWEIGH
+ALSDのλ particleへ直接温度制御を適用する場合、次のように設定します。
+    LTCNTL= YES
+この場合、λの温度制御を系のatomとcoupleします。既定値はNOで、λはHamiltonianを
+介して間接的に温度制御されます。
+>METHOD
+@u:EXE> MD,n:LOOPLI
+計算methodを指定します。md.inpの"EXE> MD"では次を選択できます。
+    CONS    Berendsen法によるconstant-temperature MD
+    MICR    microcanonical MD
+    CANO    Hoover & Evans法によるcanonical MD
+    GE      McMD、ALSD等のgeneralized-ensemble method
+既定値はCANOです。
+
+min.inpの"EXE> MINI"では次を選択できます。
+    STEE    steepest descent
+    CONJ    conjugate gradient
+既定値はSTEEです。
+>LOOPLI
+@u:EXE> MD,p:METHOD,n:TIMEST
+MDまたはエネルギー最小化のstep数を指定します。md.inpの"EXE> MD"とmin.inpの
+"EXE> MINI"で使用でき、既定値は0です。
+>TIMEST
+@u:EXE> MD,p:LOOPLI,n:UPDATE
+MDの一stepの時間（fs）を指定します。md.inpの"EXE> MD"で使用し、既定値は2.0 fsです。
+>UPDATE
+@u:EXE> MD,p:TIMEST,n:CMMUPD
+相互作用計算用neighbor listの更新間隔をstep数で指定します。MDと最小化の両方で
+使用でき、既定値は10 stepです。
+>CMMUPD
+@u:EXE> MD,p:UPDATE,n:RESTAR
+CAL15M=CMMのMDで、long-range electrostatic parameterの更新間隔を指定します。
+UPDATEの値はCMMUPDで割り切れる必要があります。既定値は5 stepです。最小化では
+設定できず、内部的に毎step更新します。
+>RESTAR
+@u:EXE> MD,p:CMMUPD,n:NAMERI
+md.inpの"EXE> MD"でRESTAR=YESとすると、NAMERIで指定したrestart fileを読み、
+前回計算から継続します。既定値はNOです。
+>NAMERI
+@u:EXE> MD,p:RESTAR,n:NAMERO
+RESTAR=YESの場合に読み込むrestart fileを指定します。md.inpの"EXE> MD"で使用します。
+>NAMERO
+@u:EXE> MD,p:TEMPCO,n:NAMERI
+出力restart file名を指定します。このファイルを次回NAMERIへ指定しRESTAR=YESとすることで、
+現在のsimulation最終stepから継続できます。
+>TEMPCO
+@u:EXE> MD,p:NAMERO,n:SETTEM
+METHOD=CANOまたはGEの温度制御方式を指定します。Hoover & Evans thermostatではsoluteと
+solventの平均速度、すなわち温度がずれる場合があります。TEMPCO=YES（既定）では
+分子種ごとに温度制御し、このずれを抑えます。系全体を一括制御する場合はNOにします。
+>SETTEM
+@u:EXE> MD,p:TEMPCO,n:STARTT
+系のtarget temperatureを指定します。既定値は300 Kです。名前の似たTEMPERと混同しないでください。
+>STARTT
+@u:EXE> MD,p:SETTEM,n:HEATLO
+simulation step 0の温度を指定します。HEATLOで指定したstepまで、STARTTからSETTEMへ
+線形に温度を変化させ、その後SETTEMで一定にします。既定値は300 Kです。
+>HEATLO
+@u:EXE> MD,p:STARTT,n:RELAXA
+STARTTからSETTEMへ温度を変化させるstep数を指定します。既定値は0です。
+>RELAXA
+@u:EXE> MD,p:HEATLO,n:CAL15M
+METHOD=CONS（Berendsen constant-temperature MD）のthermostat relaxation timeを指定します。
+既定値は40.0です。
+>CONVGR
+@u:EXE> MINI,p:UPDATE,n:ISTEPL
+エネルギー最小化の収束判定に使用するRMSF（root mean square force）閾値です。
+既定値は0.1です。
+>ISTEPL
+@u:EXE> MINI,p:CONVGR,n:UPRATE
+エネルギー最小化で構造を変化させる初期step lengthを指定します。既定値は0.01です。
+>UPRATE
+@u:EXE> MINI,p:ISTEPL,n:DOWNRA
+steepest descentで構造変化によりenergyが低下した場合、step lengthへ掛ける係数です。
+既定値は1.2です。
+>DOWNRA
+@u:EXE> MINI,p:UPRATE,n:LINESE
+steepest descentでenergyが低下しなかった場合、step lengthへ掛ける係数です。
+既定値は0.6です。
+>LINESE
+@u:EXE> MINI,p:DOWNRA,n:CONVLI
+conjugate gradient最小化のline search loop上限を指定します。既定値は10です。
+>CONVLI
+@u:EXE> MINI,p:LINESE,n:CAL15M
+conjugate gradient最小化のline search収束判定値を指定します。既定値は0.1です。
+>CAL15M
+@u:EXE> MD,p:RELAXA,n:CUTLEN
+electrostatic interactionの計算法を指定します。MDと最小化の両方で使用できます。
+    CMM     cell multipole method
+    ATOM    atom-based cutoff
+    RESI    residue-based cutoff
+    ZD      zero-dipole summation method
+既定値はCMMです。
+>CUTLEN
+@u:EXE> MD,p:CAL15M,n:INITIA
+long-range interactionのcutoff距離（Å）を指定します。既定値は12.0 Åです。
+CMMではvdW interactionだけに適用され、他methodではvdWとelectrostaticの両方へ
+適用されます。
+>INITIA
+@u:EXE> MD,p:CUTLEN,n:RANDOM
+restartを使わないMDの初期速度設定です。
+    ZERO    全atomの初期速度を0にする
+    SET     RANDOMで指定したseedから初期速度を生成
+既定値はSETです。
+>RANDOM
+@u:EXE> MD,p:INITIA,n:BOUNDA
+restartを使わないMDで初期速度を生成するrandom seedを整数で指定します。既定値は584287です。
+>BOUNDA
+@u:EXE> MD,p:RANDOM,n:XMINCL
+PBCを使用する場合、BOUNDA=PBCと設定します。既定値はNOです。PBC使用時はXMINCL、
+XMAXCL、YMINCL、YMAXCL、ZMINCL、ZMAXCLでcell境界を指定してください。
+>XMINCL
+@u:EXE> MD,p:BOUNDA,n:XMAXCL
+PBC cellのx軸下限座標を指定します。PBCを有効にするには別途BOUNDA=PBCが必要です。
+>XMAXCL
+@u:EXE> MD,p:XMINCL,n:YMINCL
+PBC cellのx軸上限座標を指定します。PBCを有効にするには別途BOUNDA=PBCが必要です。
+>YMINCL
+@u:EXE> MD,p:XMAXCL,n:YMAXCL
+PBC cellのy軸下限座標を指定します。PBCを有効にするには別途BOUNDA=PBCが必要です。
+>YMAXCL
+@u:EXE> MD,p:YMINCL,n:ZMINCL
+PBC cellのy軸上限座標を指定します。PBCを有効にするには別途BOUNDA=PBCが必要です。
+>ZMINCL
+@u:EXE> MD,p:YMAXCL,n:ZMAXCL
+PBC cellのz軸下限座標を指定します。PBCを有効にするには別途BOUNDA=PBCが必要です。
+>ZMAXCL
+@u:EXE> MD,p:ZMINCL,n:STOPCE
+PBC cellのz軸上限座標を指定します。PBCを有効にするには別途BOUNDA=PBCが必要です。
+>STOPCE
+@u:EXE> MD,p:ZMAXCL,n:NSTPCN
+MD中に系の重心の並進・回転運動を除去します。重心計算には既定でchain 1を使用し、
+NSTPCNでchain 1から指定chainまでへ拡張できます。
+    TRAN    並進を固定
+    ROTA    回転を固定
+    BOTH    並進と回転を固定
+    NO      固定しない（既定）
+>NSTPCN
+@u:EXE> MD,p:STOPCE,n:DIEVAL
+STOPCEで重心の並進・回転を固定する際、重心計算へ含める最後のchain番号を指定します。
+例: NSTPCN=3ならchain 1–3を使用します。既定値は1です。
+>DIEVAL
+@u:EXE> MD,p:NSTPCN,n:TEMPER
+dielectric constantを正の実数で指定します。MDと最小化の両方で使用でき、既定値は1です。
+>TEMPER
+@u:EXE> MD,p:DIEVAL,n:WETPSR
+position、distance、dihedral restraint force計算で使用する温度を指定します。MDと最小化で
+使用でき、既定値は300 Kです。
+>WETPSR
+@u:EXE> MD,p:TEMPER,n:WETDSR
+position restraintのscale factorを正の実数で指定します。psr.inpの各force constantへ
+一括して掛けます。既定値は1です。
+>WETDSR
+@u:EXE> MD,p:WETPSR,n:WETDHR
+distance restraintのscale factorを正の実数で指定します。dsr.inpの各force constantへ
+一括して掛けます。既定値は1です。
+>WETDHR
+@u:EXE> MD,p:WETDSR,n:COVSHK
+dihedral restraintのscale factorを正の実数で指定します。dhr.inpの各force constantへ
+一括して掛けます。既定値は1です。
+>COVSHK
+@u:EXE> MD,p:WETDHR,n:LIMSHK
+SHAKEの収束判定値を指定します。既定値は0.000001です。
+>LIMSHK
+@u:EXE> MD,p:COVSHK,n:NAMEGE
+SHAKEを収束させるloop回数上限を正の整数で指定します。既定値は1000です。
+>NAMEGE
+@u:EXE> MD,p:LIMSHK,n:NAMETO
+McMD、ALSD等のgeneralized-ensemble methodで使用するparameter file（*.nf）を指定します。
+*.nfは"j_presto GEprep"で作成します。
+>NAMETO
+@u:EXE> MD,p:NAMEGE,n:MNTRTO
+ALSDのtotal energyとlambdaを出力するファイル名を指定します。この出力はGEprepで*.nfを
+作成する際に使用します。
+>MNTRTO
+@u:EXE> MD,p:NAMETO,n:md_run LAMBDA
+McMD/ALSDのparameter作成に必要なtotal energy・lambda出力形式を指定します。
+    NO      出力しない
+    ASCI    ASCII
+    SING    single-precision binary
+    DOUB    double-precision binary
+既定値はASCIです。GEprepへ入力する場合はASCIを選択してください。
+>md_run LAMBDA
+@u:EXE> MD,p:MNTRTO,n:PARALV
+ALSDでinteratomic interactionをscaleするλを指定します。MDと最小化で使用できます。
+λ=1では通常simulationと同じinteraction、λ<1ではinteractionが弱くなり構造変化を
+促進します。正の実数を指定できますが、0に近い値（一般に0.3未満）ではatom collision等で
+計算が不安定になる可能性があります。
+
+simulation開始時のλをこの値へ強制設定します。restart時に本optionを省略すれば前回最終stepの
+λを継承できますが、指定するとその値へ変更されます。
+>PARALV
+@u:EXE> MD,p:md_run LAMBDA,n:N_SIMD
+OpenMP parallelization methodを指定します。
+    REDU    OpenMP reduction。一般に遅く非推奨
+    HIGH    数万atom程度または中程度parallelizationで通常最速
+    DOUB    10万atom超または高度parallelizationでHIGHより速い場合が多い
+系と環境で最適値が異なるため、test計算で速度を比較してください。
+>N_SIMD
+@u:EXE> MD,p:PARALV,n:OUTATM
+SIMD parallel widthを指定します。未指定時はmd_runが1、2、4、8...を試し、計算時間から
+自動選択します。選択値はlogの"SIMD PARALLELIZATION was set to ..."に出力されます。
+まれに自動判定が最適でないため、最初に未指定でtestし、得られた最適値を本計算で
+明示することを推奨します。
+>OUTATM
+@u:EXE> MD,p:N_SIMD,n:NAMECO
+coordinateおよびvelocity trajectoryへ出力するatomを選択します。md.inpの"EXE> MD"で
+atom specifierとして指定します。
+
+例:
+    OUTATM= *
+        全atomを出力
+    OUTATM= !WAT:*&!Na+:*&!Cl-:*
+        waterとNa+/Cl- ionを除外
+    OUTATM= 1<300:*
+        residue 1–300のatomを出力
+
+出力atomを減らすとtrajectory容量を大幅に削減できます。選択atomは元の順序で出力され、
+coordinateとvelocityの両方へ同じ選択を適用します。文法は"atom specifier"を参照してください。
+>NAMECO
+@u:EXE> MD,p:OUTATM,n:MNTRCO
+md.inpの"EXE> MD"でcoordinate出力ファイル名を指定します。
+>MNTRCO
+@u:EXE> MD,p:NAMECO,n:OUTCOO
+NAMECOで指定したcoordinate file形式を選択します。
+    NO / ASCI / SING / DOUB
+既定値はSINGです。
+>OUTCOO
+@u:EXE> MD,p:MNTRCO,n:NAMEVE
+NAMECOへcoordinateを出力するstep間隔を指定します。OUTCOO=10なら10 stepごとです。
+未指定時はcoordinateを出力しません。
+>NAMEVE
+@u:EXE> MD,p:OUTCOO,n:MNTRVE
+md.inpの"EXE> MD"でvelocity出力ファイル名を指定します。
+>MNTRVE
+@u:EXE> MD,p:NAMEVE,n:OUTVEL
+NAMEVEで指定したvelocity file形式を選択します。
+    NO / ASCI / SING / DOUB
+既定値はNOです。
+>OUTVEL
+@u:EXE> MD,p:MNTRVE,n:NAMEEN
+NAMEVEへvelocityを出力するstep間隔を指定します。OUTVEL=10なら10 stepごとです。
+未指定時はvelocityを出力しません。
+>NAMEEN
+@u:EXE> MD,p:OUTVEL,n:MNTREN
+md.inpの"EXE> MD"でenergy出力ファイル名を指定します。
+>MNTREN
+@u:EXE> MD,p:NAMEEN,n:OUTENE
+NAMEENで指定したenergy file形式を選択します。
+    NO / ASCI / SING / DOUB
+既定値はNOです。
+>OUTENE
+@u:EXE> MD,p:MNTREN,n:OUTLOG
+NAMEENへenergyを出力するstep間隔を指定します。OUTENE=10なら10 stepごとです。
+未指定時はenergyを出力しません。
+>OUTLOG
+@u:EXE> MD,p:OUTENE,n:MONITO
+md.inpの"EXE> MD"でlog出力間隔をstep数で指定します。同時にtemporary restart fileも
+出力します。OUTLOG=10なら10 stepごとです。未指定時は計算中logを出力しません。
+>MONITO
+@u:EXE> MD,p:OUTLOG,n:LOGFOR
+min.inpの"EXE> MINI"でlog出力間隔を指定します。MONITO=10なら10 stepごとです。
+既定値は10です。
+>LOGFOR
+@u:EXE> MD,p:MONITO,n:FDEBUG
+MDおよび最小化のlog詳細度を指定します。
+    SHOR    short log
+    DETA    detailed log
+既定値はSHORです。
+>FDEBUG
+@u:EXE> MD,p:LOGFOR
+md_run改変時のdebug用optionです。既定値はNOです。
+
+改変前にFDEBUG=MAKEで1 step実行すると、energyとforceを含む1stp_force.binを作成します。
+改変後、このfileがcurrent directoryにある状態でFDEBUG=YESとして1 step実行すると、
+新しいenergy/forceとreferenceとの差を計算し、改変によるbugを検査できます。
+>BOUND> SHAPE
+@u:CAPbound.inp,n:BOUND> CENTER
+CAPbound.inpでCAP boundary形状を指定します。球形の場合:
+    BOUND> SHAPE
+    SPHERE
+>BOUND> CENTER
+@u:CAPbound.inp,p:BOUND> SHAPE,n:BOUND> INCLUDE
+CAPbound.inpでCAP中心を指定します。次の三方式があります。
+
+座標で指定:
+    BOUND> CENTER
+    COORDINATE  0.0 0.0 0.0
+prep実行logに表示された系中心座標を利用できます。
+
+atom番号で指定:
+    BOUND> CENTER
+    ATOM  346
+
+chain重心で指定:
+    BOUND> CENTER
+    CHAIN  1
+
+ATOMまたはCHAINでは、md_run入力のCOORDIで指定したPDB座標を参照します。
+>BOUND> INCLUDE
+@u:CAPbound.inp,p:BOUND> CENTER,n:BOUND> RADIUS
+solvent用CAP boundaryを適用する分子種を指定します。
+
+形式:
+    BOUND> INCLUDE
+    WAT 1 999999 NO
+
+第1成分はtopology fileの"TPL> MOLECULES"に記載された分子種名です。第2・第3成分は
+対象分子IDの最小・最大値です。上例ではWAT 1–999999、実質すべてのwaterへ適用します。
+Na+やCl-へCAPを明示しなくても、vacuum中ではenergetically unstableなためsolventにより
+内側へ戻されます。第4成分をYESにすると、CAP適用分子情報をlogへ出力します。
+>BOUND> RADIUS
+@u:CAPbound.inp,p:BOUND> INCLUDE,n:BOUND> FORCE
+球形CAP boundaryで、solvent用CAPの中心からの半径を指定します。
+>BOUND> FORCE
+@u:CAPbound.inp,p:BOUND> RADIUS,n:BOUND> LIST
+solvent用CAP boundaryのforce constantを指定します。既定値は150.0 kcal/molです。
+>BOUND> LIST
+@u:CAPbound.inp,p:BOUND> FORCE,n:BOUND> BUFFER
+solute用CAP boundaryを適用するatomを指定します。
+
+形式例:
+    BOUND> LIST
+    1 1 1 99999 C* * NO
+    1 1 1 99999 N* * NO
+    ...
+
+第1・第2成分: 対象chainの最初・最後。第1成分が0以外なら、第3・第4成分は各chain内の
+residue番号範囲です。第1成分が0なら、第3・第4成分はPDBに書かれた全体の連続residue
+番号範囲です。
+第5成分: atom名。"*"や"C*"のように末尾wildcardを使用できます。"HEAV"はH以外、
+"SIDE"はprotein/nucleic acidのbackbone以外です。*Aや*C*のような先頭・中間wildcardは
+使用できません。
+第6成分: residue名。atom名と同様にwildcardを使用できます。
+第7成分: YESで適用atom情報をlogへ出力します。
+>BOUND> BUFFER
+@u:CAPbound.inp,p:BOUND> LIST,n:BOUND> FORPRO
+疎水性soluteがwaterを避けてCAP境界へ付着することを防ぐため、solute用CAPをsolvent用
+CAPより小さくします。このoptionは両境界間のbuffer長を指定します。4 Å以上を推奨します。
+例: solvent CAP半径30 Å、buffer 4 Åならsolute CAP半径は26 Åです。
+>BOUND> FORPRO
+@u:CAPbound.inp,p:BOUND> BUFFER
+solute用CAP boundaryのforce constantを指定します。既定値は150.0 kcal/molです。
+>PSR> LIST
+@u:psr.inp,n:PSR> RADIUS
+psr.inpでposition restraintを直接適用するatomを指定します。
+
+形式例:
+    PSR> LIST
+    1 1 1 99999 CA * 1.0 NOMA NO
+    ...
+    END
+
+第1・第2成分: 対象chain範囲。第1成分が0以外なら第3・第4成分は各chain内residue範囲、
+0ならPDB全体の連続residue番号範囲です。
+第5成分: atom名。末尾wildcardを使用でき、"HEAV"はH以外、"SIDE"はbackbone以外です。
+第6成分: residue名（wildcard可）。
+第7成分: force constant（kcal/mol）。
+第8成分: MASSならforce constantへatom massを掛けます。NOMAは掛けません。
+第9成分: YESで適用atom情報をlogへ出力します。
+>PSR> RADIUS
+@u:psr.inp,p:PSR> LIST,n:DSR> LIST
+center atomから指定距離範囲にあるatomへposition restraintを適用します。
+
+形式例:
+    PSR> RADIUS
+    1 5 CA 10.0 20.0 CA 1.0 NOMA NO
+    ...
+    END
+
+第1–3成分: center atomのchain番号、residue番号、atom名。
+第4・第5成分: rmin、rmax。
+第6成分: restraint対象atom名（末尾wildcard可）。
+第7成分: force constant（kcal/mol）。
+第8成分: MASSならatom massを掛け、NOMAなら掛けません。
+第9成分: YESで適用atom情報をlogへ出力します。
+>DSR> LIST
+@u:dsr.inp,p:PSR> RADIUS
+dsr.inpでdistance restraintを指定します。
+
+形式例:
+    DSR> LIST
+    1 1 ASN CA 1 2 LEU CA 1.0 10.0 2.0 17.0 NO
+    END
+
+二atom間距離がrmin未満またはrmax超過になった場合、それぞれforce constant fmin、fmax
+（kcal/mol）のharmonic forceを加えます。
+第1–4成分は第1 atomのchain、residue番号、residue名、atom名、第5–8成分は第2 atomの
+同情報、第9–12成分はfmin、fmax、rmin、rmaxです。第13成分をYESにすると適用情報を
+logへ出力します。
+>DHR> NUMBER
+@u:dhr.inp,n:DHR> LIST
+dhr.inpでatom番号によりdihedral angle restraintを指定します。
+
+形式例:
+    DHR> NUMB
+    1 2 3 4 10.0 10.0 40.0 80.0 NO
+    END
+
+四atomのdihedral angleがrmin未満またはrmax超過の場合、fminまたはfmax（kcal/mol）の
+harmonic forceを加えます。第1–4成分はPDB atom番号、第5–8成分はfmin、fmax、rmin、
+rmax（degree）、第9成分はYESで適用情報をlogへ出力します。
+>DHR> LIST
+@u:dhr.inp,p:DHR> NUMBER
+dhr.inpでchain、residue番号、atom名によりdihedral angle restraintを指定します。
+
+形式例:
+    DHR> LIST
+    1 1 N 1 CA 1 C 2 N 10.0 10.0 40.0 80.0 NO
+    END
+
+第1成分はchain番号、第2–9成分は四atomのresidue番号とatom名、第10–13成分はfmin、
+fmax、rmin、rmax（degree）です。角度が範囲外になるとharmonic forceを加えます。
+第14成分をYESにすると適用情報をlogへ出力します。
+>batch_set
+@u:j_presto,p:md_run,n:GEprep
+"j_presto batch_set"は、多数のMD runを実行するための入力ファイルと実行scriptを
+自動作成します。一つのMD runではmd.inpを用意して"j_presto md_run md.inp"を
+実行しますが、初期速度の異なる多数runや、McMD/ALSDの反復runを手作業で準備するのは
+煩雑です。batch_setは、j_presto_mpiまたはj_presto_masterで複数runを一つのMPI jobとして
+実行するためのdirectory構造とfileを作成します。
+
+実行前に次の三fileを準備します（括弧内は既定名）。
+    1 : MD schedule入力（batch_set.inp または batch_set_ALSD.inp）
+    2 : 単一md_run用実行script template（md_run.exe）
+    3 : 複数run用実行script template（md_multi.exe）
+
+current directoryにbatch_set.inp、md_run.exe、md_multi.exeがあれば自動使用します。
+別名を使う場合は-b、-r、-mで指定します。詳細は"j_presto batch_set -h"を参照してください。
+
+batch_setはmd* directoryを作り、その下にn1からn[NRUN]を作成します。各n*にはscheduleに
+基づくmd.inpとmd_run.exeを配置します。またcurrent directoryにmd_multi_*.exeを作成し、
+これを実行することでmd*内の全runを一つのMPI jobとしてまとめて実行できます。
+>batch_set.inp
+@u:batch_set,n:batch_set_ALSD.inp
+batch_set.inpは、複数MD runの実行scheduleを定義する入力です。この内容からmd.inpと
+directory構造を自動作成します。通常MD用templateは次で取得できます。
+    j_presto get_tmpl batch_set.inp
+ALSD用は"batch_set_ALSD.inp"を参照してください。
+
+ファイル先頭の主な変数:
+    nmd i j       作成・実行する最初と最後のMD ID（i <= j）
+                  例: nmd 0 2 → md0、md1、md2を順に作成
+    nrun i        各MD stageで実行する独立run数
+                  例: nrun 60 → 各md*にn1–n60を作成
+    nmpi i        MPI process数。j_presto_mpiでは通常nrunと同数。
+                  resourceが少ない場合、j_presto_masterではnrun未満も指定可能
+    temper r s    #TEMPERを各runへr–sの等間隔温度として展開
+    lambda r s    #LAMBDAを各runへr–sの等間隔λとして展開
+nmd、nrun、nmpiは必須です。
+
+その後は、整数で始まり空行で終わるblockを記述します。"0" blockにはmd0以降で使う
+初期設定を記述します。指定できるmd_run optionは"EXE> INPUT"、"EXE> MD"、
+"EXE> OUTPUT"を参照してください。semicolon（;）以降はcommentです。
+
+後続の"1"、"2"等のblockでは、そのMD ID以降で変更するoptionだけを記述します。
+前stageの設定は継承されます。"OPTION= OFF"とすると以前の指定を解除できます。
+例えばmd1でRESTAR=YES、NAMERI=../../md#PMD/n#RUN/restart.datとすると、各runは
+前stageのrestartから継続します。
+
+利用可能なplaceholder:
+    #CMD       現在のMD ID
+    #PMD       一つ前のMD ID
+    #RUN       現在のrun ID
+    #LAMBDA    lambdaで割り当てたλ
+    #TEMPER    temperで割り当てた温度
+    #RNDSED    random seed
+    #NRUN      nrunで指定したrun数
+    #NMPI      nmpiで指定したMPI process数
+
+#RNDSEDは既定でmd0/n1に1、n2に2...と一意に割り当てられます。batch_setのrandom-seed
+offset optionを使うと全seedへ一定値を加えられます。具体的な記述例はtemplateを参照してください。
+>batch_set_ALSD.inp
+@u:batch_set,p:batch_set.inp
+ALSDの複数stageをbatch_setで準備するschedule入力です。
+    j_presto get_tmpl batch_set_ALSD.inp
+でtemplateを取得できます。batch_setは既定でbatch_set.inpを探すため、fileをrenameするか
+"j_presto batch_set -b"で明示してください。
+
+先頭のnmd、nrun、nmpi、temper、lambda、およびplaceholderの規則は"batch_set.inp"と同じです。
+ALSD templateは概ね次の流れで構成されます。
+
+    md0    restraint付きrelaxation
+    md1    restartを使用したrelaxation
+    md2    複数の固定λを用いるCLMDを実行し、dlnP(λ)/dλの初期推定を作成
+    md3–md25
+           ALSDを反復し、PREFITで前stageの*.nfを読みながら推定関数を更新。
+           NXMAXV等でλ範囲を段階的にλ=1付近まで拡張し、FORCESも調整
+    md26   production ALSD。reweighting用のλ、E_AA、E_AB範囲を設定
+    md27   production結果からcanonical weight（*.prob）を作成
+
+ALSDでは系をRegion AとRegion Bへ分け、potential energyを
+    E = E_AA + E_AB + E_BB
+と表します。λによりRegion A関連interactionをscaleし、
+    E_ALSD = λ^2 E_AA + λ E_AB + E_BB + RT lnP(λ)
+を用います。λ=1は通常MDと同等、λ<1ではRegion Aのinteractionが弱まり構造変化が
+促進されます。未知のdlnP(λ)/dλをCLMDと反復ALSDから推定し、λが設定範囲をrandom walk
+できるようにします。
+
+md2ではLAMBDA=#LAMBDAにより各runへ異なる固定λを割り当て、SIMTYP=CLMDとしてGEprep用
+初期dataを作ります。ALSD開始後はLAMBDA=OFFにしてください。設定したままだとrestartに
+保存されたλを継承せず、毎回強制的に初期値へ戻ります。
+
+GEprep関連optionは各MD block内にmd_run optionと一緒に記述できます。PREFITは前stageの
+*.nf、INPENEはenergy/λ file pattern、NFIRST/NFINALは推定に使うdata範囲です。
+production後はMINLMD/MAXLMD、MINEAA/MAXEAA、MINEAB/MAXEABを用いてλ=1 ensembleの
+reweightingを行います。具体的なstage番号・計算長・λ範囲・FORCESは系に応じて調整し、
+templateの値をそのまま無条件に使用しないでください。
+>GEprep
+@u:j_presto,p:batch_set,n:j_presto_mpi
+"j_presto GEprep"は、McMDやALSDなどgeneralized-ensemble（GE）MDで使用する
+parameter file（*.nf）を作成します。通常は"j_presto batch_set"が作成する
+md_multi_*.exe内から自動実行されるため、直接実行する機会は多くありません。
+
+使用法:
+    j_presto GEprep GEprep.inp
+
+GEprep.inpは通常batch_set.inpのGEprep optionから自動生成されます。
+
+主なoption:
+    PROJNM / SIMTYP / DATLST           project名、simulation type、入力data list
+    MINVAL / MAXVAL / SIMTEM           sampling範囲とsimulation温度
+    FITDIM / NWINDO                    spline fitting条件
+    NXMINV / NXMAXV / PREFIT           次stage範囲と前stage parameter
+    TMPSMP / NXTEMP                    McMD reweighting温度と次stage温度
+    LAMBDA                              ALSD reweighting対象λ
+    MINLMD / MAXLMD                    ALSD reweightingのλ範囲
+    MINEAA / MAXEAA                    Region A energy範囲
+    MINEAB / MAXEAB                    Region A–B energy範囲
+    NBNLMD / SBNEAA / SBNEAB           reweighting histogramのbin設定
+    FORCES / ADJENE                    λ境界force、energy範囲自動調整
+    INPENE / NFIRST / NFINAL           function推定に使う*.eneとdata範囲
+
+McMDではpotential energy Eを低energyから高energyまでrandom walkさせます。
+    E_McMD = E + RT lnP(E)
+    F_McMD = F + RT dlnP(E)/dE
+ALSDではRegion A関連energyをλでscaleします。
+    E = E_AA + E_AB + E_BB
+    E_ALSD = λ^2 E_AA + λ E_AB + E_BB + RT lnP(λ)
+    F_ALSD(atom) = λ^2 F_AA + λ F_AB + F_BB
+    F_ALSD(λ) = -2 E_AA λ - E_AB - RT dlnP(λ)/dλ
+未知のdlnP(E)/dEまたはdlnP(λ)/dλを反復計算dataから推定し、polynomial splineでfitします。
+
+主要出力:
+    *.nf       次のMcMD/ALSD runで入力するfunction parameter
+    *.prob     canonical ensemble再構成用weight
+    *.bar      TTP各runが探索したEまたはλ範囲
+    *.dist     lnP(E)またはlnP(λ)。指定範囲内でflatかを確認
+    *.dlnN     McMDのraw/fitted dlnP(E)/dE
+    *.dlnP     ALSDのraw/fitted dlnP(λ)/dλ
+    *.cdist    McMDのreweighted canonical lnP(E)
+    *.edist    ALSD各trajectoryのlnP(λ)
+    *.cprob    ALSD reweightingのE_AA–E_AB canonical分布
+    *.ene      入力energy/λ data
+
+*.distがflatでない、または*.dlnN/*.dlnPのraw dataとfitが大きくずれる場合、FITDIM、NWINDO、
+NXMINV、NXMAXV、FORCESを再検討してください。
+>PROJNM
+@u:GEprep,n:SIMTYP
+GEprep.inpで、出力ファイルのproject名（basename）を指定します。
+例: PROJNM=testならtest.nf、test.prob等を出力します。
+>SIMTYP
+@u:GEprep,p:PROJNM,n:DATLST
+GEprep.inpでsimulation typeを指定します。主な値:
+    CANO    canonical MD data
+    MULT    McMD
+    CLMD    constant-lambda MD
+    ALSD    adaptive lambda square dynamics
+選択により、推定するfunctionと出力形式が変わります。
+>DATLST
+@u:GEprep,p:SIMTYP,n:MINVAL
+GEprepがMcMD/ALSD functionを推定するために読み込むenergy・lambda data fileのlistを
+指定します。通常はbatch_setとgenlistがfile.listを自動作成します。
+>MINVAL
+@u:GEprep,p:DATLST,n:MAXVAL
+GEprep.inpで、現在のMcMD energyまたはALSD λ sampling範囲の下限を指定します。
+>MAXVAL
+@u:GEprep,p:MINVAL,n:SIMTEM
+GEprep.inpで、現在のMcMD energyまたはALSD λ sampling範囲の上限を指定します。
+>SIMTEM
+@u:GEprep,p:MAXVAL,n:FITDIM
+GEprep.inpで、入力simulation dataを生成した温度を指定します。
+>FITDIM
+@u:GEprep,p:SIMTEM,n:NWINDO
+McMDのdlnP(E)/dEまたはALSDのdlnP(λ)/dλをfitするpolynomial splineの次数を指定します。
+次数を上げるとfit誤差は小さくなりますが、overfittingや外挿時の振動を起こしやすくなります。
+通常2–6を推奨し、反復初期は2程度、functionが安定した後に4–6へ上げます。
+
+*.distで探索分布、*.dlnNまたは*.dlnPでraw functionとfitを確認してください。fit誤差が
+大きい場合、次数を過度に上げるよりNWINDOを増やす方法も検討してください。
+>NWINDO
+@u:GEprep,p:FITDIM,n:NXMINV
+McMD/ALSD functionをpolynomial spline fitするwindow数を指定します。windowを増やすと
+各領域を局所的にfitでき、複雑なfunctionへ対応しやすくなります。ただしdataの少ないwindowを
+作りすぎるとfitが不安定になります。*.dist、*.dlnN、*.dlnPを確認して調整してください。
+>NXMINV
+@u:GEprep,p:NWINDO,n:NXMAXV
+次のMcMD/ALSD stageで使用するsampling範囲下限を指定します。通常、初期は高energyまたは
+低λ領域で構造変化を促進し、反復とともに低energyまたは高λ側へ範囲を拡張します。
+現在のMINVALから大きく変えるとfit functionの外挿が悪化し、異常終了や分布の非flat化を
+起こす場合があります。その場合は変化幅を小さくしてください。
+>NXMAXV
+@u:GEprep,p:NXMINV,n:PREFIT
+次のMcMD/ALSD stageで使用するsampling範囲上限を指定します。現在のMAXVALから大きく
+変えるとfit functionの外挿が悪化し、異常終了や分布の非flat化を起こす場合があります。
+範囲は段階的に拡張してください。
+>PREFIT
+@u:GEprep,p:NXMAXV,n:TMPSMP
+現在のMcMD/ALSD stageで使用したfunction parameter file（*.nf）を指定します。初期functionは
+canonical MDまたはCLMDから推定し、後続stageではPREFITの*.nfと新しいE/λ dataを合わせて、
+次stage用functionを更新します。
+>TMPSMP
+@u:GEprep,p:PREFIT,n:NXTEMP
+McMD結果からreweightingによって再構成するcanonical ensembleの温度を指定します。
+McMDは広いenergy範囲を探索するため、得られたensembleから任意温度のensembleを再構成できます。
+>NXTEMP
+@u:GEprep,p:TMPSMP,n:GEprep LAMBDA
+次のMcMD stageで使用するsimulation温度を指定します。現在のSIMTEMから変更する場合に使用します。
+>GEprep LAMBDA
+@u:GEprep,p:NXTEMP,n:MINLMD
+ALSD結果をreweightingして再構成するensembleのλを指定します。既定値は1.0です。
+通常、λ≠1のensembleに直接の物理的意味はないため、特別な目的がなければ設定不要です。
+>MINLMD
+@u:GEprep,p:GEprep LAMBDA,n:MAXLMD
+ALSD reweightingで使用するλ範囲の下限を指定します。λ=1 canonical ensembleの再構成に
+必要な幅を含めます。範囲を広げすぎると三次元histogramのmemory使用量が増えます。
+>MAXLMD
+@u:GEprep,p:MINLMD,n:MINEAA
+ALSD reweightingで使用するλ範囲の上限を指定します。MINLMDと合わせ、通常λ=1を中心に
+必要な幅を設定します。
+>MINEAA
+@u:GEprep,p:MAXLMD,n:MAXEAA
+ALSD reweightingで使用するRegion A内部energy E_AAの下限を指定します。適切な範囲はGEprep
+logに表示される選択λ範囲内のmin/maxを参考にします。ADJENE=YESで自動決定できます。
+>MAXEAA
+@u:GEprep,p:MINEAA,n:MINEAB
+ALSD reweightingで使用するRegion A内部energy E_AAの上限を指定します。範囲を広げすぎると
+memory使用量が増え、狭すぎると必要dataを失います。ADJENE=YESで自動決定できます。
+>MINEAB
+@u:GEprep,p:MAXEAA,n:MAXEAB
+ALSD reweightingで使用するRegion A–B間energy E_ABの下限を指定します。GEprep logを参考に
+設定するか、ADJENE=YESで自動決定します。
+>MAXEAB
+@u:GEprep,p:MINEAB,n:NBNLMD
+ALSD reweightingで使用するRegion A–B間energy E_ABの上限を指定します。GEprep logを参考に
+設定するか、ADJENE=YESで自動決定します。
+>NBNLMD
+@u:GEprep,p:MAXEAB,n:SBNEAA
+ALSD reweightingのλ方向bin数を指定します。既定値は20です。λ、E_AA、E_ABの三次元
+histogramを保持するため、値を小さくするとmemoryを削減できます。ただし通常はNBNLMDを
+減らす前にSBNEAAまたはSBNEABを大きくすることを推奨します。
+>SBNEAA
+@u:GEprep,p:NBNLMD,n:SBNEAB
+ALSD reweightingのE_AA方向energy bin幅を指定します。既定値は1.0です。値を大きくすると
+memoryを削減できますが、同一bin内の全構造へ同じweightを与えるため、過度に大きい値は
+reweighted ensembleの精度を低下させます。
+>SBNEAB
+@u:GEprep,p:SBNEAA,n:ADJENE
+ALSD reweightingのE_AB方向energy bin幅を指定します。既定値は1.0です。値を大きくすると
+memoryを削減できますが、過度に大きい値はreweighting精度を低下させます。
+>ADJENE
+@u:GEprep,p:FORCES,n:INPENE
+ADJENE=YESとすると、ALSD reweightingのMINEAA、MAXEAA、MINEAB、MAXEABを入力dataから
+自動決定します。既定値はNOです。範囲決定のため一度全energy dataを読み、その後同じdataを
+再度読み込んでreweightingするため、計算時間は概ね二倍になります。
+
+手動設定する場合、まずMINLMD/MAXLMDを定め、暫定energy範囲でGEprepを実行します。logの
+"min & max EAA & EAB"を基に範囲を更新して再実行します。ADJENE=YESはこの作業を自動化します。
+>FORCES
+@u:GEprep,p:MAXEAB,n:ADJENE
+λ particleがMINVAL–MAXVAL範囲外へ出た場合、範囲内へ戻すforceの大きさを指定します。
+目安としてλ particle massの半分程度が有効です。λ massは既定でRegion A atomの総質量で、
+md_run logの"LAMBDA WEIGHT"に表示されます。
+
+小さすぎるとλが範囲から大きく外れ、計算不安定化や異常終了を起こします。大きすぎると
+境界付近のλ方向forceが過大になり、低λでfoldしようとする構造を高λへ押し戻してsamplingを
+妨げる可能性があります。反復初期はdlnP(λ)/dλの精度が低いため大きめに設定し、推定が
+安定するにつれて最終目標値まで段階的に下げる方法を推奨します。
+>INPENE
+@u:GEprep,p:ADJENE,n:NFIRST
+batch_set.inpでMcMD/ALSD反復runを準備する際、function推定に使用する*.ene file patternを
+指定します。内部で"j_presto genlist"を実行し、該当pathを含むfile.listを自動作成します。
+#RUN等のplaceholderを使用できます。genlist -rのdata範囲はNFIRSTとNFINALから与えられます。
+>NFIRST
+@u:GEprep,p:INPENE,n:NFINAL
+McMD/ALSD function推定へ使用する*.ene dataの最初のdata point番号を指定します。各stageは
+前stageからrestartするため、初期部分には前のfunctionの影響が残ることがあります。例えば
+最初の100000 stepを除外する場合、NFIRST=100001とします。
+>NFINAL
+@u:GEprep,p:NFIRST
+McMD/ALSD function推定へ使用する*.ene dataの最後のdata point番号を指定します。file末尾まで
+すべて使う場合は、実data数より十分大きい値を指定します。
+>j_presto_mpi
+@u:j_presto,p:GEprep,n:j_presto_master
+複数のMD runをembarrassingly parallel方式で一つのMPI jobとして実行します。MPI起動commandは
+環境によりmpirun、mpiexec、mpiexec.hydra等が異なります。例:
+    mpiexec.hydra j_presto_mpi MD_ID NUMBER_OF_RUNS NUMBER_OF_MPI_PROCESSES
+
+batch_setを使う場合、まず
+    j_presto get_tmpl md_multi
+でmd_multi.exe templateを取得し、job scheduler（PBS/Torque、NQSII/Fugaku、SLURM、LSF等）の
+header、MPI起動command、OMP_NUM_THREADSを環境に合わせて変更します。templateには
+j_presto_mpiとj_presto_masterの両方が含まれるため、使用しない方をcomment outまたは削除します。
+batch_setはこのtemplateから各MD ID用md_multi_*.exeを自動作成します。
+>j_presto_master
+@u:j_presto,p:j_presto_mpi,n:traj_conv
+複数のMD runをmaster-worker方式で一つのMPI jobとして実行します。MPI process数がrun数より
+少ない場合、masterが未実行runをworkerへ順次割り当てます。例:
+    mpiexec.hydra j_presto_master MD_ID NUMBER_OF_RUNS NUMBER_OF_MPI_PROCESSES
+
+"j_presto get_tmpl md_multi"でtemplateを取得し、scheduler header、MPI起動command、
+OMP_NUM_THREADSを使用環境に合わせて変更してください。templateにはj_presto_mpiと
+j_presto_masterの両方があるため、使用しない方をcomment outまたは削除します。batch_setは
+このtemplateからmd_multi_*.exeを作成します。
+>traj_conv
+@u:j_presto,p:j_presto_master,n:Ens_Ana
+"j_presto traj_conv"は、j_prestoのCOD/CODS形式とMDAnalysisが対応する構造・トラジェクトリ形式の間で変換を行います。入力・出力形式はファイル拡張子から自動判定されます。
+
+使用法:
+    j_presto traj_conv -i INPUT -r REFERENCE.pdb -o OUTPUT [options]
+
+参照PDBは原子の種類と順序を定義します。変換時には、原子選択、frame範囲、strideを指定できます。COD/CODSの読み書きはtraj_conv内部で行われ、その他の形式にはMDAnalysisが必要です。
+
+必須option:
+    traj_conv -i    入力構造またはトラジェクトリ
+    traj_conv -r    参照PDB
+    traj_conv -o    出力構造またはトラジェクトリ
+
+その他のoption:
+    traj_conv -b    最初のframe（1始まり、指定frameを含む）
+    traj_conv -e    最後のframe（指定frameを含む）、またはEND
+    traj_conv -s    frame stride
+    traj_conv -as   atom specifier
+    traj_conv -p    周期境界処理
+    traj_conv -op   同時出力する参照PDBのファイル名
+    traj_conv -c    ファイルを書かずに入力・変換条件を検査
+    traj_conv -f    既存出力ファイルの上書きを許可
+    traj_conv -v    traj_convのversionを表示
+>traj_conv -i
+@u:traj_conv,n:traj_conv -r
+使用法:
+    j_presto traj_conv -i INPUT
+
+入力する構造またはトラジェクトリを指定します。形式は拡張子から判定されます。COD/CODSは直接読み込み、それ以外の形式はMDAnalysisを介して読み込みます。
+>traj_conv -r
+@u:traj_conv,p:traj_conv -i,n:traj_conv -o
+使用法:
+    j_presto traj_conv -r REFERENCE.pdb
+
+原子の種類と順序を与える参照PDBを指定します。atom selectionを適用する前の原子数が、入力トラジェクトリと整合している必要があります。
+>traj_conv -o
+@u:traj_conv,p:traj_conv -r,n:traj_conv -b
+使用法:
+    j_presto traj_conv -o OUTPUT
+
+出力ファイルを指定します。出力形式は拡張子から判定されます。既存ファイルを上書きする場合は-f/--forceを指定してください。
+>traj_conv -b
+@u:traj_conv,p:traj_conv -o,n:traj_conv -e
+使用法:
+    j_presto traj_conv -b FIRST_FRAME
+
+出力を開始する入力frameを指定します。frame番号は1始まりで、指定frameを含みます。defaultは1です。
+>traj_conv -e
+@u:traj_conv,p:traj_conv -b,n:traj_conv -s
+使用法:
+    j_presto traj_conv -e LAST_FRAME
+
+出力する最後の入力frameを指定します。frame番号は1始まりで、指定frameを含みます。ENDを指定するか、このoptionを省略すると最終frameまで処理します。
+>traj_conv -s
+@u:traj_conv,p:traj_conv -e,n:traj_conv -as
+使用法:
+    j_presto traj_conv -s STRIDE
+
+-bで指定したframeから、STRIDE frameごとに出力します。defaultは1です。
+>traj_conv -as
+@u:traj_conv,p:traj_conv -s,n:traj_conv -p
+使用法:
+    j_presto traj_conv -as 'ATOM_SPECIFIER'
+
+共通のj_presto atom specifierを用いて、変換対象とする原子集合を指定します。defaultは"*"（全原子）です。shellによる解釈を避けるため、式は引用符で囲んでください。詳細は"atom specifier"を参照してください。
+>traj_conv -p
+@u:traj_conv,p:traj_conv -as,n:traj_conv -op
+使用法:
+    j_presto traj_conv -p {none,nojump,unwrap}
+
+COD以外の入力に対する周期境界処理を指定します。
+    none      入力座標をそのまま保持します。
+    nojump    frame間で周期境界を横切る座標jumpを除去します。
+    unwrap    結合情報に基づいて、周期境界をまたぐ分子を再構成します。
+
+defaultはnoneです。unwrapには参照PDB中の結合情報が必要です。
+>traj_conv -op
+@u:traj_conv,p:traj_conv -p,n:traj_conv -c
+使用法:
+    j_presto traj_conv -op OUTPUT_REFERENCE.pdb
+
+選択された原子のみを含む付随PDBを出力します。COD/CODSを出力する場合、入力ファイルを上書きする危険がない限り、defaultで付随PDBも作成されます。
+>traj_conv -c
+@u:traj_conv,p:traj_conv -op,n:traj_conv -f
+使用法:
+    j_presto traj_conv ... -c
+
+出力ファイルを作成せず、指定された変換、frame範囲、原子選択、出力形式の整合性を検査します。
+>traj_conv -f
+@u:traj_conv,p:traj_conv -c,n:traj_conv -v
+使用法:
+    j_presto traj_conv ... -f
+
+既存の出力ファイルを上書きすることを許可します。このoptionを指定しない場合、既存ファイルを置き換えずに停止します。
+>traj_conv -v
+@u:traj_conv,p:traj_conv -f
+使用法:
+    j_presto traj_conv -v
+
+独立管理されているtraj_convのversionを表示して終了します。
+>md_multi.exe
+@u:batch_set
+md_multi.exeは、"j_presto batch_set"で準備した複数のMD runを一つのMPI jobとして実行するためのscriptです。templateは次のcommandで取得できます。
+    j_presto get_tmpl md_multi
+
+取得後、使用する計算機環境に合わせて編集してください。このscriptはj_presto_mpiまたはj_presto_masterを起動します。MPI起動commandは環境によってmpirun、mpiexec、mpiexec.hydraなどが異なります。例:
+    mpiexec.hydra (j_presto_mpi or j_presto_master) [MD ID] [MD run数] [MPI process数]
+
+PBS/Torque、NQSII/Fugaku、SLURM、LSF等のjob schedulerに応じて、qsub、pjsub、sbatch、bsub用の指定を追加し、OpenMP thread数（例: export OMP_NUM_THREADS=8）も調整してください。詳細は利用する計算機のparallel job実行manualを参照してください。
+
+templateにはj_presto_mpi用とj_presto_master用の両方が含まれます。使用しない方を#でcomment outするか削除してください。batch_setは編集済みtemplateを用いて、MD IDごとのmd_multi_*.exeを自動生成します。
+>Ens_Ana
+@u:j_presto,p:traj_conv,n:DISTIL
+"j_presto Ens_Ana"は、simulation結果から得られた構造ensembleを解析します。
+使用法:
+    j_presto Ens_Ana [input filename]
+
+解析条件は入力ファイルEns_Ana.inpで指定します。templateは次のcommandで取得できます。
+    j_presto get_tmpl Ens_Ana.inp
+実行scriptのtemplateは次で取得できます。
+    j_presto get_tmpl Ens_Ana
+各設定の詳細は"Ens_Ana.inp"および個別option項目を参照してください。
+
+主な出力ファイル:
+    *_ave.pdb    ensemble平均構造。
+    *_con.pdb    atom_spec_contactで指定したtarget原子の接触確率をB-factorへ記録。
+    *_dist.dx    選択原子群の空間分布（OpenDX形式）。
+    *_dist.xplor 選択原子群の空間分布（Xplor形式）。
+    *_RMSF.pdb   各原子のRMSFをB-factorへ記録。
+    *.cod        j_presto binary座標形式。
+    *.distan     選択原子間の距離。column 1はGEPS weight（通常MDでは1）、column 2以降は各距離。
+    *.PCAcod     PCAaxis/PCAprojへ入力するbinary PCA座標。
+    *.Qval       Q value。column 1:構造番号、2:weight、3:Q value。
+    *.Rg         回転半径。column 1:構造番号、2:Rg、3:重心から最遠原子までの距離、4:weight。
+    *.rmsd       参照構造に対するRMSD。column 1:構造番号、2:RMSD、3:weight。
+    *.SS         DSSPが割り当てた各残基の二次構造（H, B, E, G, I, T, S, 空白）。
+    *.sscr       各残基における二次構造の出現確率。
+    *.sscs       各構造に含まれる各二次構造の残基数。
+    *.sscw       ensemble全体における二次構造の割合。
+    *.TTPncnf    各simulation runから出力された構造数。distribでrun間標準誤差を計算する際に使用。
+    *.weight     各構造のweight、lambda、energy。column 1:構造番号、2:weight、3:lambda、4:全potential energy、5:EAA、6:EAB、7:EBB。
+>Ens_Ana.inp
+@u:Ens_Ana
+"j_presto Ens_Ana"の入力ファイルです。
+使用法:
+    j_presto Ens_Ana [input filename]
+
+主なoption:
+    overwrite_flag             解析結果の上書き許可
+    project_name               project名・出力名
+    log_level                  log出力level
+    template_PDB               template PDB
+    input_topology             topology (*.tpl)
+    input_PDB_list             入力PDB list
+    PDB_consistency_check      PDB整合性検査
+    input_binary_list          入力COD list
+    output_PDB_flag            PDB出力
+    output_binary_flag         COD出力
+    reference_PDB              参照PDB
+    input_reference_PDB_list   複数参照PDBのlist
+    input_reference_binary_list 複数参照CODのlist
+    atom_spec_output           出力原子selection
+    interval                   解析frame間隔
+    input_prob_file            GE再重み付け用probability file
+    weight_method              weightの適用方法
+    weight_threshold           低weight構造の除外閾値
+    random_seed                乱数seed
+    input_energy_file          PDB入力時のenergy file
+    periodic_boundary          周期境界
+    DSSP_flag                  DSSP解析
+    atom_spec_Rg               Rg計算の原子selection
+    atom_spec_RMSD             RMSD計算の原子selection
+    atom_spec_RMSD_fit         fittingに使う原子selection
+    atom_spec_RMSD_ref         参照構造側のRMSD原子selection
+    atom_spec_RMSD_reffit      参照構造側のfitting原子selection
+    RMSD_mode                  複数参照構造の扱い
+    interval_for_timeseries_RMSD 時系列RMSDの間隔
+    RMSF_flag                  RMSF計算
+    PCA_method                 PCA用構造表現
+    atom_spec_PCA              PCA対象原子
+    neighbor_residue_PCA       PCAで除外する近接sequence残基
+    tolerance_PCA              contact PCAの閾値
+    atom_spec_Qvalue           Q value対象原子
+    neighbor_residue_Qvalue    Q valueで除外する近接sequence残基
+    tolerance_Qvalue           NCP再現判定閾値
+    tolerance_NCP              NCP定義閾値
+    NCP_rate                   複数参照構造でのNCP採用率
+    cell_boundary              分布解析grid範囲
+    atom_spec_distribution     分布解析対象原子
+    distribution_cell_size    grid cell size
+    atom_spec_contact          接触解析のprobe/target
+    tolerance_contact          接触判定閾値
+    measurements               距離・角度・二面角測定
+
+各optionは次の形式で指定します。
+    [Option name] = [Option value]
+詳細はoption名をmanualで検索してください。
+>overwrite_flag
+@u:Ens_Ana.inp,n:project_name
+Ens_Anaが同名の解析結果を出力する場合の上書きを制御します。
+    overwrite_flag = YES    既存ファイルを確認せず上書き
+    overwrite_flag = NO     上書きしない（default）
+>project_name
+@u:Ens_Ana.inp,p:overwrite_flag,n:log_level
+解析project名と出力名を指定します。defaultは"a"です。
+例えば"project_name = test"では、実行directoryに"Ens_Ana_test"が作成され、解析結果がその中へ保存されます。
+>log_level
+@u:Ens_Ana.inp,p:project_name,n:template_PDB
+Ens_Anaのlog出力量を指定します。
+    log_level = long     詳細log
+    log_level = short    簡略log
+    log_level = no       logを出力しない（default）
+>template_PDB
+@u:Ens_Ana.inp,p:log_level,n:input_topology
+解析対象systemのPDBを指定します。原子名、残基名等の情報はこのPDBから取得されます。input_binary_listを使用する場合、原子数と原子順序がCODと一致する必要があります。md_runのOUTATMで一部原子だけを出力した場合、ここで指定するPDBも同じ原子集合・順序にしてください。
+>input_topology
+@u:Ens_Ana.inp,p:template_PDB,n:input_PDB_list
+解析に原子chargeやvan der Waals半径が必要な場合、topology file (*.tpl)を指定します。tplは"j_presto prep"で作成できます。Q value、contact、distribution等の解析で使用されます。
+>input_PDB_list
+@u:Ens_Ana.inp,p:input_topology,n:PDB_consistency_check
+解析するPDBファイル名を一行に一つ記載したlist fileを指定します。例:
+    1.pdb
+    2.pdb
+    3.pdb
+Ens_Anaは、このlistに含まれる複数構造を一つのensembleとして解析します。
+>PDB_consistency_check
+@u:Ens_Ana.inp,p:input_PDB_list,n:input_binary_list
+input_PDB_listおよび参照PDBがtemplate_PDBと整合しているかを検査します。defaultはYESです。検査には計算時間を要するため、整合性を別途確認済みの場合のみNOにできます。
+>input_binary_list
+@u:Ens_Ana.inp,p:PDB_consistency_check,n:output_PDB_flag
+解析するj_presto binary座標ファイル（*.cod）のlistを指定します。各fileについて、file名と解析する構造番号範囲を2行で記載します。例:
+    1.cod
+    51  99999999
+    2.cod
+    51  99999999
+
+上例では各fileの最初の50構造を除外し、51番目以降を解析します。終端番号が実際の構造数を超える場合は最終構造まで使用します。
+
+分割して実行したtrajectoryを連続trajectoryとして扱う場合、前segmentのfile名末尾に" ->"を付けます。例:
+    1.cod ->
+    51  99999999
+    2.cod
+    51  99999999
+これは時系列解析で有用です。
+
+CODはmd_runのNAMECOで出力します。OUTATMで一部原子だけを出力した場合、template_PDBも対応する原子だけを同じ順序で含めてください。
+>output_PDB_flag
+@u:Ens_Ana.inp,p:input_binary_list,n:output_binary_flag
+YESにすると入力構造をPDBとして出力します。例えばproject_name=testでは、"Ens_Ana_test/test_PDB/1.pdb"等へ保存されます。CODからPDBへの変換や、RMSD fitting後の構造出力に使用できます。入力構造数が多い場合は大量のfileが作成される点に注意してください。
+>output_binary_flag
+@u:Ens_Ana.inp,p:output_PDB_flag,n:reference_PDB
+入力構造をj_presto binary座標形式（*.cod）として出力します。
+>reference_PDB
+@u:Ens_Ana.inp,p:output_binary_flag,n:input_reference_PDB_list
+RMSDおよびQ value解析に使用する参照PDBを指定します。
+>input_reference_PDB_list
+@u:Ens_Ana.inp,p:reference_PDB,n:input_reference_binary_list
+複数の参照PDBを使用する場合、そのfile名を一行に一つ記載したlistを指定します。NMR model等の複数参照構造に対するRMSD計算や、複数参照構造からNCPを定義するQ value解析に使用します。
+>input_reference_binary_list
+@u:Ens_Ana.inp,p:input_reference_PDB_list,n:atom_spec_output
+複数の参照構造をCODで入力する場合、そのlistを指定します。形式はinput_binary_listと同様に、file名と構造番号範囲を2行で記載します。RMSDやQ valueの複数参照構造に使用できます。OUTATMで部分座標を出力した場合は、template_PDBも対応する原子だけを含めてください。
+>atom_spec_output
+@u:Ens_Ana.inp,p:input_reference_binary_list,n:interval
+output_PDB_flag/output_binary_flagで出力する原子、およびDSSPへ渡す原子をatom specifierで指定します。書式は"atom specifier"を参照してください。
+>interval
+@u:Ens_Ana.inp,p:atom_spec_output,n:input_prob_file
+解析に使用する入力構造の間隔を指定します。defaultは1（全構造）です。例えば"interval = 50"では50構造ごとに一つを解析します。
+>input_prob_file
+@u:Ens_Ana.inp,p:interval,n:weight_method
+McMDやALSD等のGE simulationで各構造の出現確率を考慮する場合、weightを含むprobability file (*.prob)を指定します。このfileは"j_presto GEprep"で作成できます。
+>weight_method
+@u:Ens_Ana.inp,p:input_prob_file,n:weight_threshold
+GE ensembleのweightを解析へ反映する方法を指定します。
+    weight  各構造の出現確率をsample weightとして使用します。精密ですが計算量が増えます。
+    select  0～1の乱数と出現確率を比較して構造をaccept/rejectし、重みを反映したsubensembleを作ります。
+selectで使用する乱数seedはrandom_seedで指定します。
+>weight_threshold
+@u:Ens_Ana.inp,p:weight_method,n:random_seed
+weight_method=weightのとき、McMD/ALSD構造の出現確率がこの値未満なら解析から除外します。寄与が極端に小さい構造を除き計算を高速化できます。defaultは0.00001です。
+>random_seed
+@u:Ens_Ana.inp,p:weight_threshold,n:input_energy_file
+weight_method=selectで構造を選択する乱数seedを指定します。defaultは999999です。
+>input_energy_file
+@u:Ens_Ana.inp,p:random_seed,n:periodic_boundary
+input_PDB_listからGE simulation構造を入力する場合、各構造のenergyを同じ順序で一行ずつ記載したfileを指定します。COD入力ではenergy情報が内部に含まれるため通常不要です。McMDでは各行にsystem全体のenergyを1値、ALSDではEAAとEABの2値を記載します。
+>periodic_boundary
+@u:Ens_Ana.inp,p:input_energy_file,n:DSSP_flag
+入力構造が周期境界条件を用いる場合、直方体cellの下限・上限を指定します。
+    periodic_boundary = [xmin:xmax,ymin:ymax,zmin:zmax]
+角括弧内に空白を入れないでください。j_prestoでは直方体cellのみ対応します。
+>DSSP_flag
+@u:Ens_Ana.inp,p:periodic_boundary,n:atom_spec_Rg
+外部program mkdsspが実行可能な場合、Ens_Anaから二次構造解析を行えます。mkdsspの導入・利用はユーザーの責任で行ってください。
+    DSSP_flag = no       実行しない（default）
+    DSSP_flag = yes      各構造をPDBへ変換してmkdsspを実行し、中間*.dsspは解析後に削除
+    DSSP_flag = output   mkdsspを実行し、*.dsspも保持
+
+多数の構造ではPDB出力とmkdssp実行に時間とdisk容量を要します。主な結果は*.SS、*.sscs、*.sscr、*.sscwです。
+>atom_spec_Rg
+@u:Ens_Ana.inp,p:DSSP_flag,n:atom_spec_RMSD
+回転半径（Rg）の計算に使用する原子をatom specifierで指定します。書式は"atom specifier"を参照してください。
+>atom_spec_RMSD
+@u:Ens_Ana.inp,p:atom_spec_Rg,n:atom_spec_RMSD_fit
+入力構造側でRMSD値の計算に使用する原子をatom specifierで指定します。fitting領域を別にする場合はatom_spec_RMSD_fitを指定します。参照構造側の対応領域はatom_spec_RMSD_ref、参照構造側のfitting領域はatom_spec_RMSD_reffitで指定できます。
+>atom_spec_RMSD_fit
+@u:Ens_Ana.inp,p:atom_spec_RMSD,n:atom_spec_RMSD_ref
+入力構造を重ね合わせる際に使用する原子をatom specifierで指定します。RMSD値を計算する領域はatom_spec_RMSDで指定します。参照構造側の領域はatom_spec_RMSD_refとatom_spec_RMSD_reffitで指定できます。
+>atom_spec_RMSD_ref
+@u:Ens_Ana.inp,p:atom_spec_RMSD_fit,n:atom_spec_RMSD_reffit
+参照構造側でRMSD値の計算に使用する原子をatom specifierで指定します。入力構造側はatom_spec_RMSD、参照構造側のfitting領域はatom_spec_RMSD_reffitで指定します。
+>atom_spec_RMSD_reffit
+@u:Ens_Ana.inp,p:atom_spec_RMSD_ref,n:RMSD_mode
+参照構造側で重ね合わせに使用する原子をatom specifierで指定します。参照構造側のRMSD計算領域はatom_spec_RMSD_refで指定します。
+>RMSD_mode
+@u:Ens_Ana.inp,p:atom_spec_RMSD_reffit,n:interval_for_timeseries_RMSD
+複数の参照構造を入力した場合のRMSD計算方法を指定します。
+    RMSD_mode = average  参照構造の平均構造を作り、それに対するRMSDを計算
+    RMSD_mode = multi    各参照構造に対して個別にRMSDを計算
+>interval_for_timeseries_RMSD
+@u:Ens_Ana.inp,p:RMSD_mode,n:RMSF_flag
+trajectory中の時間変化を評価するため、現在構造と何frame前の構造とのRMSDを計算するか指定します。例えば5では、各構造と5構造前とのRMSDを計算します。
+>RMSF_flag
+@u:Ens_Ana.inp,p:interval_for_timeseries_RMSD,n:PCA_method
+参照構造に対する入力ensembleのRoot Mean Square Fluctuation（RMSF）を計算する場合、"RMSF_flag = yes"を指定します。
+>PCA_method
+@u:Ens_Ana.inp,p:RMSF_flag,n:atom_spec_PCA
+PCAへ使用する構造表現を指定します。対象原子はatom_spec_PCAで指定します。
+
+残基based internal coordinate:
+    average  2残基間の全原子pair距離の平均
+    min      2残基間の最小原子距離
+    max      2残基間の最大原子距離
+    contact  接触なら1、非接触なら0。閾値はtolerance_PCA
+N残基では最大N(N-1)/2次元です。neighbor_residue_PCAでsequence上近い残基pairを除外できます。大きな構造変化を含むMcMD/ALSD ensembleではCartesian座標より有効な場合があります。
+
+原子based:
+    cord       選択したN原子のCartesian座標（3N次元）
+    intercord  選択したN原子の全pair距離（N(N-1)/2次元）
+
+出力*.PCAcodはPCAaxisによる軸計算、PCAprojによる射影に使用します。
+>atom_spec_PCA
+@u:Ens_Ana.inp,p:PCA_method,n:neighbor_residue_PCA
+PCA用構造表現へ使用する原子をatom specifierで指定します。書式は"atom specifier"を参照してください。
+>neighbor_residue_PCA
+@u:Ens_Ana.inp,p:atom_spec_PCA,n:tolerance_PCA
+残基pair距離を用いるPCA_methodで、sequence上近い残基pairを構造表現から除外します。例えば2では各残基からsequence上2残基以内のpairを除きます。次元数と計算量を削減できます。defaultは1です。
+>tolerance_PCA
+@u:Ens_Ana.inp,p:neighbor_residue_PCA,n:atom_spec_Qvalue
+PCA_method=contactで残基間接触を判定する距離閾値です。input_topologyがある場合は原子vdW半径の和にこの値を加え、defaultは2.8 Åです。topologyがない場合は単純な原子間距離閾値となり、defaultは6.0 Åです。
+>atom_spec_Qvalue
+@u:Ens_Ana.inp,p:tolerance_PCA,n:neighbor_residue_Qvalue
+Q value（native contact pair再現率）解析に使用する原子をatom specifierで指定します。
+>neighbor_residue_Qvalue
+@u:Ens_Ana.inp,p:atom_spec_Qvalue,n:tolerance_Qvalue
+Q value解析でNCP候補から除外するsequence近接残基範囲を指定します。例えば2ではsequence上2残基以内のpairをNCPに含めません。構造変化によらず接触しやすい隣接残基によるQ valueの過大評価を防ぎます。
+>tolerance_Qvalue
+@u:Ens_Ana.inp,p:neighbor_residue_Qvalue,n:tolerance_NCP
+入力構造でNCPが再現されたと判断する距離閾値です。topologyがある場合、残基間最小原子距離がvdW半径の和＋指定値以内なら再現とし、defaultは2.8 Åです。topologyがない場合は単純距離閾値でdefaultは6.0 Åです。
+>tolerance_NCP
+@u:Ens_Ana.inp,p:tolerance_Qvalue,n:NCP_rate
+参照構造からNative Contact Pair（NCP）を定義する距離閾値です。topologyがある場合、残基間最小原子距離がvdW半径の和＋指定値以内ならNCPとし、defaultは2.8 Åです。topologyがない場合は単純距離閾値でdefaultは6.0 Åです。
+>NCP_rate
+@u:Ens_Ana.inp,p:tolerance_NCP,n:cell_boundary
+複数参照構造からNCPを定義する際、何割以上の参照構造で接触しているpairを採用するか指定します。defaultは0.7です。
+>cell_boundary
+@u:Ens_Ana.inp,p:NCP_rate,n:atom_spec_distribution
+distribution解析で使用する直方体grid範囲を指定します。
+    cell_boundary = [xmin:xmax,ymin:ymax,zmin:zmax]
+角括弧内に空白を入れないでください。
+>atom_spec_distribution
+@u:Ens_Ana.inp,p:cell_boundary,n:distribution_cell_size
+空間distributionを解析する原子群をatom specifierで指定します。
+>distribution_cell_size
+@u:Ens_Ana.inp,p:atom_spec_distribution,n:atom_spec_contact
+cell_boundaryで指定した領域を分割するgrid cell sizeを指定します。小さくすると空間分解能は高くなりますが、計算時間とmemory使用量が増えます。
+>atom_spec_contact
+@u:Ens_Ana.inp,p:distribution_cell_size,n:tolerance_contact
+contact解析のprobe原子群とtarget原子群を次の形式で指定します。
+    atom_spec_contact = [probe atom specifier]_[target atom specifier]
+2つのspecifierはunderscore（_）で連結します。各target原子がprobe群のいずれかの原子と接触する確率を計算します。
+>tolerance_contact
+@u:Ens_Ana.inp,p:atom_spec_contact,n:measurements
+atom_spec_contactで指定したprobe/target間の接触判定閾値です。2原子の距離が、両原子半径の和＋この値以内なら接触と判定します。input_topologyがあればvdW半径を使用し、なければ原子種別default半径を使用します。defaultは2.8 Åです。
+>measurements
+@u:Ens_Ana.inp,p:tolerance_contact
+指定原子の距離、角度、二面角を測定します。複数項目はsemicolonで区切り、空白を入れません。
+    measurements = [metric1];[metric2];...
+各metricはatom specifierをunderscore（_）で連結します。
+    A_B       A-B距離
+    A_B_C     A-B-C角度
+    A_B_C_D   A-B-C-D二面角
+atom specifierの詳細は"atom specifier"を参照してください。
+>DISTIL
+@u:j_presto,p:Ens_Ana,n:PCAaxis
+DISTIL（Distribution-aware, Inter-region-Structured, Transformation-Invariant Learning）は、二つの分子構造ensembleを比較し、両者を識別する距離分布差を検出・解釈します。相関する距離特徴をbundleへまとめ、差を説明する構造領域pairとしてrankingします。
+
+使用法:
+    j_presto DISTIL -A ENSEMBLE_A -B ENSEMBLE_B -r REFERENCE.pdb -o OUTPUT_DIR [options]
+
+入力ensembleにはCOD、CODS、またはlist fileを使用できます。A/Bに別々の参照PDB、topology、probability file、atom selectionを指定できます。defaultはstandard modeです。独立run間変動と比較して弱い差を評価する場合はCED modeを使用します。
+
+manual項目:
+    DISTIL input
+    DISTIL weighting
+    DISTIL atom selection
+    DISTIL feature generation
+    DISTIL standard mode
+    DISTIL CED mode
+    DISTIL bundling and regions
+    DISTIL output
+    DISTIL output main results
+    DISTIL output feature and bundle tables
+    DISTIL output visualization files
+    DISTIL output metadata and optional analyses
+    DISTIL cache and restart
+    DISTIL examples
+    DISTIL advanced options
+
+性能調整・診断を含む全optionは次で確認してください。
+    j_presto DISTIL -h
+DISTILのversionは他のj_presto programとは独立して管理されます。
+
+>DISTIL input
+@u:DISTIL,n:DISTIL weighting
+主要入力option:
+    -A, --ensembleA FILE      ensemble A（COD、CODS、またはlist）
+    -B, --ensembleB FILE      ensemble B（COD、CODS、またはlist）
+    -fs, --frame-stride N     list範囲適用後にN frameごとに使用
+    -r, --ref PDB             A/B共通参照PDB
+    -rA, --refA PDB           A用参照PDB（-rより優先）
+    -rB, --refB PDB           B用参照PDB（-rより優先）
+    -o, --outdir DIR          出力directory（default: distil_out）
+
+A/Bで選択される原子は、化学的・構造的に対応している必要があります。別々の参照PDBを使用する場合、DISTILは選択原子の対応を検査してから比較します。
+>DISTIL weighting
+@u:DISTIL,p:DISTIL input,n:DISTIL atom selection
+構造weight用option:
+    -p,  --prob FILE      A/B共通probability file
+    -pA, --probA FILE     ensemble A用probability file
+    -pB, --probB FILE     ensemble B用probability file
+
+ALSDの再重み付け後など、構造ごとの統計weightが異なる場合に指定します。通常MDではprobability fileを省略でき、その場合は全構造へ等weightが与えられます。
+>DISTIL atom selection
+@u:DISTIL,p:DISTIL weighting,n:DISTIL feature generation
+原子選択option:
+    -a,  --atom-spec EXPR     A/B共通selection（default: !H*,h*）
+    -aA, --atom-specA EXPR    A用selection（-aより優先）
+    -aB, --atom-specB EXPR    B用selection（-aより優先）
+
+等価原子の扱い:
+    -ea, --equiv-atoms {aggregate,report}
+        aggregate（default）は化学的等価原子の置換距離を同一特徴の分布へ統合します。reportは統合せず診断情報を出力します。
+    -em, --equiv-map CSV
+        非標準残基やligandの等価原子定義を追加します。
+
+selection書式は"atom specifier"を参照し、shellで解釈されないよう引用符で囲んでください。
+>DISTIL feature generation
+@u:DISTIL,p:DISTIL atom selection,n:DISTIL standard mode
+DISTILは二種類の相補的な距離特徴を使用します。
+    1. 局所相互作用変化を表すnear-contact原子pair距離
+    2. 中・長距離再配置を表すnon-contact残基pair距離
+
+主要option:
+    -cd, --contact-distance DISTANCE
+        near-contact cutoff（Å、default: 6.0）
+    -t, --tpl FILE
+        A/B共通j_presto topology。指定すると結合関係にある原子pairをnear-contact候補から除外します。
+    -tA / -tB
+        A/B別topology
+    -teu, --tpl-exclude-up-to N
+        N bond以内の関係を除外（default: 2、すなわち1-2・1-3 pair）
+
+化学結合した局所pairが特徴へ混入する可能性がある場合、topologyの指定を推奨します。
+>DISTIL standard mode
+@u:DISTIL,p:DISTIL feature generation,n:DISTIL CED mode
+standard modeは、二つのensembleを明確に識別できる距離特徴を選択します。
+
+例:
+    j_presto DISTIL -A A.list -B B.list -r reference.pdb -sm standard
+
+主要optionとdefault:
+    -sm,  --selection-mode standard
+    -s1c, --tv-threshold 0.35      AUC計算前のTotal Variation prefilter
+    -at,  --auc-threshold 0.80     hold-out単一特徴AUCの最低値
+    -ak,  --auc-cv-folds 5         hold-out AUC・寄与推定のfold数
+    -bm,  --bins-max 128           histogram最大bin数
+
+選択特徴はsingle-pair scoreへ変換され、L1正則化logistic regressionにより冗長性を抑えながら相対寄与を推定します。AUCは入力された二ensembleの分離度を内部評価するためのものであり、未知構造の予測を主目的としません。
+>DISTIL CED mode
+@u:DISTIL,p:DISTIL standard mode,n:DISTIL bundling and regions
+Condition-Excess Difference（CED）modeは、個々の構造を高精度に分類できない弱い条件依存差を調べるための補助modeです。各条件に複数の独立runが必要で、観測A/B差を、条件内run間変動およびcondition labelを無視したpooled-label nullと比較します。
+
+例:
+    j_presto DISTIL -A A.list -B B.list -r reference.pdb -sm ced
+
+主要default:
+    -cws,  --ced-within-splits 100
+    -cns,  --ced-null-splits 999
+    -cmt,  --ced-min-tv 0.02
+    -crt,  --ced-r-threshold 1.5
+    -czt,  --ced-z-threshold 2.0
+    -cnrt, --ced-null-r-threshold 1.2
+    -cnzt, --ced-null-z-threshold 1.0
+    -cnqt, --ced-null-q-threshold 0.05
+
+ensemble listでは独立simulation runを別run groupとして記述してください。一つのtrajectoryを連続segmentへ分割しただけのdataを、独立runとして扱わないでください。
+>DISTIL bundling and regions
+@u:DISTIL,p:DISTIL CED mode,n:DISTIL output
+特徴選択後、DISTILは選択距離をnodeとするfeature graphを作り、閾値以上の正相関edgeを保持してcommunity detectionによりbundleへまとめます。
+
+主要option:
+    -ct, --corr-tau VALUE
+        最小正相関（default: 0.95）
+    -cm, --community-method {auto,leiden,louvain}
+        community detection法（default: auto）
+    -mmi, --maxcut-max-iter N
+        weighted Max-Cutの最大local improvement回数（default: 1000）
+    -mr, --maxcut-restarts N
+        bundleごとのMax-Cut restart数（default: 3）
+
+各bundleを構造graphへ写像し、weighted Max-Cutで二領域へ分割します。二領域を横切る特徴のうちscore最大の距離を代表距離としてranking・可視化します。
+
+>DISTIL output
+@u:DISTIL,p:DISTIL bundling and regions,n:DISTIL output main results
+DISTILは、-o/--outdirで指定したdirectoryの下に全解析artifactを出力します。出力には、最終結果表、特徴・bundleの詳細表、可視化file、実行条件metadata、および再開用cacheが含まれます。
+
+最初に確認する順序:
+    1. analysis_summary.tsv
+    2. ranked_pairs_pretty.txt
+    3. pair_contrib_ranked_pretty.txt
+    4. 上位構造領域pairに対応するplots/およびpdb/
+
+最終選択を通過する特徴がない場合、DISTILはheaderのみの結果表を作り、人間向けtext fileには理由を記録します。これはprogramの失敗ではなく、差が検出されなかったという有効なnegative resultです。analysis_summary.tsvとrun_provenance.jsonを確認し、run statusが完了していることを確認してください。
+
+主要出力option:
+    -np, --topN-pairs N
+        ranked出力へ書く構造領域pairの最大数（default: 200）
+    -pf, --plot-format {png,pdf}
+        距離分布plot形式（default: png）
+    -pd, --plot-dpi N
+        PNG出力のDPI（default: 150）
+    --stage5-output-top-regions N
+        上位N構造領域pairについて、個別の距離分布、PDB、PyMOL出力を作成（default: 20）。0で個別可視化を無効化します。
+    --stage5-write-all-individual-visuals
+        report対象の全構造領域pairについて個別可視化を作成します。大量のfileが生成され、実行時間とdisk使用量が大きくなる場合があります。
+
+>DISTIL output main results
+@u:DISTIL,p:DISTIL output,n:DISTIL output feature and bundle tables
+次のfileがDISTILの最終結果を要約します。
+
+    analysis_summary.tsv
+        直接確認しやすい二列形式の要約です。frame数、run数、候補・選択特徴数、bundle数、構造領域pair数、実際に使用したcommunity detection法、および最上位構造領域pairを記録します。
+
+    analysis_summary.json
+        同じ要約のmachine-readable版です。top_ranked_region_pairにはranked_pairs.csvの第1行全体が保存されます。
+
+    ranked_pairs_pretty.txt
+        人が読むための主要結果です。最終ranking順に、使用されたranking score、bundle ID、代表交差特徴（argmax_pair_id）、主要なsupporting feature、およびRegion A/Region Bを構成するnodeを表示します。
+
+    ranked_pairs.csv
+        --topN-pairsで指定した件数までの、machine-readableな構造領域pair rankingです。rankが表示順、bundle_idがbundle・特徴表との対応を表します。argmax_pair_idは、そのrankの距離分布plotに使用される代表距離特徴です。
+
+    bundle_regions_pretty.txt
+        各bundleの領域分割を人が読める形で示します。rank、Max-Cut結果、代表特徴、主要な交差特徴、および両領域の構造要素を含みます。
+
+    bundle_regions.csv
+        bundleから二領域への対応を保存したmachine-readable表です。行はbundle_id順で、rank列、領域node、交差特徴の統計量、ranking構成値、代表・supporting feature IDを含みます。
+
+    ranking_mode.json
+        Stage5で実際に使用したranking mode、特徴weight式、主要score列、辞書式ranking policy、およびtie-break policyを記録します。異なるselection modeの結果を比較するときに参照してください。
+
+    global_ensemble_difference.txt
+        ensemble全体のmultivariate分離AUCです。standard modeのcontribution modelで意味を持ち、そのmodelを使用しないmodeではNAとなる場合があります。
+
+    contribution_status.json
+        multivariate contribution modelの状態と診断情報です。fitted/hold-out AUC、および非zero model特徴数等を記録します。
+
+>DISTIL output feature and bundle tables
+@u:DISTIL,p:DISTIL output main results,n:DISTIL output visualization files
+次のfileは、候補距離特徴がbundleおよびranked構造領域pairへ変換される過程を記録します。容量が大きくなる場合があります。表同士はfid（feature ID）とbundle_idで対応付けます。
+
+    top_pairs_pool.csv
+        全候補距離特徴の定義表です。near/longの種別、原子または残基endpoint、atom group、等価原子groupを記録します。feature列が下流表で使用されるfidです。
+
+    pair_scores.csv
+        全候補特徴のStage1 metric表です。TV、計算対象となった場合のhold-out AUC、各selection flag、分布統計量、transport量、および選択modeに応じたsignificance/CED統計量を含みます。通常、最も大きなtext出力の一つです。
+
+    feature_metrics/all_feature_metrics.csv
+        feature_metrics directoryに保存されるStage1の完全監査表です。最初の結果解釈よりも、詳細filteringや手法検証に使用します。
+
+    pair_contrib.csv
+        最終的に下流解析へ渡された特徴の表です。Stage1 metric、利用可能な場合のmultivariate係数・寄与、active Stage5 score、およびbundle_idを統合します。standard modeではcontribution_multi、sig modeではsig_strength、CED modeではcondition_effect_scoreがactive scoreです。
+
+    pair_contrib_ranked.csv
+    pair_contrib_ranked_pretty.txt
+        選択特徴をactive Stage5 score順に並べたmachine-readable版と人間向け版です。最終結果を強く支持する個別距離を確認するときに使用します。
+
+    feature_corr_edges.csv
+        --corr-tau以上の正相関を持つfeature graphのedge表です。各行はf_idとg_id、および相関係数を記録します。
+
+    bundles.csv
+        feature graphから得られたbundle membershipです。member_fidsはsemicolon区切りのfeature ID、bundle_sizeはmember数です。
+
+    residue_contrib.csv
+        特徴寄与を残基単位で集約した表です。near/long成分とsupporting feature数を別々に記録します。
+
+    region_contrib.csv
+        bundle・regionごとの寄与、pair数、およびsingle-feature AUCの集約表です。これは診断表であり、最終的な領域順はこのfile単独ではなくranked_pairs.csvで定義されます。
+
+>DISTIL output visualization files
+@u:DISTIL,p:DISTIL output feature and bundle tables,n:DISTIL output metadata and optional analyses
+可視化fileは主にplots/とpdb/へ出力されます。NNNNは0001のようにzero paddingされた1始まりの構造領域pair rankです。
+
+    plots/pair_rankNNNN_dist.png
+    plots/pair_rankNNNN_dist.pdf
+        その構造領域pairの代表交差特徴（argmax_pair_id）について、ensemble A/Bのweight付き距離分布を示します。titleには特徴identityと、関連するTV、AUC、contribution、sig、またはCED統計量が表示されます。sig modeではrun-level error bandを表示します。standard modeでは、複数run groupがあり-pre/--plot-run-errorbarsを指定した場合に表示します。
+
+    pdb/pair_rankNNNN_regions.pdb
+        一つのranked構造領域pairを参照構造へ投影したPDBです。選択原子のB-factor fieldには、bundle member特徴からmax集約し、そのfile内で0–1へ正規化したactive Stage5 atom scoreが保存されます。利用可能な場合、occupancy fieldには対応するAUC値が保存されます。PDB単体にはRegion A/Bの色は保存されません。
+
+    pdb/pair_rankNNNN_view.pml
+        上記PDBと組み合わせて使用するPyMOL scriptです。Region Aを赤、Region Bを青で表示し、連続score mapを適用します。
+
+    pdb/all_ranked_bundles_regions.pdb
+    pdb/all_ranked_bundles_view.pml
+        ranked出力に含まれる全構造領域pairを統合したscore projectionです。意図したPyMOL表示を再現するにはPML fileを使用してください。
+
+    pdb/*_metric_*.pdb
+    pdb/metric_pdbs.json
+        個別metricの原子projectionです。Stage1ではTV、AUC、significance、CED map、Stage5ではranked bundle特徴に基づくcontributionおよびmode固有metricを出力します。各PDBのB-factor fieldに保存されたmetric、使用feature集合、原子への集約法はmetric_pdbs.jsonを正式な説明として参照してください。
+
+    ensemble_direction_map.tsv
+    ensemble_direction_map.bild
+    ensemble_direction_map.cmd
+        weight付き特徴分布差から得られるA→B方向の要約です。TSVは原子ごとのvector、BILDは表示arrow、command fileはreference_A_selected.pdbとともにUCSF Chimeraで開くための命令を保存します。このarrowはensemble差の要約であり、物理的な原子trajectoryを表すものではありません。
+
+>DISTIL output metadata and optional analyses
+@u:DISTIL,p:DISTIL output visualization files,n:DISTIL cache and restart
+次のfileは、再現性、入力検査、再開、および任意解析を支えるものです。通常、構造差を最初に解釈するときの主要fileではありません。
+
+実行条件・入力記録:
+    args_requested.json
+        正規化とdefault解決前に指定されたargument
+    args_used.json
+        解析で実際に使用された有効argument
+    run_provenance.json
+        DISTIL version・SHA256、command、入力checksum、package version、random state、platform情報、cache version、およびrun status
+    features_meta.json
+        feature生成metadata、およびfeature artifactのpath・checksum
+    reference_A_selected.pdb / reference_B_selected.pdb
+        各ensembleで実際に選択された参照原子
+    atom_mapping_A_to_B.csv
+        二つの参照構造間で検証された選択原子対応
+    reference_geometry_A.csv / reference_geometry_B.csv
+        不審な入力geometryを検出するための参照構造診断
+    equiv_atom_groups.csv / equiv_atom_rejected_groups.csv
+        採用・棄却された等価原子group。対応するJSON fileは診断schemaとCSV locationを記録します。
+
+binary・integrity artifact:
+    weights_A.npy / weights_B.npy
+        解析で使用した正規化frame weight
+    pair_index.npy / sel_fids.npy
+        内部feature indexと最終選択feature配列
+    .*.sha256.json および *.ok
+        cache検証用integrity marker。これらを編集しないでください。
+
+任意出力directory:
+    representatives/
+        -xr/--extract-representativesで作成されます。A-like/B-like代表構造PDB、representatives_summary.csv、representative_features_used.csv、representatives_info.txtを含みます。
+    stability/
+        -sr/--stability-runsを0より大きくした場合に作成されます。pair_stability.csv、bundle_stability.csv、region_stability.csv、run_stability.csv、summary.txtを含みます。
+    dist_plots/
+        -dpp/--dist-plot-pairを用いる直接距離plot modeで作成されます。
+
+DISTILの進行状況とwarningはterminalへ出力され、固定log filenameは必要としません。実行logを保存する場合は、shellまたはjob scriptで標準出力・標準errorをredirectしてください。
+
+>DISTIL cache and restart
+@u:DISTIL,p:DISTIL output metadata and optional analyses,n:DISTIL examples
+DISTILは、再開可能な中間結果をdistil_cache/と出力directory直下の一部binary artifactへ保存します。これらは実装用dataであり、最終的な科学結果ではありません。個別cache fileを手作業で編集しないでください。
+
+distil_cache/には、Stage1 scoring/checkpoint、Stage2 contribution model、Stage3 correlation、Stage4 bundle metadata、Stage5 region・ranking metadata、direction map metadata、および任意のStage6 stability replica等が保存されます。.done.jsonとmetadata fileは、完了stageを再利用できるか判断するためのsignatureを記録します。
+
+option:
+    -f, --force
+        互換性のあるfeature poolを保持し、feature生成後のpipeline stageを再計算
+    -frf, --force-recompute-features
+        pool・feature cacheを無視して再生成し、feature cacheからの自動resumeも無効化
+    -na, --no-accelerate
+        disk cacheとJIT accelerationを無効化
+    -sc, --self-check
+        軽量内部smoke testを実行し、解析artifactを作らず終了
+
+中断した解析を再開するには、出力directory全体を保持してください。解釈に必要な最終text/CSVと可視化fileだけを別archiveへコピーすることはできますが、その縮小archiveから計算を再開することはできません。分子systemまたは原子対応を変更した場合は新しい出力directoryを使用してください。trajectory、参照構造、topology、atom selection、feature生成設定を変更した場合は-frfを使用してください。
+
+>DISTIL examples
+@u:DISTIL,p:DISTIL cache and restart,n:DISTIL advanced options
+入力path、atom selection、解析mode、出力directory、および推奨BLAS/Numba thread設定を編集できる実行script templateは次のcommandで取得できます。
+    j_presto get_tmpl DISTIL
+取得したDISTIL.exeを対象ensembleと計算環境に合わせて編集し、次のように実行します。
+    ./DISTIL.exe
+
+等weightのstandard比較:
+    j_presto DISTIL -A ensemble_A.list -B ensemble_B.list \
+        -r reference.pdb -t system.tpl -o distil_standard
+
+別参照構造・probability fileを用いるstandard比較:
+    j_presto DISTIL -A A.cods -B B.cods -rA A.pdb -rB B.pdb \
+        -pA A.prob -pB B.prob -o distil_weighted
+
+独立反復runを用いるCED比較:
+    j_presto DISTIL -A condition_A.list -B condition_B.list \
+        -r reference.pdb -sm ced -o distil_ced
+
+内部self-check:
+    j_presto DISTIL -sc
+
+全optionとdefaultは"j_presto DISTIL -h"で確認できます。
+>DISTIL advanced options
+@u:DISTIL,p:DISTIL examples
+DISTILには、histogram生成、等価原子診断、significance mode、CED閾値、相関計算profile、寄与推定solver、parallel worker、代表構造抽出、stability解析等の追加optionがあります。主に大規模system、手法検証、troubleshooting向けです。
+
+全optionはDISTILのversionとともに独立して更新されるため、正式な一覧はprogram helpを参照してください。
+    j_presto DISTIL -h
+
+advanced optionを変更する場合、解析再現に必要なcommand、DISTIL version、program SHA、入力checksum、出力logを保存してください。
+>PCAaxis
+@u:j_presto,p:DISTIL,n:PCAproj
+"j_presto PCAaxis"は、PCA座標のvariance-covariance matrixを対角化してPC軸を計算します。個別optionの詳細は、例えば"PCAaxis -i"を入力してください。
+
+option:
+    PCAaxis -i   入力PCA座標file
+    PCAaxis -o   出力file prefix
+    PCAaxis -p   PC軸を構造上へ可視化するためのPDB
+    PCAaxis -n   可視化する軸数
+    PCAaxis -al  矢印長のscale factor
+>PCAaxis -i
+@u:PCAaxis,n:PCAaxis -o
+使用法: j_presto PCAaxis -i INPUT [INPUT ...]
+
+PCA座標file（*.PCAcod）を指定します。*.PCAcodは"j_presto Ens_Ana"で作成できます。詳細は"PCA_method"を参照してください。複数fileを同時に指定できます。
+>PCAaxis -o
+@u:PCAaxis,p:PCAaxis -i,n:PCAaxis -p
+使用法: j_presto PCAaxis -o OUTPUT
+
+出力PCA軸file（*.axis）のprefixを指定します。省略時は"test"となり、test.axis等が出力されます。
+>PCAaxis -p
+@u:PCAaxis,p:PCAaxis -o,n:PCAaxis -n
+使用法: j_presto PCAaxis -p INPPDB
+
+PCA_method=cordで得たPC軸を三次元構造上の矢印として投影するPDBを指定します。他のPCA_methodには使用できません。
+
+PDBはatom_spec_PCAで選択した原子だけを同じ順序で含む必要があります。例えばatom_spec_PCA=1<100:CAなら、残基1～100のCA原子100個だけを含めます。
+
+-oで指定したprefixに対して*_1.bild、*_2.bild等を出力します。*_1.bildはPC軸1の正方向への構造変位を矢印で表します。PDBとbildをUCSF Chimera等で同時表示できます。矢印長は-alで調整します。
+>PCAaxis -n
+@u:PCAaxis,p:PCAaxis -p,n:PCAaxis -al
+使用法: j_presto PCAaxis -n NAXES
+
+構造上へ可視化するPC軸数を指定します。例えば3では*_1.bild～*_3.bildを出力します。defaultは3です。bild出力には-pの指定が必要です。
+>PCAaxis -al
+@u:PCAaxis,p:PCAaxis -n
+使用法: j_presto PCAaxis -al SFAC
+
+bildに出力する矢印長のscale factorを指定します。defaultは1.0です。例えば0.5では全矢印をdefaultの50%にします。bild出力には-pの指定が必要です。
+>PCAproj
+@u:j_presto,p:PCAaxis,n:distrib
+"j_presto PCAproj"は、各構造をPCAaxisで作成したPC軸へ射影します。個別optionの詳細は、例えば"PCAproj -i"を入力してください。
+
+option:
+    PCAproj -i   入力PCA座標file
+    PCAproj -o   出力file名
+    PCAproj -a   PC軸file
+    PCAproj -n   出力するPC軸数
+>PCAproj -i
+@u:PCAproj,n:PCAproj -o
+使用法: j_presto PCAproj -i INPUT [INPUT ...]
+
+Ens_Anaで作成したPCA座標file（*.PCAcod）を指定します。複数fileを同時に指定できます。詳細は"PCA_method"を参照してください。
+>PCAproj -o
+@u:PCAproj,p:PCAproj -i,n:PCAproj -a
+使用法: j_presto PCAproj -o OUTPUT
+
+出力PCA射影座標file（*.proj）のprefixを指定します。省略時は"test"です。
+>PCAproj -a
+@u:PCAproj,p:PCAproj -o,n:PCAproj -n
+使用法: j_presto PCAproj -a AXIS_FILE
+
+PCAaxisで作成したPC軸file（*.axis）を指定します。
+>PCAproj -n
+@u:PCAproj,p:PCAproj -a
+使用法: j_presto PCAproj -n NUMBER
+
+第1軸から第N軸まで、射影して出力するPC軸数を指定します。例えばN=2では、*.projの各行にweight、第1PC座標、第2PC座標の3 columnが出力されます。
+>distrib
+@u:j_presto,p:PCAproj,n:pick_conf
+"j_presto distrib"は、1～3次元の数値dataをweightおよびsub-group情報とともに解析し、分布、平均・標準誤差、または自由energy landscapeを作成します。TTPで得た複数独立runの結果を統合し、各runをsub-groupとしてrun間平均と標準誤差を計算できます。
+
+主なoption:
+    distrib -i      入力data file（必須）
+    distrib -o      出力prefix
+    distrib -f      DIST/NORM/LOG/FEL
+    distrib -a      x, y, zに使うcolumn
+    distrib -w      weight column
+    distrib -s      sub-group情報
+    distrib -r      軸範囲
+    distrib -t      FEL計算温度
+    distrib -bn     bin数
+    distrib -bs     bin幅
+    distrib -xnorm  x-binごとの正規化
+
+1Dでは*.avg、*.count、*.dist、*.edist、2Dではさらにgnuplot用*.avgp、*.countp、*.distp、*.edistp、3Dでは*.avgと*.avgpを出力します。-oが共通prefixを決めます。plot用templateは"j_presto get_tmpl gnu.plot"または"gnu.splot"で取得できます。
+>distrib -i
+@u:distrib,n:distrib -o
+使用法: j_presto distrib -i INPUT [INPUT ...]
+
+解析する空白またはtab区切りの数値text fileを指定します。各行が一data pointです。複数fileを指定できます。解析columnは-a、weight columnは-wで指定します。file間で行数は異なっても構いませんが、使用するcolumn構造は整合させてください。必須optionです。
+>distrib -o
+@u:distrib,p:distrib -i,n:distrib -f
+使用法: j_presto distrib -o OUTPUT
+
+*.avg、*.dist等の全出力fileに共通するprefixを指定します。
+>distrib -f
+@u:distrib,p:distrib -o,n:distrib -a
+使用法: j_presto distrib -f {DIST,NORM,LOG,FEL}
+
+出力する分布形式を指定します。
+    DIST  raw distribution（default）
+    NORM  正規化分布
+    LOG   分布のlog変換
+    FEL   自由energy landscape
+>distrib -a
+@u:distrib,p:distrib -o,n:distrib -w
+使用法: j_presto distrib -a COL_NUM1 [COL_NUM2 [COL_NUM3]]
+
+入力fileのどのcolumnを変数として使うか指定します。1 columnならx軸の1D分布、2 columnならx-y平面の2D分布、3 columnならx-y binごとにz値の平均とsub-group間標準誤差を計算します。
+>distrib -w
+@u:distrib,p:distrib -a,n:distrib -s
+使用法: j_presto distrib -w COL_NUM
+
+各data pointのweightを含むcolumn番号を指定します。McMD/ALSD等のGEPS weight、または任意に与えたweightを分布計算へ反映します。
+>distrib -s
+@u:distrib,p:distrib -w,n:distrib -r
+使用法: j_presto distrib -s {TTPNCNF_FILE,COLUMN_NUMBER,NFILE}
+
+sub-group（通常は独立simulation run）の割当方法を指定します。runごとの平均・標準誤差を計算するために使用します。
+    *.TTPncnf   Ens_Anaが出力した各runのdata数を使用（推奨）
+    integer     入力file中のsub-group ID column番号
+    NFILE       -iで指定した各fileを別sub-groupとして扱う
+>distrib -r
+@u:distrib,p:distrib -s,n:distrib -t
+使用法: j_presto distrib -r xmin:xmax[,ymin:ymax]
+
+分布を作るx/y軸範囲を指定します。端点は省略可能です（例: :5.0、0.0:）。2Dではcommaでx,yを区切ります（例: 0:5,-1:1）。省略した範囲はdataから自動決定され、min/maxが逆なら自動修正されます。
+>distrib -t
+@u:distrib,p:distrib -r,n:distrib -bn
+使用法: j_presto distrib -t TEMPERATURE
+
+FEL計算に使用する温度をKelvinで指定します。defaultは300 Kです。
+>distrib -bn
+@u:distrib,p:distrib -t,n:distrib -bs
+使用法: j_presto distrib -bn NX[,NY]
+
+histogramのbin数を指定します。1DはNX（default 50）、2DはNX,NY（default 50,50）です。例: -bn 100,150。
+>distrib -bs
+@u:distrib,p:distrib -bn,n:distrib -xnorm
+使用法: j_presto distrib -bs SX[,SY]
+
+histogramのbin幅を指定します。1DはSX、2DはSX,SYです。指定した場合、軸範囲とbin幅からbin数が計算されます。省略時は-bnのbin数からbin幅を決めます。
+>distrib -xnorm
+@u:distrib,p:distrib -bs
+使用法: j_presto distrib -xnorm
+
+各x-binについてy方向の確率和が1になるよう個別に正規化します。条件付き分布やx位置ごとのlocal profileに有用です。-f DIST以外で有効です。
+>pick_conf
+@u:j_presto,p:distrib,n:ttp_se
+"j_presto pick_conf"は、Ens_Ana等の解析dataに条件を与え、対応するsimulation構造を抽出・ranking・event検出します。
+
+主な用途:
+    1. RMSD、PCA座標等の範囲を満たすsubensembleを*.listとして抽出
+    2. 各simulation runで条件を初めて満たす時刻を*.edへ出力
+    3. target条件に近い構造をrankingし*.pickへ出力
+
+option:
+    pick_conf -i   入力file、column、reaction coordinate名
+    pick_conf -o   出力prefix
+    pick_conf -l   Ens_Ana log
+    pick_conf -w   Ens_Ana *.weight
+    pick_conf -t   *.TTPncnf
+    pick_conf -m   複数RCから距離based RCを定義
+    pick_conf -pr  抽出範囲
+    pick_conf -s   sorting条件
+    pick_conf -n   上位出力数
+    pick_conf -e   event条件
+    pick_conf -ti  time stepと初期時刻
+>pick_conf -i
+@u:pick_conf,n:pick_conf -o
+使用法: j_presto pick_conf -i FILE COLUMN RC_NAME [FILE COLUMN RC_NAME ...]
+
+入力file名、読み取るcolumn番号、そのdataへ付けるreaction coordinate（RC）名を3項目一組で指定します。複数組を指定できます。定義したRC名は-pr、-s、-e等で使用します。例:
+    -i test.rmsd 2 rmsd test.proj 2 PCA1 test.proj 3 PCA2
+>pick_conf -o
+@u:pick_conf,p:pick_conf -i,n:pick_conf -l
+使用法: j_presto pick_conf -o OUTPUT_PREFIX
+
+出力fileのprefixを指定します。defaultはtest（test.list、test.ed等）です。
+>pick_conf -l
+@u:pick_conf,p:pick_conf -o,n:pick_conf -w
+使用法: j_presto pick_conf -l LOGINFO_FILE
+
+Ens_Ana実行時のlog fileを指定します。条件を満たす構造の*.listを作る場合に必要です。template scriptでは通常Ens_Ana.logとして保存されます。標準出力だけに表示した場合はtee等で保存してください。logから構造番号と元のCOD/PDBとの対応を取得します。
+>pick_conf -w
+@u:pick_conf,p:pick_conf -l,n:pick_conf -t
+使用法: j_presto pick_conf -w WEIGHT_FILE
+
+Ens_Anaが出力した*.weightを指定します。*.list作成時に必要です。column 1と2は自動的にRC名index、weightとして登録されるため、-iで同名RCを定義しないでください。
+>pick_conf -t
+@u:pick_conf,p:pick_conf -w,n:pick_conf -m
+使用法: j_presto pick_conf -t TTPNCNF_FILE
+
+各構造をsimulation run IDとframeへ対応付ける*.TTPncnfを指定します。-eによるevent検出に必要で、simIDとsimtimeを構成するために使われます。
+>pick_conf -m
+@u:pick_conf,p:pick_conf -t,n:pick_conf -pr
+使用法: j_presto pick_conf -m RC1:RC2[:...][ref1,ref2,...]
+
+複数RC空間内の指定点からのEuclidean距離を新しいRCとして定義します。例: -m PCA1:PCA2[2,3]。新しいRC名は"PCA1:PCA2[2,3]"となり、-pr、-s、-eで使えます。元のRCは事前に-iで定義してください。
+>pick_conf -pr
+@u:pick_conf,p:pick_conf -m,n:pick_conf -s
+使用法: j_presto pick_conf -pr RC_NAME RANGE [RC_NAME RANGE ...]
+
+RC名と範囲を2項目一組で指定し、条件を満たすdataを抽出します。例: rmsd 0:2、PCA1 5:。複数条件はORではなくANDで適用されます。
+>pick_conf -s
+@u:pick_conf,p:pick_conf -pr,n:pick_conf -n
+使用法: j_presto pick_conf -s RC_NAME ORDER [RC_NAME ORDER ...]
+
+RC名とorderを組で指定してsortingします。aは昇順、dは降順です。複数条件は指定順に適用されます。-mで定義した距離RCも使用できます。
+>pick_conf -n
+@u:pick_conf,p:pick_conf -s,n:pick_conf -e
+使用法: j_presto pick_conf -n NUMBER
+
+-sで定義したrankingの上位N構造だけを出力します。省略時は条件を満たすすべての構造を出力します。
+>pick_conf -e
+@u:pick_conf,p:pick_conf -n,n:pick_conf -ti
+使用法: j_presto pick_conf -e RCNAME RANGE [RCNAME RANGE ...]
+
+複数simulation runの時系列dataからeventを検出します。simIDとsimtimeを定義するため-l、-w、-t、-tiが必要です。例: rmsdが1.2以下になるeventは"-e rmsd :1.2"、PCA1/PCA2上の点[2,3]からの距離が0.9以上になるeventは"-e PCA1:PCA2[2,3] 0.9:"です。結果は*.edへ出力されます。
+>pick_conf -ti
+@u:pick_conf,p:pick_conf -e
+使用法: j_presto pick_conf -ti TIME_STEP INITIAL_TIME
+
+event検出用のdata point間time intervalとsimulation開始時刻を指定します。構造indexからsimtimeを計算するため、-e使用時に必要です。
+>ttp_se
+@u:j_presto,p:pick_conf,n:pdb_movie
+"j_presto ttp_se"は、複数simulation runから得た入力dataのweighted averageとrun間standard errorを計算します。
+
+使用法: j_presto ttp_se INPUT TTPNCNF [options]
+    INPUT     入力data file
+    TTPNCNF   Ens_Ana等が出力した*.TTPncnf
+
+option:
+    ttp_se -w   *.weight
+    ttp_se -c   数値column番号、またはDSSP等の1文字code
+    ttp_se -o   出力file名（default: output.txt）
+>ttp_se -w
+@u:ttp_se,n:ttp_se -c
+使用法: j_presto ttp_se -w WEIGHTFILE
+
+各data entryのweightを含むEns_Ana出力*.weightを指定します。省略時は全dataへweight=1を与えます。
+>ttp_se -c
+@u:ttp_se,p:ttp_se -w,n:ttp_se -o
+使用法: j_presto ttp_se -c COLUMN_OR_CHAR
+
+数値dataでは解析するcolumn番号を指定し、そのweighted averageとstandard errorを計算します。文字dataではDSSP code（例: H）のような1文字を指定し、*.SS中で各残基位置にその文字が現れる確率とstandard errorを計算します。整数でも1文字でもない値はerrorです。
+>ttp_se -o
+@u:ttp_se,p:ttp_se -c
+使用法: j_presto ttp_se -o OUTPUT
+
+出力file名を指定します。省略時はoutput.txtです。
+>pdb_movie
+@u:j_presto,p:ttp_se,n:MSPER
+"j_presto pdb_movie"は、指定directory以下のsingle-model PDB/PDB.GZをnatural sort順に結合し、一つのmulti-model PDBを作成します。各入力fileをMODEL～ENDMDLで囲み、元file名をREMARKへ記録します。PyMOL等でanimation/trajectoryとして表示できます。
+
+使用法: j_presto pdb_movie INPUT_DIR [options]
+
+option:
+    pdb_movie -o   出力multi-model PDB（default: movie.pdb）
+    pdb_movie -p   入力glob pattern（default: *.pdb、対応する*.pdb.gzも対象）
+    pdb_movie -r   出力するatom serial範囲
+>pdb_movie -o
+@u:pdb_movie,n:pdb_movie -p
+使用法: j_presto pdb_movie -o OUTPUT
+
+結合後のmulti-model PDB file名を指定します。defaultはmovie.pdbです。
+>pdb_movie -p
+@u:pdb_movie,p:pdb_movie -o,n:pdb_movie -r
+使用法: j_presto pdb_movie -p PATTERN
+
+入力directory内で対象fileを選ぶglob patternを指定します。例: "frame_*.pdb"。対応するplain PDBとgzip圧縮PDB.GZの両方を含めます。defaultは"*.pdb"です。
+>pdb_movie -r
+@u:pdb_movie,p:pdb_movie -p
+使用法: j_presto pdb_movie -r RANGE
+
+各入力PDBから出力するatom serial番号範囲をSTART:END形式（両端を含む）で指定します。
+    1:1000   serial 1～1000
+    :1000    先頭～1000
+    500:     500以降
+    :        全原子
+省略時は全原子を出力します。
+>MSPER
+@u:j_presto,p:pdb_movie,n:conmut
+"j_presto MSPER"は、Mutation Site Prediction for Enhancing the Regioselectivity of substrate reaction sitesを実行し、酵素selectivityを改善する変異候補残基を提案します。目的生成物へつながるdesirable複合体ensembleと、副生成物へつながるundesirable ensembleを入力します。基質との接触がdesirableでは低くundesirableでは高い酵素残基を、undesirable poseを選択的に不安定化する変異候補としてrankingします。
+
+使用法: j_presto MSPER [options]
+
+option:
+    MSPER -d   desirable ensembleの接触率PDB
+    MSPER -u   undesirable ensembleの接触率PDB
+    MSPER -o   出力prefix（default: MSPER）
+    MSPER -e   rankingから除外する残基番号
+    MSPER -a   出力残基番号のshift
+    MSPER -s   複数*.scrのrank平均による統合ranking
+
+主な出力:
+    *.scr   MSPER score
+    *.list  変異候補ranking
+    *.pdb   接触率差（undesirable-desirable）をB-factorへ記録したPDB
+>MSPER -d
+@u:MSPER,n:MSPER -u
+使用法: j_presto MSPER -d DESIRABLE
+
+desirable ensembleにおける酵素原子と基質の接触率をB-factorへ記録したPDBを指定します。通常はEns_Anaのcontact解析出力*_con.pdbを使用します。準備方法は"tutorial MSPER"を参照してください。
+>MSPER -u
+@u:MSPER,p:MSPER -d,n:MSPER -o
+使用法: j_presto MSPER -u UNDESIRABLE
+
+undesirable ensembleにおける酵素原子と基質の接触率をB-factorへ記録したPDBを指定します。通常はEns_Anaのcontact解析出力*_con.pdbを使用します。
+>MSPER -o
+@u:MSPER,p:MSPER -u,n:MSPER -e
+使用法: j_presto MSPER -o PREFIX
+
+出力fileのprefixを指定します。defaultはMSPERです。
+>MSPER -e
+@u:MSPER,p:MSPER -o,n:MSPER -a
+使用法: j_presto MSPER -e EXCLUDE_RESIDUES
+
+活性中心、基質等、rankingから事前に除外する残基番号を指定します。複数指定でき、範囲は31:33のように記述します。例: -e 31:33 35。
+>MSPER -a
+@u:MSPER,p:MSPER -e,n:MSPER -s
+使用法: j_presto MSPER -a ADJUST_RESNUM
+
+*.listと*.scrに出力する残基番号へ加える整数shiftを指定します。defaultは0です。
+>MSPER -s
+@u:MSPER,p:MSPER -a
+使用法: j_presto MSPER -s SCR_FILE1 SCR_FILE2 [SCR_FILE3 ...]
+
+複数の*.scrに含まれるrankを平均し、統合rankingを作成します。このoption使用時は通常のMSPER score計算を行わず、統合rankingだけを出力します。
+>conmut
+@u:j_presto,p:MSPER,n:struct_formula
+"j_presto conmut"はblastpでquery蛋白質のhomolog配列を収集し、MAFFTまたはClustalWでmultiple sequence alignmentを行い、consensus配列に基づく置換候補を提案します。query配列自身はalignmentへ含めますがconsensus投票から除外されます。保存性の高い残基への置換候補は、蛋白質安定性、特に耐熱性改善の候補として利用できますが、実際の効果は別途検証してください。
+
+使用法: j_presto conmut QUERY.fasta [options]
+
+option:
+    conmut -e   web BLAST用email
+    conmut -l   local BLASTを使用
+    conmut -d   local database path（default: nr）
+    conmut -b   E-value threshold（default: 1e-5）
+    conmut -m   最大target配列数（default: 1000）
+    conmut -i   最小identity（default: 0.9）
+    conmut -c   最小coverage（default: 0.9）
+    conmut -H   homolog FASTAを直接入力しBLASTを省略
+    conmut -a   aligner（mafft/clustalw、default: mafft）
+    conmut -s   出力残基番号の開始値（default: 1）
+    conmut -o   出力prefix（default: result）
+
+出力には*_all.fasta、*_flt.fasta、*_res.fasta、*_aln.fasta、*_consensus.fasta、*_aln_view.txt、*_suggested_mutations.txtが含まれます。
+>conmut -e
+@u:conmut,n:conmut -l
+使用法: j_presto conmut -e EMAIL
+
+NCBI web BLAST利用時にユーザー識別用emailを指定します。local BLAST（-l）またはhomolog直接入力（-H）を使わず、emailもない場合はerrorになります。
+>conmut -l
+@u:conmut,p:conmut -e,n:conmut -d
+使用法: j_presto conmut -l
+
+NCBI web BLASTの代わりにlocal blastpを使用します。blastpがPATHから実行でき、-dで指定するformat済みBLAST databaseが必要です。internet接続のない環境や大量解析に適します。
+>conmut -d
+@u:conmut,p:conmut -l,n:conmut -b
+使用法: j_presto conmut -d DB_PATH
+
+-l使用時のlocal BLAST databaseを指定します。defaultはnrです。databaseはmakeblastdbで作成され、blastpと互換である必要があります。
+>conmut -b
+@u:conmut,p:conmut -d,n:conmut -m
+使用法: j_presto conmut -b EVALUE
+
+BLASTのE-value thresholdを指定します。defaultは1e-5です。小さい値ほど厳格で高信頼hitに限定され、大きい値ほど多くのhitを含みます。web/local BLASTの両方に適用されます。
+>conmut -m
+@u:conmut,n:conmut -i
+使用法: j_presto conmut -m MAX_TARGET_SEQS
+
+BLAST結果から保持する最大配列数を指定します。defaultは1000です。小さくすると高速化・memory削減、大きくするとcoverageが増える一方でalignment時間が増えます。
+>conmut -i
+@u:conmut,p:conmut -m,n:conmut -c
+使用法: j_presto conmut -i IDENTITY_THRESHOLD
+
+queryに対する最小sequence identityを0～1で指定します。defaultは0.9です。BLAST後、MSA前にこの値未満の配列を除外します。
+>conmut -c
+@u:conmut,p:conmut -i,n:conmut -H
+使用法: j_presto conmut -c COVERAGE_THRESHOLD
+
+query全長に対するalignment coverageの最低値を0～1で指定します。defaultは0.9です。低くすると部分配列を含みやすくなり、consensus品質へ影響する場合があります。
+>conmut -H
+@u:conmut,p:conmut -c,n:conmut -a
+使用法: j_presto conmut -H HOMOLOGS_FASTA
+
+準備済みhomolog配列をFASTAで直接入力し、BLASTを完全に省略します。入力配列だけをfilter、alignment、consensus計算へ使用します。
+>conmut -a
+@u:conmut,p:conmut -H,n:conmut -s
+使用法: j_presto conmut -a {mafft|clustalw}
+
+multiple sequence alignment programを指定します。defaultはmafftです。選択したprogramがPATHから実行できる必要があります。
+>conmut -s
+@u:conmut,p:conmut -a,n:conmut -o
+使用法: j_presto conmut -s START_RESIDUE_NUMBER
+
+出力file中の残基番号を数え始める番号を指定します。defaultは1です。queryの実際の番号体系へ合わせる際に使用します。
+>conmut -o
+@u:conmut,p:conmut -s
+使用法: j_presto conmut -o OUTPUT_PREFIX
+
+出力fileのprefixを指定します。defaultはresultです。
+>struct_formula
+@u:j_presto,p:conmut,n:get_tmpl
+"j_presto struct_formula"はSMILESから二次元分子構造式を描画します。SMILESが分子graph、結合次数、立体化学の一次情報です。任意のPDBは原子名・serial・結合推定の補助に使いますが、SMILESの化学構造を置き換えません。
+
+使用法:
+    j_presto struct_formula SMILES [options]
+
+manual項目:
+    struct_formula -o
+    struct_formula image settings
+    struct_formula PDB matching
+    struct_formula labels
+    struct_formula orientation
+    struct_formula bond display
+    struct_formula examples
+
+出力形式はsvg、png、jpg、tiffです。RDKitが必要で、raster出力にはPillow、必要に応じてCairoSVGを使用します。
+>struct_formula -o
+@u:struct_formula,n:struct_formula image settings
+使用法: j_presto struct_formula SMILES -o OUTPUT
+
+出力file名を指定します。拡張子によりSVG、PNG、JPEG、TIFFを選択します。defaultはmolecule_image.svgです。
+>struct_formula image settings
+@u:struct_formula,p:struct_formula -o,n:struct_formula PDB matching
+画像・layout option:
+    -m,  --mono                 monochrome調描画
+    -x,  --rotate_x DEG         x軸回転（default: 0）
+    -y,  --rotate_y DEG         y軸回転（default: 0）
+    -z,  --rotate_z DEG         z軸回転（default: 0）
+    -f,  --font_size SIZE       label font size（default: 100）
+    -bw, --bond_width WIDTH     結合線幅（default: 1.5）
+    -w,  --width PIXELS         image幅（default: 600）
+    -ht, --height PIXELS        image高さ（default: 600）
+    -dpi,--dpi VALUE            raster DPI metadata（default: 300）
+    -bi, --bond_indices I J     0-based bond index pairの下流branchを180度回転。複数指定可。
+>struct_formula PDB matching
+@u:struct_formula,p:struct_formula image settings,n:struct_formula labels
+PDB原子名対応option:
+    -p,  --pdb FILE              原子名・serial・結合hintを与えるPDB
+    -rn, --resname NAME          PDBを残基名で限定
+    -ch, --chain ID              chainで限定
+    -ri, --resid NUMBER          残基番号で限定
+    -bs, --bond-source {auto,conect,distance,none}
+        temporary PDB graphの結合情報。autoはCONECTがあれば使用し、なければ距離推定。
+    -ts, --threshold-scale VALUE 距離推定時の共有結合半径scale（default: 1.25）
+    -ta, --threshold-add VALUE   追加距離許容値Å（default: 0.15）
+
+化学的に等価なgraph mappingが複数ある場合、logと出力画像を確認し、PDB原子名が意図どおり対応したか検証してください。
+>struct_formula labels
+@u:struct_formula,p:struct_formula PDB matching,n:struct_formula orientation
+label option:
+    -lm, --label-mode {atom_name,element_atom_name,serial,index,none}
+        label内容（default: atom_name）
+    -ls, --label-scope {auto,all,selected}
+        label対象。autoでは-sl/-hlで明示した場合だけ描画。
+    -sl, --show-label ATOM      指定原子のlabelを表示。反復またはcomma list可。
+    -hl, --hide-label ATOM      現在のlabel setから非表示。
+    -kah,--keep-all-hydrogens   PDB対応後も全explicit hydrogenを保持。
+    -hg, --highlight-group ATOMS COLOR WEIGHT
+        comma listの原子群をhighlight。WEIGHTはnormalまたはbold。
+
+ATOMにはPDB原子名、serial、0-based index、1-based indexを使用できます。
+>struct_formula orientation
+@u:struct_formula,p:struct_formula labels,n:struct_formula bond display
+配向・座標option:
+    -ly, --layout {2d,pdb}
+        RDKit生成2D座標、またはsource PDBの投影座標（default: 2d）
+    -ou, --orient-up ATOM
+        分子中心からATOMが上方向を向くよう回転
+    -or, --orient-right ATOM
+        ATOMが右方向を向くよう回転
+
+-x/-y/-zは最終2D描画前に回転を適用します。関連ligand間で配向を統一する際に有用です。
+>struct_formula bond display
+@u:struct_formula,p:struct_formula orientation,n:struct_formula examples
+結合表示override:
+    -wg, --wedge-bond ATOM1 ATOM2    指定方向の結合をsolid wedgeで描画。反復可。
+    -dg, --dash-bond ATOM1 ATOM2     dashed wedge。反復可。
+    -bo, --bond-order ATOM1 ATOM2 ORDER
+        結合次数を1/2/3、single/double/triple/aromaticで上書き。
+    -db, --double-bond ATOM1 ATOM2   double bond指定のshort cut。
+
+これらはSMILES/PDB matching後の表示を調整します。誤ったSMILES graphを隠す目的で使わないでください。
+>struct_formula examples
+@u:struct_formula,p:struct_formula bond display
+SMILESから描画:
+    j_presto struct_formula 'CCO' -o ethanol.svg
+
+PDB原子名を対応付け、選択原子をlabel:
+    j_presto struct_formula 'CC1=CC[C@H](CC1)C(=C)C' \
+        -p molecule.pdb -rn SLM -sl H8,C5,O1 -o molecule.png
+
+官能基をhighlight:
+    j_presto struct_formula 'CCO' -sl O -hg O red bold -o ethanol.png
+
+必要に応じてSMILESとcomma区切りatom listを引用符で囲んでください。
+>get_tmpl
+@u:j_presto,p:struct_formula,n:genlist
+j_presto実行に必要な入力file・script templateを取得します。
+    j_presto get_tmpl [filename]
+
+主な取得対象:
+    gen_db             *.tpldb作成script
+    prep               MD/min用*.pdb, *.tpl, *.shk準備script
+    min.inp            energy minimization入力
+    md.inp             単一MD入力
+    CAPbound.inp       CAP boundary入力
+    psr.inp            position restraint入力
+    dsr.inp            distance restraint入力
+    dhr.inp            dihedral restraint入力
+    md_run             単一MD/min実行script
+    batch_set.inp      複数MD schedule
+    batch_set_ALSD.inp ALSD schedule
+    md_multi           複数MDを一MPI jobで実行するscript
+    DISTIL             編集して使用するDISTIL実行script template
+
+すべて取得する場合:
+    j_presto get_tmpl all
+>genlist
+@u:j_presto,p:get_tmpl,n:manual
+"j_presto genlist"はindex展開を含むpath patternからfile listを作成します。各simulation segmentの時系列連続性を示す"->"も自動挿入でき、Ens_AnaやGEprepのlist入力に使用できます。
+
+使用法: j_presto genlist PATTERN [options]
+#start:endでindex範囲を展開します。例:
+    j_presto genlist ../md#0:2/n#1:2/md.cod
+
+option:
+    genlist -r   各fileにdata範囲START:ENDを付加
+    genlist -na  "->"を出力しない
+    genlist -o   出力file名（default: file.list）
+
+例:
+    j_presto genlist ../md#0:1/n#1:2/md.cod -r 1:100 -o file.list
+同じn番号内のsegment間には"->"が付き、連続trajectoryとして解釈できます。
+>genlist -r
+@u:j_presto,n:genlist -na
+使用法: j_presto genlist -r START:END
+
+各pathの次行へ整数data範囲を追加します。MD trajectoryのframe範囲等に使用します。
+>genlist -na
+@u:j_presto,p:genlist -r,n:genlist -o
+使用法: j_presto genlist -na
+
+data範囲行末の"->"を出力しません。segment間の連続指定が不要なlistで使用します。
+>genlist -o
+@u:j_presto,p:genlist -na
+使用法: j_presto genlist -o OUTPUT_FILE
+
+出力file名を指定します。defaultはfile.listです。
+>manual
+@u:j_presto,p:genlist
+"j_presto manual"は対話式manualを開きます。
+
+言語指定:
+    j_presto manual -l ja       日本語
+    j_presto manual -l en       English
+    j_presto manual -l auto     localeから自動選択
+J_PRESTO_LANG=ja/enでもdefault言語を設定できます。manual内では"lang ja"または"lang en"で現在の項目を維持したまま切り替えられます。
+
+操作:
+    h / home       top page
+    f / FAQ        FAQ index
+    t / tutorial   tutorial index
+    s / search     項目名・本文検索
+    l / list       全項目またはprefix項目一覧
+    p / n / u      前・次・上位項目
+    q / quit       終了
+
+Tabで項目名を補完できます。program名、option、入力keyword、workflow名を入力すると該当項目を開きます。
+>atom specifier
+複数のj_presto programで原子選択に使用する共通書式です。一つ以上のselection blockをlogical operatorで連結します。式中に空白を入れず、!、&、|、<、parenthesesを含む場合はshellで引用符に入れてください。
+
+1. atom ID・残基・chain・原子名
+    14              atom ID 14
+    1<20            atom ID 1～20
+    10<30,40<50     10～30および40～50
+    CA              原子名CA
+    N,CA,C,O        protein backbone
+    C*              Cで始まる原子名
+    !H*,h*          H/hで始まらない原子
+
+* wildcardは名前末尾だけで使用できます。block先頭の!は否定です。
+
+残基・原子:
+    1<20:CA         残基1～20のCA
+    LYS,ARG:*       LYS/ARGの全原子
+    WAT:O           水oxygen
+    !ALA:*          ALA以外の全原子
+
+chain・残基・原子:
+    1:*:*           第1 chainの全原子
+    A,B:ARG:CA      chain A/BのARG CA
+
+2. 座標範囲
+    [-5.0<5.0:2<:<-3]
+        x=-5～5、y>=2、z<=-3
+    [-2<-1,1<2::]
+        x=-2～-1または1～2
+
+3. block連結
+&はAND、|はORです。
+    !H*,h*&[:5<:]
+        non-hydrogenかつy>=5
+    1<5:CA|11<20:N
+        残基1～5のCA、または11～20のN
+
+式は左から評価されます。意図する優先順位を明確にする場合はparenthesesを使用してください。
+>tutorial
+tutorialは目的別に整理されています。下記の項目名を入力し、workflow内ではp、n、uで移動してください。
+
+導入:
+    tutorial install       prerequisites、導入、環境設定
+
+system準備・simulation:
+    tutorial preparation   非標準分子準備と構造検査
+    tutorial MD            topology database、prep、min、MD
+
+trajectory処理・解析:
+    tutorial analysis      解析手法の選択
+    tutorial PCA           PCA workflow
+    tutorial DISTIL        二ensembleのstandard/CED比較
+    tutorial traj_conv     COD/CODSと外部形式の変換
+
+分子設計・図作成:
+    tutorial MSPER         酵素selectivity改善変異候補
+    tutorial struct_formula ligand構造式とPDB原子label
+
+簡易検査:
+    tutorial pepchk        peptide bond geometry検査
+>tutorial install
+@u:tutorial
+1. AmberTools parameter databaseを準備し、leaprc、dat、lib、frcmod、prep等を含むdirectoryを確認します。bashでは例として次を設定します。
+    export J_PRESTO_AMBER_DATABASE_PATH="/path/to/amber/parameter/database"
+永続化する場合は~/.bashrc等へ追加してsourceしてください。
+
+2. Git cloneまたはrelease archive展開でj_presto sourceを取得します。
+    git clone REPOSITORY_URL
+    cd j_presto
+
+3. Python 3、f2py、ifortまたはgfortran、およびsetup.shが検査するPython moduleを準備し、top directoryで実行します。
+    ./setup.sh
+setup.shはmodule、install先、Fortran compilerを確認し、programとcalc_Efield extensionをbuildします。
+
+4. setup.shが表示したpathを設定します。例:
+    export J_PRESTO_PATH="$HOME/local/bin/J_PRESTO"
+    export PATH="$PATH:$J_PRESTO_PATH"
+
+5. 確認:
+    j_presto --version
+    j_presto -h
+    j_presto manual
+>tutorial preparation
+@u:tutorial
+system準備tutorial:
+    tutorial prep_extra 1   PREPとPDBの原子・残基名不一致を解決
+    tutorial pepchk         prepared PDBのcis/trans/twisted peptide bond検査
+
+標準force field内の通常生体分子だけを扱う場合、導入後は通常"tutorial MD"へ進めます。
+>tutorial prep_extra 1
+@u:tutorial preparation
+非標準残基・ligandでPREPとPDBの原子名が異なる場合の手順です。
+
+1. 対応tableを作成:
+    j_presto nt_gen ligand.prep ligand.pdb -o ligand.nt
+2. ligand.ntを確認し、化学的対応が正しいことを検証します。
+3. 採用する命名規則に合わせ、nt_convでPREPまたはPDB名を変換します。例:
+    j_presto nt_conv ligand.nt ligand.pdb -o ligand_converted.pdb
+4. 変換後の命名をgen_dbとprepで一貫して使用します。
+詳細は"nt_gen"と"nt_conv"を参照してください。
+>tutorial MD
+@u:tutorial
+MD workflow:
+    tutorial MD 1      gen_dbでtopology database (*.tpldb)を作成
+    tutorial MD 2      prepでsimulation入力を準備
+    tutorial MD 3      md_runでenergy minimization
+    tutorial MD 4-1    単一MD trajectoryを実行
+    tutorial MD 4-2    MPI launcherで複数独立trajectoryを実行
+
+この順番で進めてください。
+>tutorial MD 1
+@u:tutorial MD,n:tutorial MD 2
+gen_dbでtopology database (*.tpldb)を作成します。protein、nucleic acid、glycan、lipid、ligand等に必要なAMBER parameterを取り込みます。J_PRESTO_AMBER_DATABASE_PATHが正しく設定されていれば、dat、prep、lib、frcmod、leaprcをfile名で指定できます。
+
+AMBER databaseにない分子はAntechamber等でAMBER-compatible prep/frcmodを作り、次のように追加します。
+    j_presto gen_db -i [created file path]
+
+実行template:
+    j_presto get_tmpl gen_db
+詳細は"gen_db"または"j_presto gen_db -h"を参照し、完了後"tutorial MD 2"へ進みます。
+>tutorial MD 2
+@u:tutorial MD,p:tutorial MD 1,n:tutorial MD 3
+*.tpldbとtarget system PDBを用いてprepを実行し、MD/min用の座標PDB、topology *.tpl、必要に応じてSHAKE *.shkを作成します。
+    j_presto prep [options]
+
+template:
+    j_presto get_tmpl prep
+詳細は"prep"または"j_presto prep -h"を参照し、完了後"tutorial MD 3"へ進みます。
+>tutorial MD 3
+@u:tutorial MD,p:tutorial MD 2,n:tutorial MD 4-1
+MD開始前にenergy minimizationを行い、初期構造のatom clashや不自然な歪みを緩和します。
+    j_presto get_tmpl min.inp
+    j_presto md_run min.inp
+
+必要に応じてCAPbound.inp、position restraint参照PDB、psr.inp、dsr.inp、dhr.inpを準備します。templateは"j_presto get_tmpl [filename]"で取得できます。OCOORDを設定するとmin後構造PDBを出力でき、次のMD初期構造に使用します。単一MDは"tutorial MD 4-1"、複数runは"tutorial MD 4-2"へ進みます。
+>tutorial MD 4-1
+@u:tutorial MD,p:tutorial MD 3,n:tutorial MD 4-2
+minimized構造から単一MDを実行します。
+    j_presto get_tmpl md.inp
+    j_presto md_run md.inp
+
+必要に応じてCAP boundaryや各種restraint入力を指定します。NAMECOを設定するとMD中の座標trajectoryをCODへ出力でき、Ens_Ana、DISTIL等の解析に使用できます。実行script templateは"j_presto get_tmpl md_run"です。
+>tutorial MD 4-2
+@u:tutorial MD,p:tutorial MD 4-1
+異なる初期velocityを持つ複数MD、McMD/ALSDの反復run等を一つのMPI jobで実行する場合、batch_setで入力とscriptを一括生成し、j_presto_mpiまたはj_presto_masterを使用します。
+
+まずmanualの"batch_set"、"batch_set.inp"、"md_multi.exe"を参照し、利用するjob scheduler・MPI起動command・OpenMP thread数へtemplateを合わせてください。
+>tutorial analysis
+@u:tutorial
+data形式と目的に応じて選択します。
+    traj_conv       COD/CODSと外部trajectory形式の変換
+    Ens_Ana         構造指標計算とPCA入力作成
+    tutorial PCA    主な構造変動の解析
+    tutorial DISTIL 二条件ensembleの解釈可能な差解析
+    distrib         分布・自由energy landscape
+    pick_conf       RC条件を満たす構造抽出・event検出
+    ttp_se          run平均・standard error
+
+外部trajectoryから始める場合は"tutorial traj_conv"、二条件を直接比較する場合は"tutorial DISTIL"を参照してください。
+>tutorial traj_conv
+@u:tutorial
+外部trajectoryをCODへ変換:
+    j_presto traj_conv -i md.xtc -r reference.pdb -o md.cod
+
+frameを間引き、non-hydrogenだけを出力:
+    j_presto traj_conv -i md.xtc -r reference.pdb -o md.cod \
+        -b 1001 -e END -s 10 -as '!H*,h*'
+
+大きな出力前には-c/--check_onlyで条件を検査してください。変換後、traj_convが作成した付随PDBを、原子順序一致が必要なj_presto解析の参照PDBとして使用します。
+>tutorial pepchk
+@u:tutorial
+simulation前にpeptide bond geometryを検査します。
+    j_presto pepchk prepared.pdb
+
+CSV report:
+    j_presto pepchk prepared.pdb --csv peptide_bonds.csv
+
+automated validationでは--fail-on-cisを使用でき、cisまたはtwisted bond検出時にexit status 2を返します。報告されたbondが意図したcis peptideか、構造準備errorかを個別に確認してください。
+>tutorial DISTIL
+@u:tutorial
+1. 化学的に対応する原子を含む二ensembleを準備します。COD/CODSまたは独立run listを使用できます。
+2. 対応する参照PDBと、可能ならtopologyを準備します。
+3. 明確な差にはstandard mode:
+    j_presto DISTIL -A A.list -B B.list -r reference.pdb \
+        -t system.tpl -o distil_standard
+4. 各条件に複数独立runがあり、弱い差を調べる場合はCED:
+    j_presto DISTIL -A A.list -B B.list -r reference.pdb \
+        -sm ced -o distil_ced
+5. ranked_pairs_pretty.txt、ranking CSV、代表距離分布、構造PDB、PyMOL scriptを確認します。
+
+CEDではrun groupが真に独立で、条件内変動を十分samplingしていることが解釈の前提です。
+>tutorial PCA
+@u:tutorial
+PCA workflow:
+    tutorial PCA 1   Ens_AnaでPCA座標を作成
+    tutorial PCA 2   PC軸を計算し構造を射影
+    tutorial PCA 3   分布または自由energy landscapeを作成
+この順番で進めてください。
+>tutorial PCA 1
+@u:tutorial PCA,n:tutorial PCA 2
+Ens_Anaで*.PCAcodを作成します。
+
+Cartesian座標PCAはnative付近の揺らぎ解析に適し、PCA_method=cordとatom_spec_PCAを設定します。並進・回転差を除くため通常はRMSD fittingも指定します。
+
+残基間距離等のinternal coordinate PCAは大きな構造変化、folding、McMD/ALSD ensembleに適します。PCA_method、atom_spec_PCA、neighbor_residue_PCA、必要ならtolerance_PCAを設定します。
+
+設定後"j_presto Ens_Ana"を実行してください。詳細は"PCA_method"と"Ens_Ana.inp"を参照します。
+>tutorial PCA 2
+@u:tutorial PCA,p:tutorial PCA 1,n:tutorial PCA 3
+*.PCAcodからPC軸を計算します。
+    j_presto PCAaxis -i input.PCAcod -o result
+次に、各構造を*.axisへ射影します。
+    j_presto PCAproj -i input.PCAcod -a result.axis -o result
+詳細は"PCAaxis"と"PCAproj"を参照してください。
+>tutorial PCA 3
+@u:tutorial PCA,p:tutorial PCA 2
+PCAprojが出力した*.projをdistribへ入力し、PC空間上の分布または自由energy landscapeを作成します。*.projのcolumn 1はweight、column 2以降がPC座標です。
+
+1D/2Dで使用するcolumnを-a、weightを-w、FELなら-f FELで指定します。distribは1Dで*.dist、2Dで*.distpを出力します。gnuplot templateは"j_presto get_tmpl gnu.plot"または"gnu.splot"で取得できます。
+>tutorial MSPER
+@u:tutorial
+MSPER workflowは次の4段階です。
+    1. enzyme-substrate複合体ensembleをMD等で作成
+    2. Ens_Anaとpick_confでdesirable/undesirable ensembleを抽出
+    3. 各ensembleで酵素原子と基質のcontact率をEns_Anaで計算
+    4. 二つの*_con.pdbをMSPERへ入力し変異候補をranking
+
+1. regioselectivity改善では、目的反応siteが活性中心へ近いposeをdesirable、他siteが近いposeをundesirableとします。substrate selectivity改善では各substrateのensembleを用意します。
+
+2. Ens_Anaのmeasurementsで活性中心－反応site距離を*.distanへ出力し、pick_confでthresholdを満たす構造を*.listとして抽出します。
+
+3. *.listをEns_Anaのinput_binary_listへ指定し、atom_spec_contactでenzymeをtarget、substrateをprobeとしてcontact率を*_con.pdbへ出力します。desirable/undesirableの双方で行います。
+
+4. 例:
+    j_presto MSPER -d desirable_con.pdb -u undesirable_con.pdb -o result
+*.scrと*.listが出力されます。sampling convergence確認のため、独立初期構造・simulation setごとにMSPERを行い、ranking一致を確認することを推奨します。複数結果は次で統合できます。
+    j_presto MSPER -s 1.scr 2.scr
+>tutorial struct_formula
+@u:tutorial
+1. 分子のauthoritative SMILESを準備します。
+2. 必要ならsimulationで使う原子名を含むPDBを準備します。
+3. 描画:
+    j_presto struct_formula 'CC1=CC[C@H](CC1)C(=C)C' \
+        -p molecule.pdb -rn SLM -o molecule.svg
+4. label/highlight追加:
+    j_presto struct_formula 'CC1=CC[C@H](CC1)C(=C)C' \
+        -p molecule.pdb -rn SLM -sl H8,C5 -hg H8,C5 blue bold \
+        -o molecule.png
+
+化学構造はSMILESが定義します。論文図へ使う前に、logと画像でgraph matchingおよび原子labelを検証してください。
+>FAQ
+FAQはprogram別に整理されています。下記の正確な項目名を入力してください。
+
+system準備:
+    FAQ prep
+    FAQ prep disulfide and LINK records
+    FAQ prep DNA trimming
+    FAQ prep terminal caps
+
+MD実行:
+    FAQ md_run
+    FAQ md_run memory
+    FAQ md_run parallelization
+
+関連語はSearchでも探せます。command syntaxはFAQだけでなく、対応するprogram・option項目を参照してください。
+>FAQ prep
+@u:FAQ
+j_presto prepに関するFAQ:
+    FAQ prep disulfide and LINK records
+    FAQ prep DNA trimming
+    FAQ prep terminal caps
+>FAQ prep disulfide and LINK records
+@u:FAQ prep,n:FAQ prep DNA trimming
+質問:
+    disulfide bondやその他の共有結合linkを導入するにはどうすればよいですか。
+
+回答:
+    disulfide bondは入力PDBのSSBOND record、その他の共有結合はLINK recordで記述します。prepは適切なparameterが存在する場合、これらを読みtopology connectionへ反映します。残基名・原子名がtopology databaseと一致していることを確認し、column形式はPDB format specificationを参照してください。
+>FAQ prep DNA trimming
+@u:FAQ prep,p:FAQ prep disulfide and LINK records,n:FAQ prep terminal caps
+質問:
+    system trimmingでDNA二重鎖の片方だけが削除されます。pairを残すにはどうすればよいですか。
+
+回答:
+    "j_presto prep -pair"で、一緒に保持すべきDNA chainまたはsegment pairを指定します。書式は"prep -pair"を参照してください。
+>FAQ prep terminal caps
+@u:FAQ prep,p:FAQ prep DNA trimming
+質問:
+    peptide chain末端chargeを中和するにはどうすればよいですか。
+
+回答:
+    N末端へacetyl capを付けるには"j_presto prep -ACE"、C末端へN-methylamide capを付けるには"j_presto prep -NME"を使用します。残基selectionの書式は各項目を参照してください。
+>FAQ md_run
+@u:FAQ
+j_presto md_runに関するFAQ:
+    FAQ md_run memory
+    FAQ md_run parallelization
+>FAQ md_run memory
+@u:FAQ md_run,n:FAQ md_run parallelization
+質問:
+    md_runがmemory allocation、stack、OpenMP関連errorで停止します。
+
+回答:
+    まずOMP_NUM_THREADSを減らし、要求memoryがcompute nodeの上限内か確認してください。bash環境では例として次のように設定できます。
+        ulimit -s 16384
+        export OMP_STACKSIZE=16M
+        export OMP_NUM_THREADS=8
+        j_presto md_run md.inp > md.log
+
+thread数を増やすとthreadごとのmemoryも増え、常に高速化するとは限りません。ulimit -sは通常KB、OMP_STACKSIZEは16M等で指定します。必要値はcompiler、OS、scheduler、system sizeに依存します。両値を機械的に同じ数値へせず、利用環境の規則に従ってください。
+>FAQ md_run parallelization
+@u:FAQ md_run,p:FAQ md_run memory
+質問:
+    どのようなparallel実行に対応していますか。
+
+回答:
+    一つのmd_run processはOpenMP shared-memory parallelizationを使用します。単一trajectoryをMPIでdomain decompositionするengineではなく、GPUも直接使用しません。一つのMPI allocation内で複数独立OpenMP trajectoryを実行する場合はj_presto_mpiまたはj_presto_masterを使用します。

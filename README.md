@@ -1,117 +1,186 @@
 # j_presto
-"j_presto" is a program suite that compiles subprograms for preparing input files and executing molecular dynamics (MD) simulations, specifically for biomolecules such as proteins.
-This suite features the original computational method, Adaptive Lambda Square Dynamics (ALSD) simulation, which enables comprehensive conformational sampling by enhancing conformational changes in specific regions of the molecule.
-Additionally, it incorporates the Zero Dipole Expansion Method (ZDM), a technique that allows for the efficient and highly accurate calculation of electrostatic interactions.
+
+`j_presto` is a program suite for preparing biomolecular systems, performing molecular dynamics (MD) simulations, and analyzing the resulting structural ensembles.
+
+The suite includes the original Adaptive Lambda Square Dynamics (ALSD) method for enhancing conformational sampling in selected molecular regions. It also supports the zero-dipole summation method (ZDM) and related electrostatic treatments for efficient MD calculations.
 
 ## Installation
 
-### Before Installation
+### 1. Obtain the AMBER parameter database
 
-#### Download AMBERtools
-To create simulation parameter files for j_presto, a database provided by AMBERtools is required.
-AMBERtools is an external program provided by the AMBER project at the University of California, San Diego (UCSD) in the United States, and the developers of j_presto do not hold its copyright.
-Users are responsible for downloading it at their own risk.
-	1 : Access the AMBERtools webpage (https://ambermd.org/AmberTools.php).
-	2 : Click the "Download AmberTools" link
-	3 : Read the description on the linked page carefully and download AmberTools using your preferred method.
-	4 : Extract the downloaded file (AmberTools***.tar.bz2, where *** is the version number) and copy the directory containing the parameter files (leaprc, dat, lib, frcmod, prep files) to a location of your choice.
-	    For example, in the case of AmberTools24, these files are stored inside the amber24_src/dat/leap directory.
-	5 : If you are using bash, add the line
-		export J_PRESTO_AMBER_DATABASE_PATH="[the path where you placed the db directory]"
-	    to your .bashrc or .bash_profile file, and then run
-		source .bashrc (if you added it to the .bashrc file)
-	    to set the path to the AMBER database directory.
+The `prep` workflow uses parameter files distributed with AmberTools. AmberTools is an external package developed by the AMBER project and is not distributed with j_presto.
 
-#### Download j_presto repository
-	1 : Access the GitHub Repository:
-		Open your web browser and navigate to the j_presto GitHub repository page.
-	2 : Clone or Download the Repository:
-		To clone the repository, click on the green "Code" button located on the right side of the page.
-		Copy the URL provided in the dropdown menu.
-		Open your terminal and enter the following command:
-			git clone [copied URL]
-		Alternatively, you can choose to download the repository as a ZIP file.
-		Click the "Code" button, then select "Download ZIP".
-		This will download the repository contents as a compressed file to your local machine.
-		Extract the Files.
+1. Download and extract AmberTools from the official AMBER website.
+2. Locate the directory containing the `leaprc`, `dat`, `lib`, `frcmod`, and `prep` files. For example, AmberTools24 stores these files under `amber24_src/dat/leap`.
+3. Set the directory path in your shell configuration:
 
-### Install j_presto
-	1 : The j_presto program is written in Fortran and Python3.
-	    Before installing the program, please ensure that you have installed the following three components:
-		1 : Intel Fortran (ifort) or gfortran
-		2 : python3
-		3 : f2py, which is required to compile Fortran subroutines into Python modules.
-	2 : Navigate into the downloaded j_presto directory and execute the installation script named "setup.sh" as follows:
-		./setup.sh
-	3 : The setup.sh script first checks whether the necessary Python modules for installation are present.
-	    If any modules are missing, their names will be displayed, and the installation of j_presto will be aborted.
-	    In this case, please install the missing Python modules with "pip" command or similar, and then run setup.sh again.
-	    !! CAUTION !!
-	    Even when the Python modules are installed, if their versions are outdated, it can cause Python errors and lead to abnormal termination of the j_presto program.
-	    In such cases, it is recommended to check the error messages and update the relevant Python modules to their latest versions.
-	4 : When you run setup.sh, you will be prompted to specify two things: the location to store the j_presto executable files, and the Fortran compiler to use.
-	    For the first, choose an appropriate directory (the default is ~/local/bin/), and for the latter, select either ifort or gfortran (the default is ifort).
-	5 : Finally, if you are using bash, add the path where you saved the j_presto directry including executable files to your .bashrc or .bash_profile file as follows:
-		export J_PRESTO_PATH="[the path where you placed the J_PRESTO directory]"
-	   and please add J_PRESTO_PATH to your PATH as shown below:
-		export PATH="$PATH:$J_PRESTO_PATH"
-	   After that, run
-		source .bashrc (if you added it to the .bashrc file)
-	   to set the directory containing the j_presto executables to your system's path.
+```bash
+export J_PRESTO_AMBER_DATABASE_PATH="<path-to-the-AMBER-database>"
+```
+
+### 2. Obtain j_presto
+
+Clone the repository:
+
+```bash
+git clone https://github.com/jikebe-AIST/j_presto.git
+cd j_presto
+```
+
+Alternatively, download and extract the ZIP archive from the GitHub repository.
+
+### 3. Run the installation script
+
+j_presto contains Fortran and Python 3 programs. Before installation, prepare:
+
+- Intel Fortran (`ifort`) or GNU Fortran (`gfortran`)
+- Python 3
+- `f2py`
+- the Python modules checked by `setup.sh`
+
+Run the installer from the repository root:
+
+```bash
+./setup.sh
+```
+
+The installer checks the required Python modules, compiles the Fortran programs, builds the `calc_Efield` extension, and creates an installed `J_PRESTO` directory. It asks for:
+
+1. the destination directory, defaulting to `~/local/bin`;
+2. the Fortran compiler, defaulting to `ifort`.
+
+If a required Python module is missing, install it and run `setup.sh` again. Some subprograms also use optional packages that may not be required by the core installer. For example, external trajectory conversion with `traj_conv` requires MDAnalysis.
+
+After installation, add the following settings to `.bashrc` or `.bash_profile`:
+
+```bash
+export J_PRESTO_PATH="<installation-directory>/J_PRESTO"
+export J_PRESTO_AMBER_DATABASE_PATH="<path-to-the-AMBER-database>"
+export PATH="$PATH:$J_PRESTO_PATH"
+```
+
+To use the Japanese interactive manual by default, also add:
+
+```bash
+export J_PRESTO_LANG=ja
+```
+
+Reload the shell configuration, for example:
+
+```bash
+source ~/.bashrc
+```
 
 ## Usage
-"j_presto" is a program for performing molecular dynamics (MD) simulations.
-With j_presto, you can execute the following sub-programs using the command:
-	j_presto [sub_program_name]
 
-Sub-program name list:
+Run a subprogram through the top-level launcher:
 
-    For MD simulation,
-	initpep         : Preperation of extended initial structures for folding simulation.
-        pdb_alignfit    : Superimposition of query structure to target one based on sequence alignment.
-        nt_gen          : Generation of atomic name correspondence table from a PREP and a PDB file.
-        nt_conv         : Convert residue and atom names in a PREP and a PDB file based on a name table.
-        gen_db          : Generation of a database file (*.tpldb) for creating j_presto topology files (*.tpl).
-        prep            : Preparation of input files (*.pdb, *.tpl, and *.shk files) for MD simulations.
-        md_run          : Execution of MD simulation or energy minimization calculation.
-        batch_set       : Setting up all the necessary files and directories required to run multiple MD simulations efficiently.
-        GEprep          : Preparation of a parameter file (*.nf) for Generalized Ensemble MD simulations such as McMD and ALSD.
+```bash
+j_presto <subprogram> [arguments]
+```
 
-    For Analysis,
-        Ens_Ana         : Performing analysis of conformational ensembles obtained from simulation results.
-        PCAaxis         : Calculating axes for principal component analysis (PCA) through diagonalization.
-        PCAproj         : Projecting each structure onto PCA subspace.
-        distrib         : Generation of statistical distribution data from weighted input values for one- or two-dimensional variables.
-        pick_conf       : Extraction and ranking structures based on user-defined conditions and event timings.
-        ttp_se          : Calculation of weighted averages and standard errors of the data
-	pdb_movie       : Generation of a multi-model PDB file from sequential single-structure PDB files for trajectory visualization.
+Display the current public subprogram list with:
 
-    For Enzyme development,
-        MSPER           : Predict mutation sites to improve enzyme selectivity.
-        conmut          : Propose mutations to improve enzyme stability from input amino acid sequences using the consensus method
+```bash
+j_presto -h
+```
 
-    For user guidance,
-        get_tmpl        : Obtaining templates of input files and scripts for excuting j_presto.
-        manual          : Viewing the manual.
+### Simulation preparation and execution
 
-The simulations performed by j_presto support parallelization using OpenMP, but currently do not support parallelization via MPI or GPU.
-However, you can use the programs j_presto_mpi and j_presto_master, which allow you to bundle multiple OpenMP-parallelized MD simulation runs and execute them as a single MPI job.
-	j_presto_mpi    : Execute multiple MD simulation runs as a single MPI job using an embarrassingly parallel approach.
-	j_presto_master : Execute multiple MD simulation runs as a single MPI job using a master-slave approach.
+| Subprogram | Description |
+|---|---|
+| `initpep` | Generate extended peptide structures for folding simulations. |
+| `pdb_alignfit` | Superimpose a query structure onto a target using sequence alignment. |
+| `nt_gen` | Generate an atom-name correspondence table from PREP and PDB files. |
+| `nt_conv` | Convert residue and atom names in PREP/PDB files using a name table. |
+| `gen_db` | Generate a topology database (`*.tpldb`) for creating j_presto topology files (`*.tpl`). |
+| `prep` | Prepare PDB, TPL, and SHK input files for MD simulations. |
+| `pepchk` | Check peptide-bond geometry and classify cis, trans, and twisted bonds. |
+| `md_run` | Run MD simulations or energy-minimization calculations. |
+| `batch_set` | Set up files and directories for multiple MD simulation runs. |
+| `GEprep` | Prepare generalized-ensemble parameter files (`*.nf`) for McMD, ALSD, and related methods. |
 
-The most important command here is "j_presto manual".
-Running this command allows you to access the tutorial, along with explanations of the options and input files required to run j_presto.
-For those who wish to learn how to use j_presto, first execute "j_presto manual," then proceed with "tutorial" to learn the complete workflow.
+### Analysis, conversion, and visualization
+
+| Subprogram | Description |
+|---|---|
+| `Ens_Ana` | Analyze conformational ensembles obtained from simulations. |
+| `PCAaxis` | Calculate principal-component axes by covariance-matrix diagonalization. |
+| `PCAproj` | Project structures onto a PCA subspace. |
+| `distrib` | Generate weighted one- or two-dimensional statistical distributions. |
+| `pick_conf` | Extract and rank structures using user-defined conditions and event timing. |
+| `ttp_se` | Calculate weighted means and standard errors across independent runs. |
+| `pdb_movie` | Combine sequential PDB files into a multi-model PDB trajectory. |
+| `traj_conv` | Convert structures and trajectories between j_presto and external formats. |
+| `DISTIL` | Detect and interpret structural differences between two molecular ensembles. |
+| `struct_formula` | Draw two-dimensional molecular structures with atom names mapped from a PDB file. |
+
+### Enzyme engineering
+
+| Subprogram | Description |
+|---|---|
+| `MSPER` | Predict mutation sites for improving enzyme regioselectivity. |
+| `conmut` | Propose stability-enhancing mutations using sequence consensus. |
+
+### Utilities and documentation
+
+| Subprogram | Description |
+|---|---|
+| `get_tmpl` | Copy templates for j_presto input files and scripts. |
+| `genlist` | Generate file-path lists and data ranges for MD and analysis inputs. |
+| `manual` | Open the interactive j_presto manual. |
+
+Development-stage or internal utilities may exist in the `sp` directory without appearing in this public list.
+
+## Parallel execution
+
+The MD calculation itself supports OpenMP parallelization. Direct GPU execution is not currently supported. Multiple independent OpenMP-parallelized runs can be grouped into one MPI job using the following launchers:
+
+| Program | Description |
+|---|---|
+| `j_presto_mpi` | Execute multiple MD runs as an embarrassingly parallel MPI job. |
+| `j_presto_master` | Execute multiple MD runs using a master-worker MPI model. |
+
+## Interactive manual
+
+The interactive manual contains command descriptions, input-file keywords, tutorials, and frequently asked questions.
+
+```bash
+j_presto manual
+```
+
+Select a language explicitly:
+
+```bash
+j_presto manual -l en
+j_presto manual -l ja
+```
+
+Use locale-based automatic selection:
+
+```bash
+j_presto manual -l auto
+```
+
+The language may also be changed while the manual is running:
+
+```text
+manual[en]> lang ja
+manual[ja]> lang en
+```
+
+New users should open `tutorial` from the manual home page. The tutorials are organized by task, including installation, system preparation, MD simulation, trajectory analysis, PCA, DISTIL, trajectory conversion, peptide-bond inspection, MSPER, and molecular-structure drawing.
 
 ## License
-This program, j_presto, is available under the Creative Commons Attribution-NonCommercial 4.0 International Public License (CC BY-NC 4.0).
-The software is freely accessible for personal, research, and academic use, with permission to modify it for personal research needs.
-However, commercial redistribution, sale, or sublicensing of the software itself is prohibited.
 
-The license permits commercial use of results generated using the software, including the development and commercialization of products derived from simulation outputs (e.g., protein design or other biomolecular products), as long as the software itself is not sold, redistributed, or sublicensed.
+j_presto is distributed under the Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0).
 
-For full details, please refer to the LICENSE.md file.
+The software may be used and modified for personal, research, and academic purposes. Commercial redistribution, sale, or sublicensing of the software itself is prohibited. Commercial use of results generated with the software, including products developed from simulation or analysis results, is permitted provided that the software itself is not sold, redistributed, or sublicensed.
+
+See `LICENSE.md` for the complete license and citation information.
 
 ## Contact
-The source codes of "j_presto" are provided by Jinzen Ikebe at Artificial Intelligence Research Center (AIRC), AIST Tokyo Waterfront BIO-IT Research Building, 2-4-7 Aomi, Kyoto-ku, Tokyo 135-0064, JAPAN.
-For question, please contact ikebe.jinzen@aist.go.jp.
+
+j_presto is provided by Jinzen Ikebe, Artificial Intelligence Research Center, National Institute of Advanced Industrial Science and Technology (AIST), AIST Tokyo Waterfront Bio-IT Research Building, 2-4-7 Aomi, Koto-ku, Tokyo 135-0064, Japan.
+
+Questions: `ikebe.jinzen@aist.go.jp`

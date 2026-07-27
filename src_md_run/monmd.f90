@@ -131,9 +131,9 @@
         endif
       enddo
       call outtra(iducrd,iduvel,iduerg,idutrj,iprint,ier,idfacc,idfacv,&
-                  idface,idfact,outatm,maxene,fdgradback,velo,idloop,  &
-                  curtim,et,ek,temp,fdepot,rmsf,iyn15v,iyn15h,rmsd,    &
-                  time,idmonc,idmonv,idmone,idmnts,idflog,tepotcc)
+                  idface,idfact,maxene,fdgradback,velo,idloop,curtim,  &
+                  et,ek,temp,fdepot,rmsf,iyn15v,iyn15h,rmsd,time,      &
+                  idmonc,idmonv,idmone,idmnts,idflog,tepotcc)
       if ( ier .ne. 0 ) return
 
       if ( idmonl.gt.0 .and. mod(idloop,idmonl).eq.0 ) then
@@ -155,10 +155,9 @@
 
 
       subroutine outtra(iducrd,iduvel,iduerg,idutrj,iprint,ier,idfacc, &
-                        idfacv,idface,idfact,outatm,maxene,cord,vel,   &
-                        idloop,sitime,et,ek,temp,ep,rmsf,iyn15v,iyn15h,&
-                        rmsd,sec,idmonc,idmonv,idmone,idmnts,idflog,   &
-                        tepotcc)
+                        idfacv,idface,idfact,maxene,cord,vel,idloop,   &
+                        sitime,et,ek,temp,ep,rmsf,iyn15v,iyn15h,rmsd,  &
+                        sec,idmonc,idmonv,idmone,idmnts,idflog,tepotcc)
 
       use COMBAS,only: ixnatm
       use COMCMM,only: nfrg
@@ -166,8 +165,8 @@
       implicit none
 
       integer(4):: iducrd,iduvel,iduerg,idutrj,iprint,ier,idfacc,      &
-                   idfacv,idface,idfact,outatm,maxene,idloop,iyn15v,   &
-                   iyn15h,idmonc,idmonv,idmone,idmnts,idflog
+                   idfacv,idface,idfact,maxene,idloop,iyn15v,iyn15h,   &
+                   idmonc,idmonv,idmone,idmnts,idflog
       real(8):: cord(3,ixnatm),vel(3,ixnatm),sitime,et,ek,temp,        &
                 ep(maxene),rmsf,rmsd,sec,tepotcc(nfrg)
  
@@ -177,8 +176,8 @@
 !     <<<  OUTPUT COORDINATE DATA  >>>
       if ( idfacc.ge.0 .and. iducrd.gt.0 .and. idmonc.gt.0 .and.       &
            mod(idloop,idmonc).eq.0 ) then
-        call outtco(iducrd,idfacc,outatm,cord,idloop,sitime,et,ek,temp,&
-                    ep(1),rmsf,iyn15v,iyn15h,rmsd,sec,ier,tepotcc)
+        call outtco(iducrd,idfacc,cord,idloop,sitime,et,ek,temp,ep(1), &
+                    rmsf,iyn15v,iyn15h,rmsd,sec,ier,tepotcc)
         if ( ier .ne. 0 ) then
           write(iprint,*)'ERROR> MD '
           write(iprint,*)'   DATA WRITE ERROR IN TRAJECTORY '
@@ -190,8 +189,8 @@
 !     <<<  OUTPUT VELOCITY DATA  >>>
       if ( idfacv.ge.0 .and. iduvel.gt.0 .and. idmonv.gt.0 .and.       &
            mod(idloop,idmonv).eq.0 ) then
-        call outtve(iduvel,idfacv,outatm,vel,idloop,sitime,et,ek,temp, &
-                    ep(1),rmsf,iyn15v,iyn15h,rmsd,sec,ier)
+        call outtve(iduvel,idfacv,vel,idloop,sitime,et,ek,temp,ep(1),  &
+                    rmsf,iyn15v,iyn15h,rmsd,sec,ier)
         if ( ier .ne. 0 ) then
           write(iprint,*)'ERROR> MD '
           write(iprint,*)'   DATA WRITE ERROR IN TRAJECTORY '
@@ -234,17 +233,19 @@
 !=========================================================================
  
 
-      subroutine outtco(ioutco,iflag,outatm,cord,idloop,sitime,et,ek,  &
-                        temp,ep,rmsf,iyn15v,iyn15h,rmsd,sec,ier,tepotcc)
+      subroutine outtco(ioutco,iflag,cord,idloop,sitime,et,ek,temp,ep, &
+                        rmsf,iyn15v,iyn15h,rmsd,sec,ier,tepotcc)
 
       use COMBAS,only: ixnatm,ixfbou
       use COMCMM,only: lambda,nfrg
+      use COMERG,only: outatm_list
 
       implicit none
 
-      integer(4):: ioutco,iflag,outatm,idloop,iyn15v,iyn15h,ier
+      integer(4):: ioutco,iflag,idloop,iyn15v,iyn15h,ier,i
       real(8):: cord(3,ixnatm),sitime,et,ek,temp,ep,rmsf,rmsd,sec,     &
                 tepotcc(nfrg),ttepotcc(3)
+      real(8),allocatable:: tcord(:,:)
  
 !*******************************************
 
@@ -253,6 +254,10 @@
 
       if ( ixfbou .eq. 1 ) call PBcord
 
+      allocate(tcord(3,size(outatm_list)))
+      do i = 1,size(outatm_list)
+        tcord(1:3,i) = cord(1:3,outatm_list(i))
+      enddo
       select case ( iflag )
         case (1)
           write(ioutco,err=800)                                        &
@@ -261,22 +266,23 @@
                idloop,sngl(sitime),sngl(sec),sngl(et),sngl(ek),        &
                sngl(temp),sngl(ep),sngl(lambda),iyn15v,iyn15h,         &
                sngl(rmsd),sngl(ttepotcc(1:3))
-          write(ioutco,err=800)sngl(cord(1:3,1:outatm))
+          write(ioutco,err=800)sngl(tcord(:,:))
 
         case (2)
           write(ioutco,err=800)                                        &
 !               idloop,sitime,sec,et,ek,temp,ep,rmsf,iyn15v,iyn15h,rmsd
                idloop,sitime,sec,et,ek,temp,ep,lambda,iyn15v,iyn15h,   &
                rmsd,ttepotcc(1:3)
-          write(ioutco,err=800)cord(1:3,1:outatm)
+          write(ioutco,err=800)tcord(:,:)
 
         case (0)
           write(ioutco,*,err=800)                                      &
 !               idloop,sitime,sec,et,ek,temp,ep,rmsf,iyn15v,iyn15h,rmsd
                idloop,sitime,sec,et,ek,temp,ep,lambda,iyn15v,iyn15h,   &
                rmsd,ttepotcc(1:3)
-          write(ioutco,*,err=800)cord(1:3,1:outatm)
+          write(ioutco,*,err=800)tcord(:,:)
       end select
+      deallocate(tcord)
 
 !**********************************
 
@@ -288,36 +294,43 @@
 !===========================================================================
 
 
-      subroutine outtve(ioutve,iflag,outatm,vel,idloop,sitime,et,ek,   &
-                        temp,ep,rmsf,iyn15v,iyn15h,rmsd,sec,ier)
+      subroutine outtve(ioutve,iflag,vel,idloop,sitime,et,ek,temp,ep,  &
+                        rmsf,iyn15v,iyn15h,rmsd,sec,ier)
  
       use COMBAS,only: ixnatm
+      use COMERG,only: outatm_list
 
       implicit none
 
-      integer(4):: ioutve,iflag,outatm,idloop,iyn15v,iyn15h,ier
+      integer(4):: ioutve,iflag,idloop,iyn15v,iyn15h,ier,i
       real(8):: vel(3,ixnatm),sitime,et,ek,temp,ep,rmsf,rmsd,sec
- 
+      real(8),allocatable:: tvel(:,:)
+
 !************************************************
 
       ier = 0
+      allocate(tvel(3,size(outatm_list)))
+      do i = 1,size(outatm_list)
+        tvel(1:3,i) = vel(1:3,outatm_list(i))
+      enddo
       select case ( iflag )
         case (1)
           write(ioutve,err=800)idloop,sngl(sitime),sngl(sec),sngl(et), &
                                sngl(ek),sngl(temp),sngl(ep),sngl(rmsf),&
                                iyn15v,iyn15h,sngl(rmsd)
-          write(ioutve,err=800)sngl(vel(1:3,1:outatm))
+          write(ioutve,err=800)sngl(tvel(:,:))
 
         case (2)
           write(ioutve,err=800)idloop,sitime,sec,et,ek,temp,ep,rmsf,   &
                                iyn15v,iyn15h,rmsd
-          write(ioutve,err=800)vel(1:3,1:outatm)
+          write(ioutve,err=800)tvel(:,:)
 
         case (0)
           write(ioutve,*,err=800)idloop,sitime,sec,et,ek,temp,ep,rmsf, &
                                  iyn15v,iyn15h,rmsd
-          write(ioutve,*,err=800)vel(1:3,1:outatm)
+          write(ioutve,*,err=800)tvel(:,:)
       end select
+      deallocate(tvel)
 
 !*********************************
 

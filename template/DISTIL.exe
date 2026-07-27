@@ -1,0 +1,4 @@
+#!/usr/bin/bash
+
+j_presto DISTIL -A ensemble_A.list -B ensemble_B.list -rA reference_A.pdb -rB reference_B.pdb -tA topology_A.tpl -tB topology_B.tpl -a "!H*,h*" -o DISTIL -fs 1
+#j_presto DISTIL -A ensemble_A.list -B ensemble_B.list -r reference.pdb -t topology.tpl -a "!H*,h*" -o DISTIL_CED -fs 1 -sm ced

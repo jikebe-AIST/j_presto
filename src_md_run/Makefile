@@ -193,7 +193,7 @@ inpinp.o : inpinp.f90 COMCMM.f90 COMERG.f90
 	$(FC) $(CFLAGS) inpinp.f90 $(LIB)
 
 inpmd.o : inpmd.f90 COMPAR.f90 COMBAS.f90 COMERG.f90 COMMIS.f90 \
-          COMCMM.f90 COMPSC.f90 COMMOL.f90 PHYCNS.f90
+          COMCMM.f90 COMPSC.f90 COMMOL.f90 PHYCNS.f90 COMCMMC.f90
 	$(FC) $(CFLAGS) inpmd.f90 $(LIB)
 
 inpmin.o : inpmin.f90 COMPAR.f90 COMBAS.f90 COMERG.f90 COMMIS.f90 \

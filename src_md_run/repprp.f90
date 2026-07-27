@@ -62,7 +62,7 @@
             do j = 1,nrepcl(ix,iy,iz,1)
               iat2 = irepcl(j,ix,iy,iz,1)
               d(1:3) = cord(1:3,iat2) - cord(1:3,iat1)
-              d(1:3) = d(1:3) - fxcell(1:3)*nint(d(1:3)-invcel(1:3))
+              d(1:3) = d(1:3) - fxcell(1:3)*anint(d(1:3)-invcel(1:3))
               rr = d(1)*d(1) + d(2)*d(2) + d(3)*d(3)
               if ( rr .le. rlim2 ) then
                 n = n + 1

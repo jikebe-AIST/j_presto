@@ -82,9 +82,9 @@
         dx = cord(1,iatm) - fucord(1,iatm)
         dy = cord(2,iatm) - fucord(2,iatm)
         dz = cord(3,iatm) - fucord(3,iatm)
-        dx = dx - fxcell(1) * nint(dx*invcel(1)) ! #SLC2 #PB
-        dy = dy - fxcell(2) * nint(dy*invcel(2)) ! #SLC2 #PB
-        dz = dz - fxcell(3) * nint(dz*invcel(3)) ! #SLC2 #PB
+        dx = dx - fxcell(1) * anint(dx*invcel(1)) ! #SLC2 #PB
+        dy = dy - fxcell(2) * anint(dy*invcel(2)) ! #SLC2 #PB
+        dz = dz - fxcell(3) * anint(dz*invcel(3)) ! #SLC2 #PB
         r2 = dx*dx + dy*dy + dz*dz
         rtmp = fugcns(i)
         epsc = epsc + rtmp*r2
@@ -150,7 +150,7 @@
             itmp2 = iujpnt(i,l)
             d(1:3) = cord(1:3,itmp) - cord(1:3,itmp2)
             d(1:3) = d(1:3) -                             & ! #SLC2 #PB
-                     fxcell(1:3) * nint(d(1:3)*invcel(1:3)) ! #SLC2 #PB
+                     fxcell(1:3) * anint(d(1:3)*invcel(1:3)) ! #SLC2 #PB
             rtmp = d(1)*d(1) + d(2)*d(2) + d(3)*d(3)
             rtmp = rtmp * rtmp * rtmp
             totr6 = totr6 + 1.d0 / rtmp
@@ -190,7 +190,7 @@
             itmp2 = iujpnt(i,l)
             d(1:3) = cord(1:3,itmp) - cord(1:3,itmp2)
             d(1:3) = d(1:3) -                             & ! #SLC2 #PB
-                     fxcell(1:3) * nint(d(1:3)*invcel(1:3)) ! #SLC2 #PB
+                     fxcell(1:3) * anint(d(1:3)*invcel(1:3)) ! #SLC2 #PB
             rtmp = d(1)*d(1) + d(2)*d(2) + d(3)*d(3)
             rtmp = rtmp * rtmp ; rtmp = rtmp * rtmp
             rtmp = 1.d0 / rtmp
@@ -204,7 +204,7 @@
             itmp2 = iuipnt(i,l)
             d(1:3) = cord(1:3,itmp) - cord(1:3,itmp2)
             d(1:3) = d(1:3) -                             & ! #SLC2 #PB
-                     fxcell(1:3) * nint(d(1:3)*invcel(1:3)) ! #SLC2 #PB
+                     fxcell(1:3) * anint(d(1:3)*invcel(1:3)) ! #SLC2 #PB
             rtmp = d(1)*d(1) + d(2)*d(2) + d(3)*d(3)
             rtmp = rtmp * rtmp ; rtmp = rtmp * rtmp
             rtmp = 1.d0 / rtmp
@@ -274,15 +274,15 @@
         dx43 = cord(1,iudhcp(i,4)) - cord(1,iudhcp(i,3))
         dy43 = cord(2,iudhcp(i,4)) - cord(2,iudhcp(i,3))
         dz43 = cord(3,iudhcp(i,4)) - cord(3,iudhcp(i,3))
-        dx21 = dx21 - fxcell(1) * nint(dx21*invcel(1)) ! #SLC2 #PB
-        dy21 = dy21 - fxcell(2) * nint(dy21*invcel(2)) ! #SLC2 #PB
-        dz21 = dz21 - fxcell(3) * nint(dz21*invcel(3)) ! #SLC2 #PB
-        dx32 = dx32 - fxcell(1) * nint(dx32*invcel(1)) ! #SLC2 #PB
-        dy32 = dy32 - fxcell(2) * nint(dy32*invcel(2)) ! #SLC2 #PB
-        dz32 = dz32 - fxcell(3) * nint(dz32*invcel(3)) ! #SLC2 #PB
-        dx43 = dx43 - fxcell(1) * nint(dx43*invcel(1)) ! #SLC2 #PB
-        dy43 = dy43 - fxcell(2) * nint(dy43*invcel(2)) ! #SLC2 #PB
-        dz43 = dz43 - fxcell(3) * nint(dz43*invcel(3)) ! #SLC2 #PB
+        dx21 = dx21 - fxcell(1) * anint(dx21*invcel(1)) ! #SLC2 #PB
+        dy21 = dy21 - fxcell(2) * anint(dy21*invcel(2)) ! #SLC2 #PB
+        dz21 = dz21 - fxcell(3) * anint(dz21*invcel(3)) ! #SLC2 #PB
+        dx32 = dx32 - fxcell(1) * anint(dx32*invcel(1)) ! #SLC2 #PB
+        dy32 = dy32 - fxcell(2) * anint(dy32*invcel(2)) ! #SLC2 #PB
+        dz32 = dz32 - fxcell(3) * anint(dz32*invcel(3)) ! #SLC2 #PB
+        dx43 = dx43 - fxcell(1) * anint(dx43*invcel(1)) ! #SLC2 #PB
+        dy43 = dy43 - fxcell(2) * anint(dy43*invcel(2)) ! #SLC2 #PB
+        dz43 = dz43 - fxcell(3) * anint(dz43*invcel(3)) ! #SLC2 #PB
         ! VECTOR PRODUCTS OF BONDS 1 AND 2, AND 3
         px12 = dy21*dz32 - dy32*dz21
         py12 = dz21*dx32 - dz32*dx21
@@ -404,9 +404,9 @@
           dx = cord(1,iat1) - x
           dy = cord(2,iat1) - y
           dz = cord(3,iat1) - z
-          dx = dx - fxcell(1)*nint(dx*invcel(1))
-          dy = dy - fxcell(2)*nint(dy*invcel(2))
-          dz = dz - fxcell(3)*nint(dz*invcel(3))
+          dx = dx - fxcell(1)*anint(dx*invcel(1))
+          dy = dy - fxcell(2)*anint(dy*invcel(2))
+          dz = dz - fxcell(3)*anint(dz*invcel(3))
           dd = sqrt(dx*dx+dy*dy+dz*dz)
           ddi = 1.d0 / dd
           dd = max(fycutl-dd,0.d0)

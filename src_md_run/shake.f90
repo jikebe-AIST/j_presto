@@ -202,17 +202,17 @@
         d2(2,1:3) = r2(1:3,Tiuashk(2))-r2(1:3,Tiuashk(3))
         d2(3,1:3) = r2(1:3,Tiuashk(3))-r2(1:3,Tiuashk(1))
         d1(1,1:3) = d1(1,1:3) -                             & ! #SLC2 #PB
-                    fxcell(1:3)*nint(d1(1,1:3)*invcel(1:3))   ! #SLC2 #PB
+                    fxcell(1:3)*anint(d1(1,1:3)*invcel(1:3))   ! #SLC2 #PB
         d1(2,1:3) = d1(2,1:3) -                             & ! #SLC2 #PB
-                    fxcell(1:3)*nint(d1(2,1:3)*invcel(1:3))   ! #SLC2 #PB
+                    fxcell(1:3)*anint(d1(2,1:3)*invcel(1:3))   ! #SLC2 #PB
         d1(3,1:3) = d1(3,1:3) -                             & ! #SLC2 #PB
-                    fxcell(1:3)*nint(d1(3,1:3)*invcel(1:3))   ! #SLC2 #PB
+                    fxcell(1:3)*anint(d1(3,1:3)*invcel(1:3))   ! #SLC2 #PB
         d2(1,1:3) = d2(1,1:3) -                             & ! #SLC2 #PB
-                    fxcell(1:3)*nint(d2(1,1:3)*invcel(1:3))   ! #SLC2 #PB
+                    fxcell(1:3)*anint(d2(1,1:3)*invcel(1:3))   ! #SLC2 #PB
         d2(2,1:3) = d2(2,1:3) -                             & ! #SLC2 #PB
-                    fxcell(1:3)*nint(d2(2,1:3)*invcel(1:3))   ! #SLC2 #PB
+                    fxcell(1:3)*anint(d2(2,1:3)*invcel(1:3))   ! #SLC2 #PB
         d2(3,1:3) = d2(3,1:3) -                             & ! #SLC2 #PB
-                    fxcell(1:3)*nint(d2(3,1:3)*invcel(1:3))   ! #SLC2 #PB
+                    fxcell(1:3)*anint(d2(3,1:3)*invcel(1:3))   ! #SLC2 #PB
 
         ! Calculation of G-value
         do iloop = 1,iuslop
@@ -456,9 +456,9 @@
           d1(1:3,icon) = r1(1:3,iatm) - r1(1:3,jatm)
           d2(1:3,icon) = r2(1:3,iatm) - r2(1:3,jatm)
           d1(1:3,icon) = d1(1:3,icon) -                           & ! #SLC2 #PB
-                         fxcell(1:3)*nint(d1(1:3,icon)*invcel(1:3)) ! #SLC2 #PB
+                         fxcell(1:3)*anint(d1(1:3,icon)*invcel(1:3)) ! #SLC2 #PB
           d2(1:3,icon) = d2(1:3,icon) -                           & ! #SLC2 #PB
-                         fxcell(1:3)*nint(d2(1:3,icon)*invcel(1:3)) ! #SLC2 #PB
+                         fxcell(1:3)*anint(d2(1:3,icon)*invcel(1:3)) ! #SLC2 #PB
         enddo
         wkd1(1:3,1:numcon) = d1(1:3,1:numcon)
 
@@ -614,7 +614,7 @@
       do igrp = 1,iugsk2
         d2(1,1:3,igrp) = r2(1:3,iuashk(1,igrp)) - r2(1:3,iuashk(2,igrp))
         d2(1,1:3,igrp) = d2(1,1:3,igrp) -                           & ! #SLC2 #PB
-                         fxcell(1:3)*nint(d2(1,1:3,igrp)*invcel(1:3)) ! #SLC2 #PB
+                         fxcell(1:3)*anint(d2(1,1:3,igrp)*invcel(1:3)) ! #SLC2 #PB
       enddo
 
       ! Iteration part
@@ -624,7 +624,7 @@
         do igrp = 1,iugsk2
           !!! 1-1) Calculate distance vector
           d1(1:3) = r1(1:3,iuashk(1,igrp)) - r1(1:3,iuashk(2,igrp))
-          d1(1:3) = d1(1:3) - fxcell(1:3)*nint(d1(1:3)*invcel(1:3)) ! #SLC2 #PB
+          d1(1:3) = d1(1:3) - fxcell(1:3)*anint(d1(1:3)*invcel(1:3)) ! #SLC2 #PB
           difd2 = d1(1)*d1(1) + d1(2)*d1(2) + d1(3)*d1(3)
 
           !!! 1-2) Calculate G-value
@@ -644,7 +644,7 @@
         do igrp = 1,iugsk2
           if ( iok(igrp) ) cycle
           d1(1:3) = r1(1:3,iuashk(1,igrp)) - r1(1:3,iuashk(2,igrp))
-          d1(1:3) = d1(1:3) - fxcell(1:3)*nint(d1(1:3)*invcel(1:3))
+          d1(1:3) = d1(1:3) - fxcell(1:3)*anint(d1(1:3)*invcel(1:3))
           difd2 = d1(1)*d1(1) + d1(2)*d1(2) + d1(3)*d1(3)
           difd2 = fudshk(1,igrp) - difd2
           difd2 = abs( difd2 / fudshk(1,igrp) )
@@ -728,8 +728,8 @@
         iatm = iuashk(1,igrp) ; jatm = iuashk(2,igrp)
         d1(1:3) = r1(1:3,jatm) - r1(1:3,iatm)
         d2(1:3) = r2(1:3,jatm) - r2(1:3,iatm)
-        d1(1:3) = d1(1:3) - fxcell(1:3)*nint(d1(1:3)*invcel(1:3)) ! #SLC2 #PB
-        d2(1:3) = d2(1:3) - fxcell(1:3)*nint(d2(1:3)*invcel(1:3)) ! #SLC2 #PB
+        d1(1:3) = d1(1:3) - fxcell(1:3)*anint(d1(1:3)*invcel(1:3)) ! #SLC2 #PB
+        d2(1:3) = d2(1:3) - fxcell(1:3)*anint(d2(1:3)*invcel(1:3)) ! #SLC2 #PB
         d1d1 = d1(1)*d1(1) + d1(2)*d1(2) + d1(3)*d1(3)
         d1d2 = d1(1)*d2(1) + d1(2)*d2(2) + d1(3)*d2(3)
         d2d2 = d2(1)*d2(1) + d2(2)*d2(2) + d2(3)*d2(3)

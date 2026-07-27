@@ -28,7 +28,7 @@
       call system_clock(time0,count_rate) 
       write(6,*)'**************************************************'
       write(6,*)'*'
-      write(6,*)'*    Ens_Ana (Version 1.0.2)'
+      write(6,*)'*    Ens_Ana (Version 1.0.3)'
       write(6,*)'*'
       write(6,*)'*        Author : Jinzen Ikebe'
       write(6,*)'* First Release : 2025-01-14'

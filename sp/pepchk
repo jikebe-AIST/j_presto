@@ -1,0 +1,605 @@
+#!/usr/bin/env python3
+"""
+pepchk - Peptide-bond Geometry Check for j_presto
+
+Check peptide-bond omega dihedral angles in a PDB file.
+
+j_presto usage:
+    j_presto pepchk input.pdb
+    j_presto pepchk input.pdb --csv omega_check.csv
+    j_presto pepchk input.pdb --fail-on-cis
+
+Direct usage is also supported:
+    ./pepchk input.pdb
+
+The checked omega angle is:
+    omega(i, i+1) = dihedral(CA_i, C_i, N_{i+1}, CA_{i+1})
+
+Default classification:
+    cis      : |omega| <= 30 deg
+    trans    : |omega| >= 150 deg
+    twisted  : otherwise
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import hashlib
+import math
+import os
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, Iterable, List, Optional, Tuple
+
+PROGRAM_NAME = "pepchk"
+PROGRAM_LONG_NAME = "Peptide-bond Geometry Check"
+VERSION = "1.0.0"
+AUTHOR = "Jinzen Ikebe"
+FIRST_RELEASE = "2026-07-27"
+CURRENT_VERSION_DATE = "2026-07-27"
+
+STANDARD_AA = {
+    "ALA", "ARG", "ASN", "ASP", "CYS", "GLN", "GLU", "GLY", "HIS", "ILE",
+    "LEU", "LYS", "MET", "PHE", "PRO", "SER", "THR", "TRP", "TYR", "VAL",
+    # Common protonation/force-field names.
+    "HID", "HIE", "HIP", "HSD", "HSE", "HSP", "CYX", "CYM", "ASH", "GLH", "LYN",
+}
+
+
+@dataclass(frozen=True)
+class Atom:
+    serial: int
+    name: str
+    altloc: str
+    resname: str
+    chain: str
+    resseq: int
+    icode: str
+    x: float
+    y: float
+    z: float
+    occupancy: float
+    element: str
+
+
+@dataclass
+class Residue:
+    chain: str
+    resseq: int
+    icode: str
+    resname: str
+    atoms: Dict[str, Atom]
+
+    @property
+    def label(self) -> str:
+        chain = self.chain if self.chain else "_"
+        icode = self.icode if self.icode else ""
+        return f"{chain}:{self.resseq}{icode}:{self.resname}"
+
+
+@dataclass(frozen=True)
+class PepchkConfig:
+    model: int
+    cis_cutoff: float
+    trans_cutoff: float
+    cn_max: float
+    ignore_cn_distance: bool
+    protein_only: bool
+    report_missing: bool
+
+
+def _sha256_8(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for block in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(block)
+    return h.hexdigest()[:8]
+
+
+def display_credits() -> None:
+    print("*" * 60)
+    print("*")
+    print(f"*    {PROGRAM_NAME} (Version {VERSION})")
+    print(f"*    {PROGRAM_LONG_NAME}")
+    print("*")
+    print(f"*        Author : {AUTHOR}")
+    print(f"* First Release : {FIRST_RELEASE}")
+    print(f"*  Current ver. : {CURRENT_VERSION_DATE}")
+    print("*")
+    print("*" * 60)
+    print()
+
+    # Match j_presto style: consult LICENSE.md when J_PRESTO_PATH exists,
+    # but do not fail in direct standalone usage if the environment is absent.
+    jpresto_path = os.environ.get("J_PRESTO_PATH")
+    if jpresto_path:
+        license_path = Path(jpresto_path) / "LICENSE.md"
+        if not license_path.is_file():
+            print(f"[WARN] License file not found: {license_path}")
+
+
+def parse_pdb_atoms(path: Path, model: int = 1) -> List[Atom]:
+    atoms: List[Atom] = []
+    current_model: Optional[int] = None
+    saw_model = False
+
+    with path.open("r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            rec = line[:6].strip()
+
+            if rec == "MODEL":
+                saw_model = True
+                try:
+                    current_model = int(line[10:14].strip())
+                except ValueError:
+                    current_model = None
+                continue
+
+            if rec == "ENDMDL":
+                current_model = None
+                continue
+
+            if saw_model and current_model != model:
+                continue
+
+            if rec != "ATOM":
+                continue
+
+            try:
+                serial = int(line[6:11])
+                name = line[12:16].strip()
+                altloc = line[16:17].strip()
+                resname = line[17:20].strip()
+                chain = line[21:22].strip()
+                resseq = int(line[22:26])
+                icode = line[26:27].strip()
+                x = float(line[30:38])
+                y = float(line[38:46])
+                z = float(line[46:54])
+                occ_text = line[54:60].strip()
+                occupancy = float(occ_text) if occ_text else 0.0
+                element = line[76:78].strip()
+            except ValueError:
+                continue
+
+            atoms.append(
+                Atom(
+                    serial=serial,
+                    name=name,
+                    altloc=altloc,
+                    resname=resname,
+                    chain=chain,
+                    resseq=resseq,
+                    icode=icode,
+                    x=x,
+                    y=y,
+                    z=z,
+                    occupancy=occupancy,
+                    element=element,
+                )
+            )
+
+    return atoms
+
+
+def build_residues(atoms: Iterable[Atom]) -> List[Residue]:
+    """
+    Build residues and choose one atom per atom name.
+
+    Altloc handling:
+      1. Prefer blank altloc.
+      2. Then prefer altloc A.
+      3. Otherwise choose the atom with highest occupancy.
+    """
+    residues: Dict[Tuple[str, int, str], Residue] = {}
+
+    def better_atom(new: Atom, old: Atom) -> bool:
+        priority = {"": 3, "A": 2}
+        p_new = priority.get(new.altloc, 1)
+        p_old = priority.get(old.altloc, 1)
+        if p_new != p_old:
+            return p_new > p_old
+        if new.occupancy != old.occupancy:
+            return new.occupancy > old.occupancy
+        return new.serial < old.serial
+
+    for atom in atoms:
+        key = (atom.chain, atom.resseq, atom.icode)
+        if key not in residues:
+            residues[key] = Residue(
+                chain=atom.chain,
+                resseq=atom.resseq,
+                icode=atom.icode,
+                resname=atom.resname,
+                atoms={},
+            )
+
+        residue = residues[key]
+        if atom.name not in residue.atoms or better_atom(atom, residue.atoms[atom.name]):
+            residue.atoms[atom.name] = atom
+
+    return list(residues.values())
+
+
+def v_sub(a: Atom, b: Atom) -> Tuple[float, float, float]:
+    return (a.x - b.x, a.y - b.y, a.z - b.z)
+
+
+def dot(u: Tuple[float, float, float], v: Tuple[float, float, float]) -> float:
+    return u[0] * v[0] + u[1] * v[1] + u[2] * v[2]
+
+
+def cross(u: Tuple[float, float, float], v: Tuple[float, float, float]) -> Tuple[float, float, float]:
+    return (
+        u[1] * v[2] - u[2] * v[1],
+        u[2] * v[0] - u[0] * v[2],
+        u[0] * v[1] - u[1] * v[0],
+    )
+
+
+def norm(u: Tuple[float, float, float]) -> float:
+    return math.sqrt(dot(u, u))
+
+
+def scale(u: Tuple[float, float, float], s: float) -> Tuple[float, float, float]:
+    return (u[0] * s, u[1] * s, u[2] * s)
+
+
+def distance(a: Atom, b: Atom) -> float:
+    return norm(v_sub(a, b))
+
+
+def dihedral_deg(a: Atom, b: Atom, c: Atom, d: Atom) -> float:
+    """Return signed dihedral angle in degrees in the range [-180, 180]."""
+    b0 = v_sub(a, b)
+    b1 = v_sub(c, b)
+    b2 = v_sub(d, c)
+
+    b1_norm = norm(b1)
+    if b1_norm == 0.0:
+        raise ValueError("zero-length central bond in dihedral calculation")
+    b1u = scale(b1, 1.0 / b1_norm)
+
+    v = tuple(b0[i] - dot(b0, b1u) * b1u[i] for i in range(3))
+    w = tuple(b2[i] - dot(b2, b1u) * b1u[i] for i in range(3))
+
+    nv = norm(v)
+    nw = norm(w)
+    if nv == 0.0 or nw == 0.0:
+        raise ValueError("degenerate dihedral geometry")
+
+    v = scale(v, 1.0 / nv)
+    w = scale(w, 1.0 / nw)
+
+    x = dot(v, w)
+    y = dot(cross(b1u, v), w)
+    return math.degrees(math.atan2(y, x))
+
+
+def classify_omega(omega: float, cis_cutoff: float, trans_cutoff: float) -> str:
+    abs_omega = abs(omega)
+    if abs_omega <= cis_cutoff:
+        return "cis"
+    if abs_omega >= trans_cutoff:
+        return "trans"
+    return "twisted"
+
+
+def sort_residue_key(res: Residue) -> Tuple[str, int, str]:
+    return (res.chain, res.resseq, res.icode)
+
+
+def is_proline_like(res: Residue) -> bool:
+    return res.resname.upper() in {"PRO", "HYP"}
+
+
+def is_standard_amino_acid(res: Residue) -> bool:
+    return res.resname.upper() in STANDARD_AA
+
+
+def residue_has_backbone_candidate(res: Residue) -> bool:
+    return any(name in res.atoms for name in ("N", "CA", "C"))
+
+
+def analyze(residues: List[Residue], cfg: PepchkConfig) -> List[dict]:
+    rows: List[dict] = []
+    residues_sorted = sorted(residues, key=sort_residue_key)
+
+    chains: Dict[str, List[Residue]] = {}
+    for res in residues_sorted:
+        chains.setdefault(res.chain, []).append(res)
+
+    for chain, chain_residues_all in chains.items():
+        if cfg.protein_only:
+            chain_residues = [r for r in chain_residues_all if is_standard_amino_acid(r)]
+        else:
+            # Exclude obvious solvent/ions unless --report-missing is requested.
+            chain_residues = [r for r in chain_residues_all if residue_has_backbone_candidate(r) or cfg.report_missing]
+
+        for r1, r2 in zip(chain_residues, chain_residues[1:]):
+            required_1 = ["CA", "C"]
+            required_2 = ["N", "CA"]
+
+            missing = [a for a in required_1 if a not in r1.atoms] + [
+                a for a in required_2 if a not in r2.atoms
+            ]
+            if missing:
+                if cfg.report_missing:
+                    rows.append(
+                        {
+                            "chain": chain if chain else "_",
+                            "res1": r1.resseq,
+                            "icode1": r1.icode,
+                            "resname1": r1.resname,
+                            "res2": r2.resseq,
+                            "icode2": r2.icode,
+                            "resname2": r2.resname,
+                            "cn_distance": "",
+                            "omega_deg": "",
+                            "class": "missing_atoms",
+                            "note": "missing " + ",".join(missing),
+                            "serial_CA1": r1.atoms.get("CA").serial if "CA" in r1.atoms else "",
+                            "serial_C1": r1.atoms.get("C").serial if "C" in r1.atoms else "",
+                            "serial_N2": r2.atoms.get("N").serial if "N" in r2.atoms else "",
+                            "serial_CA2": r2.atoms.get("CA").serial if "CA" in r2.atoms else "",
+                        }
+                    )
+                continue
+
+            ca1 = r1.atoms["CA"]
+            c1 = r1.atoms["C"]
+            n2 = r2.atoms["N"]
+            ca2 = r2.atoms["CA"]
+            cn = distance(c1, n2)
+
+            if (not cfg.ignore_cn_distance) and cn > cfg.cn_max:
+                rows.append(
+                    {
+                        "chain": chain if chain else "_",
+                        "res1": r1.resseq,
+                        "icode1": r1.icode,
+                        "resname1": r1.resname,
+                        "res2": r2.resseq,
+                        "icode2": r2.icode,
+                        "resname2": r2.resname,
+                        "cn_distance": f"{cn:.3f}",
+                        "omega_deg": "",
+                        "class": "chain_break",
+                        "note": f"C-N distance > {cfg.cn_max:.2f} A",
+                        "serial_CA1": ca1.serial,
+                        "serial_C1": c1.serial,
+                        "serial_N2": n2.serial,
+                        "serial_CA2": ca2.serial,
+                    }
+                )
+                continue
+
+            try:
+                omega = dihedral_deg(ca1, c1, n2, ca2)
+                cls = classify_omega(omega, cis_cutoff=cfg.cis_cutoff, trans_cutoff=cfg.trans_cutoff)
+                note = ""
+                if cls == "cis" and not is_proline_like(r2):
+                    note = "non-Pro cis-like peptide bond"
+                elif cls == "cis" and is_proline_like(r2):
+                    note = "Pro/Hyp cis-like peptide bond"
+                elif cls == "twisted":
+                    note = "twisted/non-trans omega"
+            except ValueError as exc:
+                omega = float("nan")
+                cls = "degenerate"
+                note = str(exc)
+
+            rows.append(
+                {
+                    "chain": chain if chain else "_",
+                    "res1": r1.resseq,
+                    "icode1": r1.icode,
+                    "resname1": r1.resname,
+                    "res2": r2.resseq,
+                    "icode2": r2.icode,
+                    "resname2": r2.resname,
+                    "cn_distance": f"{cn:.3f}",
+                    "omega_deg": "" if math.isnan(omega) else f"{omega:.3f}",
+                    "class": cls,
+                    "note": note,
+                    "serial_CA1": ca1.serial,
+                    "serial_C1": c1.serial,
+                    "serial_N2": n2.serial,
+                    "serial_CA2": ca2.serial,
+                }
+            )
+
+    return rows
+
+
+def print_summary(rows: List[dict]) -> None:
+    counts: Dict[str, int] = {}
+    for row in rows:
+        counts[row["class"]] = counts.get(row["class"], 0) + 1
+
+    print("[SUMMARY]")
+    for key in ["trans", "cis", "twisted", "chain_break", "missing_atoms", "degenerate"]:
+        if key in counts:
+            print(f"  {key:13s}: {counts[key]}")
+
+    suspicious = [r for r in rows if r["class"] in {"cis", "twisted", "degenerate"}]
+    if suspicious:
+        print()
+        print("[SUSPICIOUS]")
+        print(
+            "class     chain res1-res2     residues        omega_deg  C-N A   atom_serials(CA,C,N,CA)  note"
+        )
+        for r in suspicious:
+            pair = f"{r['res1']}{r['icode1']}-{r['res2']}{r['icode2']}"
+            residues = f"{r['resname1']}-{r['resname2']}"
+            serials = f"{r['serial_CA1']},{r['serial_C1']},{r['serial_N2']},{r['serial_CA2']}"
+            print(
+                f"{r['class']:9s} {r['chain']:5s} {pair:12s} {residues:14s} "
+                f"{str(r['omega_deg']):>9s} {str(r['cn_distance']):>6s}   {serials:24s} {r['note']}"
+            )
+    else:
+        print()
+        print("[OK] No cis/twisted peptide bonds detected by the current thresholds.")
+
+
+def write_csv(rows: List[dict], path: Path) -> None:
+    fieldnames = [
+        "chain",
+        "res1",
+        "icode1",
+        "resname1",
+        "res2",
+        "icode2",
+        "resname2",
+        "cn_distance",
+        "omega_deg",
+        "class",
+        "note",
+        "serial_CA1",
+        "serial_C1",
+        "serial_N2",
+        "serial_CA2",
+    ]
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _strip_jpresto_access_key(argv: List[str]) -> Tuple[bool, List[str]]:
+    if argv and argv[0] == "j_presto":
+        return True, argv[1:]
+    return False, argv
+
+
+def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+    if argv is None:
+        argv = sys.argv[1:]
+    called_from_jpresto, stripped = _strip_jpresto_access_key(list(argv))
+
+    parser = argparse.ArgumentParser(
+        prog=PROGRAM_NAME,
+        description=(
+            "Check peptide-bond omega dihedral angles in a PDB file and report cis/twisted bonds. "
+            "When called via j_presto, the hidden access key is accepted automatically."
+        ),
+    )
+    parser.add_argument("pdb", type=Path, help="Input PDB file.")
+    parser.add_argument("--model", type=int, default=1, help="MODEL number to read. Default: 1.")
+    parser.add_argument("--csv", type=Path, help="Write all checked peptide bonds to CSV.")
+    parser.add_argument(
+        "--cis-cutoff",
+        type=float,
+        default=30.0,
+        help="Classify as cis when |omega| <= this value in degrees. Default: 30.",
+    )
+    parser.add_argument(
+        "--trans-cutoff",
+        type=float,
+        default=150.0,
+        help="Classify as trans when |omega| >= this value in degrees. Default: 150.",
+    )
+    parser.add_argument(
+        "--cn-max",
+        type=float,
+        default=1.70,
+        help="Maximum C_i--N_{i+1} distance to treat as a peptide bond. Default: 1.70 A.",
+    )
+    parser.add_argument(
+        "--ignore-cn-distance",
+        action="store_true",
+        help="Do not skip residue pairs with long C_i--N_{i+1} distance.",
+    )
+    parser.add_argument(
+        "--include-nonstandard",
+        action="store_true",
+        help="Also analyze non-standard residues when backbone atoms are present. Default: standard amino acids only.",
+    )
+    parser.add_argument(
+        "--report-missing",
+        action="store_true",
+        help="Report residue pairs with missing backbone atoms. Default: suppress them.",
+    )
+    parser.add_argument(
+        "--fail-on-cis",
+        action="store_true",
+        help="Exit with status 2 if any cis or twisted peptide bond is found.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"{PROGRAM_NAME} {VERSION}",
+    )
+
+    args = parser.parse_args(stripped)
+    args.called_from_jpresto = called_from_jpresto
+    return args
+
+
+def run(args: argparse.Namespace) -> int:
+    if not args.pdb.is_file():
+        print(f"[ERROR] Input PDB not found: {args.pdb}", file=sys.stderr)
+        return 1
+
+    try:
+        self_path = Path(__file__).resolve()
+        print(f"[INFO] FILE={self_path} SHA256_8={_sha256_8(self_path)}")
+    except Exception as exc:
+        print(f"[WARN] Could not calculate program SHA256: {exc}")
+
+    atoms = parse_pdb_atoms(args.pdb, model=args.model)
+    if not atoms:
+        print(f"[ERROR] No ATOM records found in {args.pdb} for model {args.model}.", file=sys.stderr)
+        return 1
+
+    residues = build_residues(atoms)
+    cfg = PepchkConfig(
+        model=args.model,
+        cis_cutoff=args.cis_cutoff,
+        trans_cutoff=args.trans_cutoff,
+        cn_max=args.cn_max,
+        ignore_cn_distance=args.ignore_cn_distance,
+        protein_only=not args.include_nonstandard,
+        report_missing=args.report_missing,
+    )
+    rows = analyze(residues=residues, cfg=cfg)
+
+    print(f"[INFO] PDB: {args.pdb}")
+    print(f"[INFO] atoms={len(atoms)} residues={len(residues)} checked_pairs={len(rows)}")
+    print(
+        f"[INFO] thresholds: cis |omega|<={args.cis_cutoff:g}, "
+        f"trans |omega|>={args.trans_cutoff:g}, C-N max={args.cn_max:g} A"
+    )
+    if cfg.protein_only:
+        print("[INFO] residue filter: standard amino acids only; use --include-nonstandard to include other residues")
+    print_summary(rows)
+
+    if args.csv:
+        write_csv(rows, args.csv)
+        print(f"\n[WRITE] CSV: {args.csv}")
+
+    if args.fail_on_cis and any(r["class"] in {"cis", "twisted", "degenerate"} for r in rows):
+        return 2
+
+    return 0
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    stime = time.perf_counter()
+    args = parse_args(argv)
+    display_credits()
+    status = run(args)
+    etime = time.perf_counter()
+    print(f"\nExecution time : {etime - stime:.3f} (S)")
+    if status == 0:
+        print(f"\n+++ Program j_presto {PROGRAM_NAME} normally ended +++")
+    else:
+        print(f"\n!!! Program j_presto {PROGRAM_NAME} ended with error !!!")
+    return status
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

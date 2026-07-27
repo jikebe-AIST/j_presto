@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""Validate structural consistency between j_presto manual translations."""
+
+import argparse
+import sys
+from pathlib import Path
+
+
+def parse_manual(path):
+    keys = []
+    links = {}
+    current = None
+    current_links = {"u": None, "p": None, "n": None}
+    seen = set()
+
+    with path.open("r", encoding="utf-8") as handle:
+        for line_number, source in enumerate(handle, 1):
+            line = source.rstrip()
+            if line.startswith("#"):
+                continue
+            if line.startswith(">"):
+                if current is not None:
+                    links[current] = current_links
+                current = line[1:].strip()
+                if current in seen:
+                    raise ValueError("duplicate key {!r} at line {} in {}".format(current, line_number, path))
+                seen.add(current)
+                keys.append(current)
+                current_links = {"u": None, "p": None, "n": None}
+            elif line.startswith("@"):
+                for part in line[1:].split(","):
+                    if ":" not in part:
+                        continue
+                    tag, value = [item.strip() for item in part.split(":", 1)]
+                    if tag in current_links and value:
+                        current_links[tag] = value
+        if current is not None:
+            links[current] = current_links
+
+    if not keys or keys[0] != "":
+        raise ValueError("home entry ('>') is missing or is not first in {}".format(path))
+    broken = []
+    key_set = set(keys)
+    for key, nav in links.items():
+        for tag, target in nav.items():
+            if target and target not in key_set:
+                broken.append("{!r} {}->{!r}".format(key, tag, target))
+    if broken:
+        raise ValueError("broken links in {}:\n  {}".format(path, "\n  ".join(broken)))
+    return keys, links
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Check English/Japanese j_presto manual consistency.")
+    default_root = Path(__file__).resolve().parent.parent
+    parser.add_argument("english", nargs="?", type=Path, default=default_root / "manual.txt")
+    parser.add_argument("japanese", nargs="?", type=Path, default=default_root / "manual_ja.txt")
+    args = parser.parse_args()
+
+    try:
+        en_keys, en_links = parse_manual(args.english)
+        ja_keys, ja_links = parse_manual(args.japanese)
+    except (OSError, UnicodeError, ValueError) as exc:
+        print("[ERROR] {}".format(exc), file=sys.stderr)
+        return 1
+
+    errors = []
+    if en_keys != ja_keys:
+        missing = [key for key in en_keys if key not in set(ja_keys)]
+        extra = [key for key in ja_keys if key not in set(en_keys)]
+        if missing:
+            errors.append("Missing in Japanese: " + ", ".join(repr(x) for x in missing))
+        if extra:
+            errors.append("Extra in Japanese: " + ", ".join(repr(x) for x in extra))
+        if not missing and not extra:
+            for index, (en_key, ja_key) in enumerate(zip(en_keys, ja_keys)):
+                if en_key != ja_key:
+                    errors.append(
+                        "Order differs at entry {}: {!r} != {!r}".format(index + 1, en_key, ja_key)
+                    )
+                    break
+    for key in en_keys:
+        if key in ja_links and en_links[key] != ja_links[key]:
+            errors.append("Navigation differs for {!r}: {} != {}".format(key, en_links[key], ja_links[key]))
+
+    if errors:
+        print("[ERROR] Manual structures do not match:", file=sys.stderr)
+        for error in errors:
+            print("  " + error, file=sys.stderr)
+        return 1
+
+    print("Manual structures match.")
+    print("  English : {}".format(args.english))
+    print("  Japanese: {}".format(args.japanese))
+    print("  Entries : {}".format(len(en_keys)))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

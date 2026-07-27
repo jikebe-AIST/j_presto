@@ -31,8 +31,9 @@
 
       implicit none
 
-        integer(4):: nfile
-        character(130):: PROJNM
+        integer(4):: nfile,naxes
+        real(4):: alfac
+        character(999):: PROJNM,INPPDB
         character(999),allocatable:: filelist(:)
 
 !**********************************

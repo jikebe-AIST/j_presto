@@ -8,11 +8,11 @@ from Bio import PDB
 def display_credits():
     print("*" * 50)
     print("*")
-    print(f"*    nt_gen (Version 1.0.0)")
+    print(f"*    nt_gen (Version 1.1.0)")
     print("*")
     print(f"*        Author : Jinzen Ikebe")
     print(f"* First Release : 2025-05-23")
-    print(f"*  Current ver. : 2025-05-23")
+    print(f"*  Current ver. : 2026-07-27")
     print("*")
     print(f"*" * 50)
     print()
@@ -268,7 +268,7 @@ def main():
     parser.add_argument('access_key', help=argparse.SUPPRESS)
     parser.add_argument("prep_file", help="Input prep file")
     parser.add_argument("pdb_file", help="Input PDB file")
-    parser.add_argument("--output", "-o", default="table.txt", help="Output atomic name correspondence table file. The Default is table.txt.")
+    parser.add_argument("--output", "-o", default="table.nt", help="Output atomic name correspondence table file. The Default is table.nt.")
     parser.add_argument("--threshold", "-t", default=1.8, help="Threshold distance for determining the presence of covalent bonds between atoms in PDB. Default is 1.8.")
     args = parser.parse_args()
     if args.access_key != "j_presto":

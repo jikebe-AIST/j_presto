@@ -53,9 +53,11 @@
       integer(4),allocatable:: iyfini(:)   ! ixnres
 
       ! FREE ATOM INFORMATION
-      integer(4):: iynvar,iynfpt,iynfp2,iynfp3,iynfp4,iynfp5,outatm
+      integer(4):: iynvar,iynfpt,iynfp2,iynfp3,iynfp4,iynfp5
       integer(4),allocatable:: iytvar(:)
       integer(4),allocatable:: iylvar(:)  ! iynvar
+      integer(4),allocatable:: outatm_list(:)
+      character(999):: outatm
 
       ! SHAKE INFORMATION
       integer(4):: iyfshk

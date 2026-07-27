@@ -1,110 +1,293 @@
 #!/usr/bin/env python3
-  
-import argparse, os, sys, time, shutil
+"""Copy input-file and execution-script templates distributed with j_presto."""
 
-def display_credits():
-    print("*" * 50)
+from __future__ import annotations
+
+import argparse
+import hashlib
+import os
+import platform
+import shutil
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterable, Mapping, Sequence
+
+
+PROGRAM_NAME = "get_tmpl"
+PROGRAM_LONG_NAME = "j_presto template-file copier"
+PROGRAM_VERSION = "1.4.0"
+AUTHOR = "Jinzen Ikebe"
+FIRST_RELEASE = "2024-11-11"
+CURRENT_VERSION_DATE = "2026-07-27"
+ACCESS_KEY = "j_presto"
+
+
+class ProgramError(RuntimeError):
+    """Error that should be reported to the user without a traceback."""
+
+
+@dataclass(frozen=True)
+class TemplateSpec:
+    source_name: str
+    output_name: str
+
+
+def sha256_8(path: Path) -> str:
+    """Return the first eight hexadecimal characters of a file SHA-256."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()[:8]
+
+
+def strip_j_presto_access_key(
+    argv: Sequence[str] | None = None,
+) -> tuple[bool, list[str]]:
+    """Remove the hidden access key inserted by the j_presto launcher."""
+    raw = list(sys.argv if argv is None else argv)
+    if len(raw) > 1 and raw[1] == ACCESS_KEY:
+        return True, [raw[0], *raw[2:]]
+    return False, raw
+
+
+def display_credits(j_presto_path: Path) -> None:
+    print("*" * 60)
     print("*")
-    print(f"*    get_tmpl (Version 1.0.3)")
+    print(f"*    {PROGRAM_NAME} (Version {PROGRAM_VERSION})")
+    print(f"*    {PROGRAM_LONG_NAME}")
     print("*")
-    print(f"*        Author : Jinzen Ikebe")
-    print(f"* First Release : 2024-11-11")
-    print(f"*  Current ver. : 2025-07-10")
+    print(f"*        Author : {AUTHOR}")
+    print(f"* First Release : {FIRST_RELEASE}")
+    print(f"*  Current ver. : {CURRENT_VERSION_DATE}")
     print("*")
-    print(f"*" * 50)
+    print("*" * 60)
     print()
-    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+
+    license_path = j_presto_path / "LICENSE.md"
+    if not license_path.is_file():
+        print(f"[WARN] License file not found: {license_path}", file=sys.stderr)
+
+
+def print_runtime_header() -> None:
+    """Print information useful for identifying the executed program."""
     try:
-        with open(license_path, "r", encoding="utf-8") as file:
-            license_content = file.read()
-    except FileNotFoundError:
-        print("Error: License file not found.") ; sys.exit(1)
+        program_sha = sha256_8(Path(__file__).resolve())
+    except OSError as exc:
+        program_sha = f"unavailable ({exc})"
 
-def copy_file(src, dest):
-    # For unlock files
-    if dest.endswith("_ul"):
-        dest = dest[:-3]
-    # If the destination file already exists, modify the filename
-    if os.path.exists(dest):
-        old_dest = dest
-        base, ext = os.path.splitext(dest)
-        dest = f"{base}_tmpl{ext}"  # Add _tmpl to the filename
-        print(f"{old_dest} already exists. Copying as {dest} instead.")
+    print(f'{"Program SHA256_8 : ".rjust(20)}{program_sha}')
+    print(f'{"Python : ".rjust(20)}{platform.python_version()} ({sys.executable})')
+    print(f'{"Working dir : ".rjust(20)}{Path.cwd()}')
+    print()
 
-    # Copy the file
-    shutil.copy(src, dest)
-    print(f"Copied {src} to {dest}")
 
-def main():
-    stime = time.perf_counter()
-    parser = argparse.ArgumentParser(description='j_presto get_tmpl gives you templates of input files and scripts for executing j_presto.')
-    parser.add_argument('access_key', help=argparse.SUPPRESS)
-    parser.add_argument('inputs', nargs='*', default=None, help="The input types to specify the template files. Multiple input types can be specified.")
-    parser.add_argument('-l', '--list', action='store_true', help="List all valid input types.")
-    parser.add_argument('-u', '--unlock', action='store_true', help=argparse.SUPPRESS)
-
-    args, unknown_args = parser.parse_known_args()
-    input_types = args.inputs + unknown_args
-    if args.access_key != "j_presto":
-        sys.exit(1)
-    display_credits()
-
-    # Mapping of input types to file paths
-    file_mapping = {
-        "gen_db": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "gen_db.exe"),
-        "prep": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "prep.exe"),
-        "min.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "min.inp"),
-        "md.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "md.inp"),
-        "CAPbound.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "CAPbound.inp"),
-        "psr.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "psr.inp"),
-        "dsr.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "dsr.inp"),
-        "dhr.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "dhr.inp"),
-        "md_run": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "md_run.exe"),
-        "batch_set.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "batch_set.inp"),
-        "batch_set_ALSD.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "batch_set_ALSD.inp"),
-        "md_multi": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "md_multi.exe"),
-        "Ens_Ana.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "Ens_Ana.inp"),
-        "Ens_Ana": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "Ens_Ana.exe"),
-        "distrib.inp": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "distrib.inp"),
-        "gnu.splot": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "gnu.splot"),
-        "gnu.plot": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "gnu.plot"),
+def get_public_templates() -> dict[str, TemplateSpec]:
+    return {
+        "gen_db": TemplateSpec("gen_db.exe", "gen_db.exe"),
+        "prep": TemplateSpec("prep.exe", "prep.exe"),
+        "min.inp": TemplateSpec("min.inp", "min.inp"),
+        "md.inp": TemplateSpec("md.inp", "md.inp"),
+        "CAPbound.inp": TemplateSpec("CAPbound.inp", "CAPbound.inp"),
+        "psr.inp": TemplateSpec("psr.inp", "psr.inp"),
+        "dsr.inp": TemplateSpec("dsr.inp", "dsr.inp"),
+        "dhr.inp": TemplateSpec("dhr.inp", "dhr.inp"),
+        "md_run": TemplateSpec("md_run.exe", "md_run.exe"),
+        "batch_set.inp": TemplateSpec("batch_set.inp", "batch_set.inp"),
+        "batch_set_ALSD.inp": TemplateSpec(
+            "batch_set_ALSD.inp", "batch_set_ALSD.inp"
+        ),
+        "md_multi": TemplateSpec("md_multi.exe", "md_multi.exe"),
+        "Ens_Ana.inp": TemplateSpec("Ens_Ana.inp", "Ens_Ana.inp"),
+        "Ens_Ana": TemplateSpec("Ens_Ana.exe", "Ens_Ana.exe"),
+        "distrib.inp": TemplateSpec("distrib.inp", "distrib.inp"),
+        "gnu.splot": TemplateSpec("gnu.splot", "gnu.splot"),
+        "gnu.plot": TemplateSpec("gnu.plot", "gnu.plot"),
+        "DISTIL": TemplateSpec("DISTIL.exe", "DISTIL.exe"),
     }
 
+
+def get_unlocked_templates() -> dict[str, TemplateSpec]:
+    return {
+        "md_multi": TemplateSpec("md_multi.exe_ul", "md_multi.exe"),
+        "run": TemplateSpec("run", "run"),
+        "DISTIL": TemplateSpec("DISTIL.exe_ul", "DISTIL.exe"),
+    }
+
+
+def resolve_j_presto_path() -> Path:
+    value = os.environ.get("J_PRESTO_PATH")
+    if not value:
+        raise ProgramError("J_PRESTO_PATH is not set.")
+
+    path = Path(value).expanduser().resolve()
+    if not path.is_dir():
+        raise ProgramError(f"J_PRESTO_PATH is not a directory: {path}")
+    return path
+
+
+def next_available_path(destination: Path) -> Path:
+    if not destination.exists():
+        return destination
+
+    stem = destination.stem
+    suffix = destination.suffix
+    candidate = destination.with_name(f"{stem}_tmpl{suffix}")
+    index = 2
+    while candidate.exists():
+        candidate = destination.with_name(f"{stem}_tmpl{index}{suffix}")
+        index += 1
+
+    print(
+        f"{destination.name} already exists. "
+        f"Copying as {candidate.name} instead."
+    )
+    return candidate
+
+
+def copy_template(
+    template_dir: Path,
+    spec: TemplateSpec,
+    destination_dir: Path,
+) -> Path:
+    source = template_dir / spec.source_name
+    if not source.is_file():
+        raise ProgramError(f"Template file not found: {source}")
+
+    destination = next_available_path(destination_dir / spec.output_name)
+    try:
+        shutil.copy2(source, destination)
+    except OSError as exc:
+        raise ProgramError(
+            f"Failed to copy '{source}' to '{destination}': {exc}"
+        ) from exc
+
+    print(f"Copied {source} to {destination}")
+    return destination
+
+
+def list_templates(template_mapping: Mapping[str, TemplateSpec]) -> None:
+    print("Valid input types:")
+    for name in template_mapping:
+        print(f"  {name}")
+
+
+def select_template_names(
+    requested: Iterable[str],
+    template_mapping: Mapping[str, TemplateSpec],
+) -> list[str]:
+    requested_names = list(requested)
+    if "all" in requested_names:
+        return list(template_mapping)
+
+    unknown = [name for name in requested_names if name not in template_mapping]
+    if unknown:
+        valid_inputs = ", ".join(template_mapping)
+        unknown_text = ", ".join(repr(name) for name in unknown)
+        raise ProgramError(
+            f"Unknown input type(s): {unknown_text}.\n"
+            f"Valid input types are: {valid_inputs}"
+        )
+    return requested_names
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=f"j_presto {PROGRAM_NAME}",
+        formatter_class=argparse.RawTextHelpFormatter,
+        description=(
+            "Obtain templates of input files and execution scripts "
+            "distributed with j_presto."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  j_presto get_tmpl --list\n"
+            "  j_presto get_tmpl min.inp psr.inp\n"
+            "  j_presto get_tmpl DISTIL\n"
+            "  j_presto get_tmpl all"
+        ),
+    )
+    parser.add_argument(
+        "inputs",
+        nargs="*",
+        help=(
+            "Template type(s) to copy. Multiple types may be specified; "
+            "use 'all' to copy every available template."
+        ),
+    )
+    parser.add_argument(
+        "-l",
+        "--list",
+        action="store_true",
+        help="List all valid input types.",
+    )
+    parser.add_argument(
+        "-u",
+        "--unlock",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"{PROGRAM_NAME} {PROGRAM_VERSION}",
+    )
+    return parser
+
+
+def run(args: argparse.Namespace, j_presto_path: Path) -> int:
+    template_mapping = get_public_templates()
     if args.unlock:
-        unlocked_files = {
-            "md_multi": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "md_multi.exe_ul"),
-            "run": os.path.join(os.environ.get("J_PRESTO_PATH"), "template", "run"),
-        }
-        file_mapping.update(unlocked_files)
+        template_mapping.update(get_unlocked_templates())
 
-    # Handle --list option
     if args.list:
-        print("Valid input types:")
-        for key in file_mapping.keys():
-            print(f"  {key}")
-        sys.exit()
+        list_templates(template_mapping)
+        return 0
 
-    # Check if input type is "all" to copy all files
-    if "all" in input_types:
-        for input_type in file_mapping.keys():
-            src_file = file_mapping[input_type]
-            dest_file = os.path.basename(src_file)  # Set destination to current directory with the same name
-            copy_file(src_file, dest_file)
+    if not args.inputs:
+        raise ProgramError("Specify at least one template type, or use --list.")
+
+    template_dir = j_presto_path / "template"
+    if not template_dir.is_dir():
+        raise ProgramError(f"Template directory not found: {template_dir}")
+
+    for name in select_template_names(args.inputs, template_mapping):
+        copy_template(template_dir, template_mapping[name], Path.cwd())
+    return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    start_time = time.perf_counter()
+    _, stripped_argv = strip_j_presto_access_key(argv)
+    parser = build_parser()
+    args = parser.parse_args(stripped_argv[1:])
+
+    status = 0
+    try:
+        j_presto_path = resolve_j_presto_path()
+        display_credits(j_presto_path)
+        print_runtime_header()
+        status = run(args, j_presto_path)
+    except ProgramError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        status = 1
+    except KeyboardInterrupt:
+        print("[ERROR] Interrupted by user.", file=sys.stderr)
+        status = 130
+
+    elapsed = time.perf_counter() - start_time
+    print(f"\nExecution time : {elapsed:.3f} (S)")
+    if status == 0:
+        print(f"\n+++ Program j_presto {PROGRAM_NAME} normally ended +++")
     else:
-        for input_type in input_types:
-            if input_type in file_mapping:
-                src_file = file_mapping[input_type]
-                dest_file = os.path.basename(src_file)
-                copy_file(src_file, dest_file)
-            else:
-                print(f"Error: Unknown input type '{input_type}'.")
-                valid_inputs = ", ".join(file_mapping.keys())
-                print(f"Valid input types are: {valid_inputs}") ; sys.exit()
+        print(
+            f"\n!!! Program j_presto {PROGRAM_NAME} ended with error !!!",
+            file=sys.stderr,
+        )
+    return status
 
-    etime = time.perf_counter()
-    print(f"\nExecution time : {etime - stime} (S)")
-    print(f"\n+++ Program j_presto get_tmpl normally ended +++")
 
 if __name__ == "__main__":
-    main()
-
+    raise SystemExit(main())

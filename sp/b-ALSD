@@ -1,102 +1,202 @@
 #!/usr/bin/env python3
 
-import argparse
+import argparse, os, sys, time
 import numpy as np
 from scipy.stats import norm
-from scipy.optimize import minimize
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
+from scipy.optimize import minimize
 
-def read_score_file(score_file):
-    scores = {}
-    with open(score_file, 'r') as f:
+def display_credits():
+    print("*" * 50)
+    print("*")
+    print(f"*    b-ALSD (Version 1.0.0)")
+    print("*")
+    print(f"*        Author : Jinzen Ikebe")
+    print(f"* First Release : 2025-07-23")
+    print(f"*  Current ver. : 2025-07-25")
+    print("*")
+    print(f"*" * 50)
+    print()
+    license_path = os.path.join(os.environ.get("J_PRESTO_PATH", ""), "LICENSE.md")
+    try:
+        with open(license_path, "r", encoding="utf-8") as file:
+            license_content = file.read()
+    except FileNotFoundError:
+        print("Error: License file not found.")
+        sys.exit(1)
+
+def read_score_file(filename):
+    ids, scores = [], []
+    with open(filename, 'r') as f:
         for line in f:
             line = line.strip()
             if line.startswith("#") or not line:
                 continue
             parts = line.split()
-            traj_id = int(parts[0])
-            score = float(parts[1])
-            scores[traj_id] = score
-    return scores
-
-def read_lnP_file(lnP_file):
-    with open(lnP_file, 'r') as f:
-        lines = f.readlines()
-    
-    eP_matrix = []
-    for line in lines:
-        if not line.strip():
-            continue
-        vals = []
-        for val in line.strip().split():
+            if len(parts) < 2:
+                continue
             try:
-                v = float(val)
-                if np.isnan(v):  # NaN = 欠損値
-                    vals.append(np.nan)
-                else:
-                    vals.append(v)
+                ids.append(int(parts[0]))
+                scores.append(float(parts[1]))
             except ValueError:
-                vals.append(np.nan)
-        eP_matrix.append(vals)
+                continue
+    return ids, np.array(scores)
 
-    eP_array = np.array(eP_matrix)  # shape: (n_bins, 1 + n_traj)
-    lambda_vals = eP_array[:, 0]
-    eP_vals = eP_array[:, 1:]
-    return lambda_vals, eP_vals.T  # shape: (n_traj, n_bins)
+def read_lnP_file(filename):
+    data = []
+    with open(filename, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            try:
+                floats = [float(x) if x.lower() != 'nan' else np.nan for x in parts]
+                data.append(floats)
+            except ValueError:
+                continue
+    data = np.array(data)
+    lambda_values = data[:, 0]
+    lnP_values = data[:, 1:]
+    return lambda_values, lnP_values
 
-def expected_improvement(x, model, y_max):
+def lnP_to_P(lnP, lambdas):
+    P = np.zeros_like(lnP)
+    for i in range(len(lnP)):
+        P[i] = np.exp(lnP[i]) if not np.isnan(lnP[i]) else 0.0
+    integral = np.trapz(P, lambdas)
+    return P / integral if integral > 0 else P
+
+def prepare_features(lnP_matrix, lambda_values):
+    features = []
+    for i in range(lnP_matrix.shape[1]):
+        lnP = lnP_matrix[:, i]
+        P = lnP_to_P(lnP, lambda_values)
+        features.append(P)
+    return np.array(features)
+
+def P_to_lnP(P):
+    P_safe = np.where(P > 0, P, 1e-300)
+    lnP = np.log(P_safe)
+    lnP -= np.max(lnP)
+    return lnP
+
+def smoothness_penalty(P, alpha):
+    diff = np.diff(P)
+    return alpha * np.sum(diff**2)
+
+def expected_improvement_with_smoothness(x, model, y_max, alpha):
     x = x.reshape(1, -1)
     mu, sigma = model.predict(x, return_std=True)
-    sigma = sigma.reshape(-1)
-    with np.errstate(divide='warn'):
-        Z = (mu - y_max) / sigma
-        ei = (mu - y_max) * norm.cdf(Z) + sigma * norm.pdf(Z)
-        ei[sigma == 0.0] = 0.0
-    return -ei[0]  # minimize for optimizer
+    sigma = np.maximum(sigma, 1e-9)
+    Z = (mu - y_max) / sigma
+    ei = (mu - y_max) * norm.cdf(Z) + sigma * norm.pdf(Z)
+    ei[sigma == 0.0] = 0.0
+    penalty = smoothness_penalty(x.flatten(), alpha)
+    total = -ei[0] + penalty
+    print(f"EI: {ei[0]:.5f}, penalty: {penalty:.5f}, total: {total:.5f}")
+    return total
 
-def optimize_lnP(X, y):
-    kernel = C(1.0) * RBF()
-    gpr = GaussianProcessRegressor(kernel=kernel, alpha=1e-6, normalize_y=True)
-    gpr.fit(X, y)
-    y_max = np.max(y)
+def bayesian_optimize(lambda_values, lnP_matrix, scores, n_iter=50, alpha=10.0, init_method='best'):
+    X_train = prepare_features(lnP_matrix, lambda_values)
+    y_train = scores
 
-    bounds = [(-3.0, 3.0)] * X.shape[1]
-    x0 = np.random.randn(X.shape[1])
-    res = minimize(expected_improvement, x0, args=(gpr, y_max), bounds=bounds, method='L-BFGS-B')
-    return res.x, gpr.predict([res.x])[0]
+    kernel = C(1.0, (1e-3, 1e3)) * RBF(length_scale=1.0, length_scale_bounds=(1e-2, 1e2))
+    gp = GaussianProcessRegressor(kernel=kernel, alpha=1e-6, normalize_y=True)
+    gp.fit(X_train, y_train)
+
+    best_pred_score = -np.inf
+    best_P = None
+
+    bounds = [(0, 1)] * len(lambda_values)
+    cons = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1.0}
+
+    initial_points = []
+    if init_method == 'best':
+        best_idx = np.argmax(y_train)
+        initial_points.append(X_train[best_idx])
+    elif init_method == 'uniform':
+        initial_points.append(np.ones(len(lambda_values)) / len(lambda_values))
+    elif init_method == 'normal':
+        center = 0.5
+        std = 0.15
+        values = np.random.normal(center, std, size=len(lambda_values))
+        values = np.clip(values, 0, 1)
+        values /= np.sum(values)
+        initial_points.append(values)
+    else:
+        raise ValueError(f"Unknown init_method: {init_method}")
+
+    # Add additional random samples (Dirichlet)
+    for _ in range(n_iter - 1):
+        initial_points.append(np.random.dirichlet(np.ones(len(lambda_values))))
+
+    for i, x0 in enumerate(initial_points):
+        print(f"\n[Iteration {i+1}] Starting optimization...")
+        res = minimize(expected_improvement_with_smoothness, x0, args=(gp, np.max(y_train), alpha),
+                       bounds=bounds, constraints=cons, method='SLSQP',
+                       options={'maxiter': 200, 'disp': False})
+        if not res.success:
+            print(f"  ❌ Optimization failed: {res.message}")
+            continue
+        P_candidate = res.x
+        score_candidate = gp.predict(P_candidate.reshape(1, -1))[0]
+        print(f"  ✅ Predicted score: {score_candidate:.5f}")
+        if score_candidate > best_pred_score:
+            best_pred_score = score_candidate
+            best_P = P_candidate
+
+    if best_P is None:
+        print("No successful optimization. Using fallback uniform distribution.")
+        best_P = np.ones(len(lambda_values)) / len(lambda_values)
+        best_pred_score = gp.predict(best_P.reshape(1, -1))[0]
+
+    lnP_predicted = P_to_lnP(best_P)
+    return lnP_predicted, best_pred_score
 
 def main():
-    parser = argparse.ArgumentParser(description="B-ALSD optimizer using EI.")
-    parser.add_argument('--score', required=True, help='Score file (trajectory ID and score)')
-    parser.add_argument('--lnp', required=True, help='lnP(lambda) file (Fortran-style)')
+    stime = time.perf_counter()
+    parser = argparse.ArgumentParser(description="B-ALSD optimizer using Bayesian Optimization.")
+    parser.add_argument('access_key', help=argparse.SUPPRESS)
+    parser.add_argument('-s', '--score', required=True, help='Score file (simulation ID and score)')
+    parser.add_argument('-l', '--lnp', required=True, help='lnP(lambda) file')
+    parser.add_argument('-o', '--output', default='optimized_lnP.txt', help='Output file for optimized lnP(lambda)')
+    parser.add_argument('-a', '--alpha', type=float, default=10.0, help='Smoothness penalty coefficient (default: 10.0)')
+    parser.add_argument('-i', '--init', choices=['best', 'uniform', 'normal'], default='best',
+                        help="Initial distribution for optimization (default: best)")
+
     args = parser.parse_args()
+    if args.access_key != "j_presto":
+        sys.exit(1)
 
-    # Read input
-    score_dict = read_score_file(args.score)
-    lambda_vals, lnP_matrix = read_lnP_file(args.lnp)
+    display_credits()
 
-    # Filter only available scores
-    X = []
-    y = []
-    for i, row in enumerate(lnP_matrix):
-        if i in score_dict and not np.isnan(row).any():
-            X.append(row)
-            y.append(score_dict[i])
-    X = np.array(X)
-    y = np.array(y)
+    sim_ids, scores = read_score_file(args.score)
+    lambda_values, lnP_matrix = read_lnP_file(args.lnp)
 
-    if len(X) < 2:
-        print("Not enough valid data points for optimization.")
-        return
+    if len(scores) != lnP_matrix.shape[1]:
+        print(f"Warning: Score count {len(scores)} and lnP trajectory count {lnP_matrix.shape[1]} do not match.")
 
-    optimal_lnP, predicted_score = optimize_lnP(X, y)
-    normalized_lnP = optimal_lnP - np.max(optimal_lnP)
+    lnP_predicted, predicted_score = bayesian_optimize(
+        lambda_values, lnP_matrix, scores,
+        alpha=args.alpha,
+        init_method=args.init
+    )
 
-    print("----- Optimal lnP(λ) Proposal -----")
-    for lmbda, val in zip(lambda_vals, normalized_lnP):
-        print(f"{lmbda:.5f}  {val:.5f}")
-    print(f"\nPredicted score: {predicted_score:.5f}")
+    print("\n=== Predicted lnP(λ) ===")
+    for lam, lnP_val in zip(lambda_values, lnP_predicted):
+        print(f"{lam:.5f} {lnP_val:.5f}")
+
+    print(f"\nPredicted score (expected correlation): {predicted_score:.5f}")
+
+    with open(args.output, 'w') as f:
+        for lam, lnP_val in zip(lambda_values, lnP_predicted):
+            f.write(f"{lam:.8f} {lnP_val:.8f}\n")
+
+    etime = time.perf_counter()
+    print(f"\nExecution time : {etime - stime:.3f} seconds")
+    print("\n+++ Program j_presto b-ALSD normally ended +++")
 
 if __name__ == '__main__':
     main()

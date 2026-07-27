@@ -49,11 +49,11 @@ iaSS = [] ; iaLINK = [] ; ion_list = {} ; islv = None
 def display_credits():
     print("*" * 50)
     print("*")
-    print(f"*    prep (Version 1.0.2)")
+    print(f"*    prep (Version 1.0.3)")
     print("*")
     print(f"*        Author : Jinzen Ikebe")
     print(f"* First Release : 2024-11-11")
-    print(f"*  Current ver. : 2025-07-10")
+    print(f"*  Current ver. : 2026-07-27")
     print("*")
     print(f"*" * 50)
     print()
@@ -426,7 +426,7 @@ def prepare_pdb():
             nres_width = max(4, min(7, len(str(nres))))
             pdb[i] = "{:4}{:>7} {:4} {:4}{:1}{:>{nres_width}}{}{}".format("ATOM", natm, Catmnm, Cresnm, Cchain, str(nres), " "*(8-nres_width), tmp[30:], nres_width=nres_width)
         elif tmp.startswith("TER"):
-            atm_inf.append(atm_info) ; atm_info = [] ; natm = 0 ; nres = 0
+            atm_inf.append(atm_info) ; atm_info = [] ; natm = 0 ; nres = 0 ; Cnatm_old = "" ; Cnres_old = ""
 
     # Trim the system
     if trim_shape is not None:

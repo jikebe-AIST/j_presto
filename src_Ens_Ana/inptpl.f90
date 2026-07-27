@@ -786,7 +786,6 @@
         iytnbf(iyntor) = iytnbf(itors)
       enddo
       enddo
-      stop
 
 !*****************************
 

@@ -9,7 +9,7 @@ The full text of the license is available at:
 
 This program "j_presto" has been developed and extended by Jinzen Ikebe based on its original version "presto_ver3" (Ref. [1]), which was developed by the groups in Protein Engineering Research Institute (PERI) and Biomolecular Engineering Research Institute (BERI), 6-2-3 Furuedai, Suita, Osaka 565-0874, JAPAN, headed by Haruki Nakamura.
 
-The program "j_presto" is available under the license of CC BY-NC 4.0 ([https://creativecommons.org/licenses/by-nc/4.0/](https://creativecommons.org/licenses/by-nc/4.0/)), and the source codes are provided by Jinzen Ikebe (ikebe.jinzen@aist.go.jp) at Artificial Intelligence Research Center (AIRC), AIST Tokyo Waterfront BIO-IT Research Building, 2-4-7 Aomi, Kyoto-ku, Tokyo 135-0064, JAPAN.
+The program "j_presto" is available under the license of CC BY-NC 4.0 ([https://creativecommons.org/licenses/by-nc/4.0/](https://creativecommons.org/licenses/by-nc/4.0/)), and the source codes are provided by Jinzen Ikebe (ikebe.jinzen@aist.go.jp) at Artificial Intelligence Research Center (AIRC), AIST Tokyo Waterfront BIO-IT Research Building, 2-4-7 Aomi, Koto-ku, Tokyo 135-0064, JAPAN.
 
 ## Permission
 
@@ -43,5 +43,7 @@ Presto (protein engineering simulator): A vectorized molecular mechanics program
 
 [2] https://github.com/jikebe-AIST/j_presto.git
 
-[3] Will be listed after the paper is published.
-
+[3] Jinzen Ikebe, Hidetoshi Kono,  
+Feasibility of Combining Biomolecular Conformational Sampling Techniques for Molecular Dynamics Simulation,  
+Journal of Computational Chemistry, Volume 46, Issue 20, e70192, 2025,  
+[https://doi.org/10.1002/jcc.70192](https://doi.org/10.1002/jcc.70192).

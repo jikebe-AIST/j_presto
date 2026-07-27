@@ -100,7 +100,7 @@
           iatm(1:2) = iypbnd(1:2,ibnd)
           d(1:3) = cord(1:3,iatm(1)) - cord(1:3,iatm(2))
           d(1:3) = d(1:3) -                            & ! #SLC2 #PB
-                   fxcell(1:3)*nint(d(1:3)*invcel(1:3))  ! #SLC2 #PB
+                   fxcell(1:3)*anint(d(1:3)*invcel(1:3)) ! #SLC2 #PB
           r12 = sqrt(d(1)*d(1) + d(2)*d(2) + d(3)*d(3))
           dif = r12 - fyqbnd(ibnd)
           coef = fyfbnd(ibnd) * dif
@@ -330,11 +330,11 @@
           d32(1:3) = cord(1:3,iatm(3)) - cord(1:3,iatm(2))
           d43(1:3) = cord(1:3,iatm(4)) - cord(1:3,iatm(3))
           d21(1:3) = d21(1:3) -                            & ! #SLC2 #PB
-                     fxcell(1:3)*nint(d21(1:3)*invcel(1:3))  ! #SLC2 #PB
+                     fxcell(1:3)*anint(d21(1:3)*invcel(1:3))  ! #SLC2 #PB
           d32(1:3) = d32(1:3) -                            & ! #SLC2 #PB
-                     fxcell(1:3)*nint(d32(1:3)*invcel(1:3))  ! #SLC2 #PB
+                     fxcell(1:3)*anint(d32(1:3)*invcel(1:3))  ! #SLC2 #PB
           d43(1:3) = d43(1:3) -                            & ! #SLC2 #PB
-                     fxcell(1:3)*nint(d43(1:3)*invcel(1:3))  ! #SLC2 #PB
+                     fxcell(1:3)*anint(d43(1:3)*invcel(1:3))  ! #SLC2 #PB
           p12(1) = d21(2)*d32(3) - d32(2)*d21(3)
           p12(2) = d21(3)*d32(1) - d32(3)*d21(1)
           p12(3) = d21(1)*d32(2) - d32(1)*d21(2)
@@ -368,7 +368,7 @@
             etor(n) = etor(n) + fftor(itor)*(1.d0+cos(phimod))*div
 
             ! Gradient
-            sinp = sin(phi) ; nrot = nint(frot(itor))
+            sinp = sin(phi) ; nrot = anint(frot(itor))
             select case (nrot)
             case (1)
               wrk0 = 1.d0
@@ -478,7 +478,7 @@
 
           d14(1:3) = cord(1:3,iatm1) - cord(1:3,iatm2)
           d14(1:3) = d14(1:3) -                           & ! #SLC2 #PB
-                     fxcell(1:3)*nint(d14(1:3)*invcel(1:3)) ! #SLC2 #PB
+                     fxcell(1:3)*anint(d14(1:3)*invcel(1:3)) ! #SLC2 #PB
           r14 = d14(1)*d14(1) + d14(2)*d14(2) + d14(3)*d14(3)
           r14 = 1.d0 / r14
           r141 = sqrt(r14)

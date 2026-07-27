@@ -1,122 +1,554 @@
 #!/usr/bin/env python3
+"""Interactive multilingual manual reader for the j_presto program suite."""
 
-import sys, os, re, readline, argparse
+import argparse
+import difflib
+import hashlib
+import os
+import re
+import readline
+import sys
+from pathlib import Path
 
-def read_manual_file(filename, unlock_mode=False):
-    data = {} ; links = {} ; key = None ; value_lines = []
+
+PROGRAM_NAME = "manual"
+PROGRAM_VERSION = "1.1.0"
+CURRENT_VERSION_DATE = "2026-07-27"
+SUPPORTED_LANGUAGES = ("en", "ja")
+LANGUAGE_NAMES = {
+    "en": {"en": "English", "ja": "Japanese"},
+    "ja": {"en": "英語", "ja": "日本語"},
+}
+
+UI = {
+    "en": {
+        "error_prefix": "Error",
+        "warning_prefix": "Warning",
+        "duplicate": "Duplicate manual entry {key!r} detected {where}.",
+        "home_missing": "The manual home entry ('>') is missing.",
+        "broken_links": "Broken manual navigation links:\n  {links}",
+        "file_not_found": "File {filename!r} not found.",
+        "load_failed": "Could not load the manual: {error}",
+        "license_path_missing": "J_PRESTO_PATH is not set.",
+        "license_missing": "License file not found: {path}",
+        "search_empty": "Search term is empty.",
+        "not_found_search": "{term!r} was not found in the manual.",
+        "match_singular": "matching entry",
+        "match_plural": "matching entries",
+        "open_entry": "Enter an entry name to open its full text.",
+        "no_prefix": "No entries begin with {prefix!r}.",
+        "entry_singular": "entry",
+        "entry_plural": "entries",
+        "beginning": "beginning with {prefix!r}",
+        "did_you_mean": "Did you mean: {matches}?",
+        "exit": "Exiting the manual program.",
+        "search_prompt": "Search term: ",
+        "list_prompt": "Entry prefix (blank for all): ",
+        "no_nav": "No {direction} entry is defined here.",
+        "direction_n": "next",
+        "direction_p": "previous",
+        "direction_u": "parent",
+        "not_found_entry": "{entry!r} was not found in the manual.",
+        "browse_hint": "Use Search (s) for a full-text search or List (l) to browse entries.",
+        "current_language": "Current language: {name} ({code})",
+        "available_languages": "Available languages:",
+        "language_usage": "Usage: lang en | lang ja",
+        "language_unavailable": "The {name} manual is unavailable; using English instead.",
+        "language_switched": "Language changed to {name}.",
+        "unknown_language": "Unsupported language {value!r}. Use 'en' or 'ja'.",
+        "structure_mismatch": "English and Japanese manual structures do not match: {error}",
+        "nav_previous": "p(previous)",
+        "nav_next": "n(next)",
+        "nav_up": "u(up)",
+        "home_label": "Home",
+        "version": "{program} {version} ({date})",
+    },
+    "ja": {
+        "error_prefix": "エラー",
+        "warning_prefix": "警告",
+        "duplicate": "マニュアル項目 {key!r} が重複しています（{where}）。",
+        "home_missing": "マニュアルのトップ項目（'>'）がありません。",
+        "broken_links": "マニュアル内に無効なナビゲーションリンクがあります:\n  {links}",
+        "file_not_found": "ファイル {filename!r} が見つかりません。",
+        "load_failed": "マニュアルを読み込めませんでした: {error}",
+        "license_path_missing": "J_PRESTO_PATHが設定されていません。",
+        "license_missing": "ライセンスファイルが見つかりません: {path}",
+        "search_empty": "検索語が入力されていません。",
+        "not_found_search": "マニュアル内に {term!r} は見つかりませんでした。",
+        "match_singular": "件の項目が見つかりました",
+        "match_plural": "件の項目が見つかりました",
+        "open_entry": "項目名を入力すると全文を表示します。",
+        "no_prefix": "{prefix!r} で始まる項目はありません。",
+        "entry_singular": "件",
+        "entry_plural": "件",
+        "beginning": "（{prefix!r} で始まる項目）",
+        "did_you_mean": "次の項目ではありませんか: {matches}",
+        "exit": "マニュアルを終了します。",
+        "search_prompt": "検索語: ",
+        "list_prompt": "項目名の先頭文字列（空欄ですべて表示）: ",
+        "no_nav": "この項目には{direction}項目が設定されていません。",
+        "direction_n": "次の",
+        "direction_p": "前の",
+        "direction_u": "上位の",
+        "not_found_entry": "マニュアル項目 {entry!r} は見つかりませんでした。",
+        "browse_hint": "全文検索はSearch（s）、項目一覧はList（l）を使用してください。",
+        "current_language": "現在の言語: {name} ({code})",
+        "available_languages": "利用可能な言語:",
+        "language_usage": "使用法: lang en | lang ja",
+        "language_unavailable": "{name}版マニュアルを利用できないため、英語版を表示します。",
+        "language_switched": "表示言語を{name}に変更しました。",
+        "unknown_language": "未対応の言語 {value!r} です。'en'または'ja'を指定してください。",
+        "structure_mismatch": "英語版と日本語版のマニュアル構造が一致しません: {error}",
+        "nav_previous": "p（前へ）",
+        "nav_next": "n（次へ）",
+        "nav_up": "u（上へ）",
+        "home_label": "トップ",
+        "version": "{program} {version}（{date}）",
+    },
+}
+
+
+def sha256_8(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()[:8]
+
+
+def read_manual_file(filename, unlock_mode=False, language="en"):
+    ui = UI[language]
+    data = {}
+    links = {}
+    order = []
+    key = None
+    value_lines = []
     link = {"n": None, "p": None, "u": None}
-    with open(filename, 'r') as file:
-        for line in file:
-            line = line.rstrip()
-            if line.startswith('#'):
+
+    with open(filename, "r", encoding="utf-8") as file:
+        for line_number, source_line in enumerate(file, 1):
+            line = source_line.rstrip()
+            if line.startswith("#"):
                 if unlock_mode:
                     line = line[1:]
                 else:
                     continue
-            if line.startswith('>'):
+
+            if line.startswith(">"):
                 if key is not None:
-                    data[key] = '\n'.join(value_lines)
+                    if key in data:
+                        raise ValueError(
+                            ui["duplicate"].format(
+                                key=key, where="before line {}".format(line_number)
+                            )
+                        )
+                    data[key] = "\n".join(value_lines)
                     links[key] = link
-                    link = {"n": None, "p": None, "u": None}
-                    value_lines = []
+                    order.append(key)
                 key = line[1:].strip() if line[1:].strip() else ""
-            elif line.startswith('@'):
-                for part in line[1:].split(','):
-                    if ':' in part:
-                        tag, val = part.split(':', 1)
-                        tag, val = tag.strip(), val.strip()
-                        if tag in link and val:
-                            link[tag] = val
+                value_lines = []
+                link = {"n": None, "p": None, "u": None}
+            elif line.startswith("@"):
+                for part in line[1:].split(","):
+                    if ":" not in part:
+                        continue
+                    tag, value = part.split(":", 1)
+                    tag, value = tag.strip(), value.strip()
+                    if tag in link and value:
+                        link[tag] = value
             else:
                 value_lines.append(line)
-        if key is not None:  # Capture the last block if exists
-            data[key] = '\n'.join(value_lines)
-            links[key] = link
-    return data, links
+
+    if key is not None:
+        if key in data:
+            raise ValueError(ui["duplicate"].format(key=key, where="at end of file"))
+        data[key] = "\n".join(value_lines)
+        links[key] = link
+        order.append(key)
+
+    if "" not in data:
+        raise ValueError(ui["home_missing"])
+
+    broken = []
+    for source_key, link_info in links.items():
+        for tag, target in link_info.items():
+            if target and target not in data:
+                broken.append("{!r} {}->{!r}".format(source_key, tag, target))
+    if broken:
+        raise ValueError(ui["broken_links"].format(links="\n  ".join(broken)))
+
+    return data, links, order
+
+
+def compare_manual_structures(en_manual, ja_manual):
+    en_data, en_links, en_order = en_manual
+    ja_data, ja_links, ja_order = ja_manual
+    if en_order != ja_order:
+        missing_ja = [key for key in en_order if key not in ja_data]
+        extra_ja = [key for key in ja_order if key not in en_data]
+        if missing_ja or extra_ja:
+            raise ValueError(
+                "missing in Japanese: {}; extra in Japanese: {}".format(
+                    ", ".join(repr(x) for x in missing_ja) or "none",
+                    ", ".join(repr(x) for x in extra_ja) or "none",
+                )
+            )
+        for index, (en_key, ja_key) in enumerate(zip(en_order, ja_order)):
+            if en_key != ja_key:
+                raise ValueError(
+                    "entry order differs at position {}: {!r} != {!r}".format(
+                        index + 1, en_key, ja_key
+                    )
+                )
+    for key in en_order:
+        if en_links[key] != ja_links[key]:
+            raise ValueError(
+                "navigation differs for {!r}: {} != {}".format(
+                    key, en_links[key], ja_links[key]
+                )
+            )
+
+
+def normalize_language(value):
+    if not value:
+        return None
+    lowered = value.strip().lower().replace("-", "_")
+    if lowered in {"en", "eng", "english"} or lowered.startswith("en_"):
+        return "en"
+    if lowered in {"ja", "jp", "jpn", "japanese", "日本語"} or lowered.startswith("ja_"):
+        return "ja"
+    if lowered == "auto":
+        return "auto"
+    return None
+
+
+def detect_locale_language():
+    for name in ("LC_ALL", "LC_MESSAGES", "LANG"):
+        detected = normalize_language(os.environ.get(name, ""))
+        if detected in SUPPORTED_LANGUAGES:
+            return detected
+    return "en"
+
+
+def choose_initial_language(command_line_value):
+    if command_line_value and command_line_value != "auto":
+        return command_line_value
+    env_value = os.environ.get("J_PRESTO_LANG", "")
+    env_language = normalize_language(env_value)
+    if env_value and env_language not in SUPPORTED_LANGUAGES and env_language != "auto":
+        print("[Warning] Unsupported J_PRESTO_LANG={!r}; using locale detection.".format(env_value))
+    if env_language in SUPPORTED_LANGUAGES:
+        return env_language
+    return detect_locale_language()
+
 
 def highlight_text(text, search_term):
-    return re.sub(f"({re.escape(search_term)})", r"\033[1;31m\1\033[0m", text, flags=re.IGNORECASE)
+    return re.sub(
+        "({})".format(re.escape(search_term)),
+        r"\033[1;31m\1\033[0m",
+        text,
+        flags=re.IGNORECASE,
+    )
+
 
 def complete_input(text, state):
-    options = [key for key in manual_data if key.startswith(text)]
+    lowered = text.lower()
+    options = [key for key in manual_data if key.lower().startswith(lowered)]
     return options[state] if state < len(options) else None
 
+
+def resolve_key(user_input):
+    if user_input in manual_data:
+        return user_input
+    lowered = user_input.lower()
+    matches = [key for key in manual_data if key.lower() == lowered]
+    return matches[0] if len(matches) == 1 else None
+
+
+def first_summary_line(content):
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped:
+            return stripped
+    return ""
+
+
 def print_manual_entry(key):
-    print(f"\n{key}\n\n{manual_data[key]}\n")
+    ui = UI[current_language]
+    if key == "":
+        print("\n{}\n".format(manual_data[key]))
+    else:
+        print("\n{}\n\n{}\n".format(key, manual_data[key]))
+
     link_info = manual_link.get(key, {})
     navigation = []
-    if link_info.get('p'):
-        navigation.append(f"p(previous): {link_info['p']}")
-    if link_info.get('n'):
-        navigation.append(f"n(next): {link_info['n']}")
-    if link_info.get('u'):
-        navigation.append(f"u(up): {link_info['u']}")
+    if link_info.get("p"):
+        navigation.append("{}: {}".format(ui["nav_previous"], link_info["p"]))
+    if link_info.get("n"):
+        navigation.append("{}: {}".format(ui["nav_next"], link_info["n"]))
+    if link_info.get("u"):
+        navigation.append("{}: {}".format(ui["nav_up"], link_info["u"]))
     if navigation:
         print("   [ " + " / ".join(navigation) + " ]")
 
-def main():
-    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
-    try:
-        with open(license_path, "r", encoding="utf-8") as file:
-            license_content = file.read()
-    except:
-        print("Error: License file not found.")
+
+def print_search_results(search_term):
+    ui = UI[current_language]
+    term = search_term.strip()
+    if not term:
+        print(ui["search_empty"])
+        return
+
+    matches = []
+    pattern = re.compile(re.escape(term), re.IGNORECASE)
+    for key, content in manual_data.items():
+        if pattern.search(key) or pattern.search(content):
+            matches.append(key)
+
+    if not matches:
+        print(ui["not_found_search"].format(term=term))
+        return
+
+    if current_language == "ja":
+        print("\n{}{}:".format(len(matches), ui["match_plural"]))
+    else:
+        label = ui["match_singular"] if len(matches) == 1 else ui["match_plural"]
+        print("\n{} {}:".format(len(matches), label))
+    for key in matches:
+        display_key = key if key else ui["home_label"]
+        highlighted_key = highlight_text(display_key, term)
+        summary = first_summary_line(manual_data[key])
+        if summary:
+            print("  {:<45} {}".format(highlighted_key, summary))
+        else:
+            print("  {}".format(highlighted_key))
+    print("\n" + ui["open_entry"])
+
+
+def print_entry_list(prefix):
+    ui = UI[current_language]
+    prefix = prefix.strip()
+    lowered = prefix.lower()
+    keys = [key for key in manual_data if key and key.lower().startswith(lowered)]
+    if not keys:
+        print(ui["no_prefix"].format(prefix=prefix))
+        return
+
+    if current_language == "ja":
+        heading = "\n{}{}".format(len(keys), ui["entry_plural"])
+        if prefix:
+            heading += ui["beginning"].format(prefix=prefix)
+        print(heading + ":")
+    else:
+        label = ui["entry_singular"] if len(keys) == 1 else ui["entry_plural"]
+        print("\n{} {}".format(len(keys), label))
+        if prefix:
+            print(ui["beginning"].format(prefix=prefix))
+        print(":")
+    width = max(len(key) for key in keys)
+    columns = max(1, 100 // (width + 3))
+    rows = (len(keys) + columns - 1) // columns
+    for row in range(rows):
+        parts = []
+        for col in range(columns):
+            index = col * rows + row
+            if index < len(keys):
+                parts.append(keys[index].ljust(width))
+        print("  " + "   ".join(parts).rstrip())
+
+
+def print_suggestions(user_input):
+    ui = UI[current_language]
+    choices = [key for key in manual_data if key]
+    matches = difflib.get_close_matches(user_input, choices, n=5, cutoff=0.45)
+    if matches:
+        print(ui["did_you_mean"].format(matches=", ".join(matches)))
+
+
+def check_license():
+    jpresto_path = os.environ.get("J_PRESTO_PATH")
+    if not jpresto_path:
+        print("Error: " + UI["en"]["license_path_missing"])
+        sys.exit(1)
+    license_path = Path(jpresto_path) / "LICENSE.md"
+    if not license_path.is_file():
+        print("Error: " + UI["en"]["license_missing"].format(path=license_path))
         sys.exit(1)
 
-    parser = argparse.ArgumentParser(description="Manual reader program.")
-    parser.add_argument('access_key', help=argparse.SUPPRESS)
-    parser.add_argument('filename', help=argparse.SUPPRESS)
-    parser.add_argument('--unlock', '-u', action='store_true', help=argparse.SUPPRESS)
+
+def load_all_manuals(english_path, unlock_mode):
+    manuals = {}
+    manuals["en"] = read_manual_file(english_path, unlock_mode=unlock_mode, language="en")
+    japanese_path = english_path.with_name("manual_ja.txt")
+    if japanese_path.is_file():
+        manuals["ja"] = read_manual_file(japanese_path, unlock_mode=unlock_mode, language="ja")
+        compare_manual_structures(manuals["en"], manuals["ja"])
+    return manuals
+
+
+def activate_language(language):
+    global current_language, manual_data, manual_link, manual_order
+    selected = language
+    if selected not in all_manuals:
+        print(
+            "[{}] {}".format(
+                UI["en"]["warning_prefix"],
+                UI["en"]["language_unavailable"].format(
+                    name=LANGUAGE_NAMES["en"].get(selected, selected)
+                ),
+            )
+        )
+        selected = "en"
+    current_language = selected
+    manual_data, manual_link, manual_order = all_manuals[selected]
+
+
+def print_language_status():
+    ui = UI[current_language]
+    print(
+        ui["current_language"].format(
+            name=LANGUAGE_NAMES[current_language][current_language],
+            code=current_language,
+        )
+    )
+    print(ui["available_languages"])
+    for code in SUPPORTED_LANGUAGES:
+        if code in all_manuals:
+            print("    {}  {}".format(code, LANGUAGE_NAMES[current_language][code]))
+    print(ui["language_usage"])
+
+
+def switch_language(value, current_key):
+    ui = UI[current_language]
+    target = normalize_language(value)
+    if target not in SUPPORTED_LANGUAGES:
+        print(ui["unknown_language"].format(value=value))
+        return current_key
+    if target not in all_manuals:
+        print(
+            ui["language_unavailable"].format(
+                name=LANGUAGE_NAMES[current_language].get(target, target)
+            )
+        )
+        return current_key
+    activate_language(target)
+    print(
+        UI[current_language]["language_switched"].format(
+            name=LANGUAGE_NAMES[current_language][current_language]
+        )
+    )
+    if current_key not in manual_data:
+        current_key = ""
+    print_manual_entry(current_key)
+    return current_key
+
+
+def main():
+    check_license()
+
+    parser = argparse.ArgumentParser(description="Interactive multilingual j_presto manual reader.")
+    parser.add_argument("access_key", help=argparse.SUPPRESS)
+    parser.add_argument("filename", help=argparse.SUPPRESS)
+    parser.add_argument("--unlock", "-u", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--lang",
+        "-l",
+        choices=("auto", "en", "ja"),
+        default="auto",
+        help="Manual language: auto, en, or ja (default: auto).",
+    )
+    parser.add_argument("--version", action="store_true", help="Show the manual-reader version and exit.")
     args = parser.parse_args()
 
     if args.access_key != "j_presto":
         sys.exit(1)
+    if args.version:
+        print(UI["en"]["version"].format(program=PROGRAM_NAME, version=PROGRAM_VERSION, date=CURRENT_VERSION_DATE))
+        try:
+            print("Program SHA256_8: {}".format(sha256_8(Path(__file__).resolve())))
+        except OSError:
+            pass
+        return
 
-    global manual_data, manual_link
+    english_path = Path(args.filename).expanduser().resolve()
+    global all_manuals
     try:
-        manual_data, manual_link = read_manual_file(args.filename, unlock_mode=args.unlock)
+        all_manuals = load_all_manuals(english_path, args.unlock)
     except FileNotFoundError:
-        print(f"Error: File '{args.filename}' not found.")
+        print("Error: " + UI["en"]["file_not_found"].format(filename=str(english_path)))
+        sys.exit(1)
+    except (OSError, UnicodeError, ValueError) as exc:
+        print("Error: " + UI["en"]["load_failed"].format(error=exc))
         sys.exit(1)
 
-    readline.set_startup_hook(lambda: readline.insert_text(''))
+    activate_language(choose_initial_language(args.lang))
+
     readline.set_completer(complete_input)
-    readline.parse_and_bind('tab: complete')
+    readline.parse_and_bind("tab: complete")
 
-    # Start the interactive part
-    current_key = ''
-    print(f"\n\n\n{manual_data['']}")
-    
+    current_key = ""
+    print_manual_entry(current_key)
+
     while True:
-        user_input = input("\n*** What would you like to ask about? (type 'q' to quit): ").strip()
-
-        if user_input.lower() in ['q', 'quit']:
-            print(f"\nExiting the manual program.")
+        try:
+            user_input = input("\nmanual[{}]> ".format(current_language)).strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n" + UI[current_language]["exit"])
             break
-        elif user_input.lower() in ['s', 'search']:
-            search_term = input("Enter the search term: ").strip()
-            found = False
-            for key, content in manual_data.items():
-                if re.search(re.escape(search_term), content, re.IGNORECASE):
-                    found = True
-                    print(f"\nTerm: {key}")
-                    highlighted_content = highlight_text(content, search_term)
-                    print(f"\n{highlighted_content}\n")
-            if not found:
-                print(f"'{search_term}' not found in the manual.")
-        elif user_input.lower() in ['f', 'faq']:
-            current_key = 'FAQ' ; print_manual_entry(current_key)
-        elif user_input.lower() in ['t', 'tutorial']:
-            current_key = 'tutorial' ; print_manual_entry(current_key)
-        elif user_input in ['n', 'p', 'u']:
-            link = manual_link[current_key][user_input]
-            if link and link in manual_data:
-                current_key = link ; print_manual_entry(current_key)
-        elif user_input in manual_data:
-            current_key = user_input ; print_manual_entry(current_key)
+
+        lowered = user_input.lower()
+        if lowered in {"q", "quit", "exit"}:
+            print("\n" + UI[current_language]["exit"])
+            break
+        if lowered in {"", "h", "home", "help", "?"}:
+            current_key = ""
+            print_manual_entry(current_key)
+            continue
+        if lowered in {"s", "search"}:
+            search_term = input(UI[current_language]["search_prompt"])
+            print_search_results(search_term)
+            continue
+        if lowered in {"l", "list"}:
+            prefix = input(UI[current_language]["list_prompt"])
+            print_entry_list(prefix)
+            continue
+        if lowered in {"f", "faq"}:
+            current_key = "FAQ"
+            print_manual_entry(current_key)
+            continue
+        if lowered in {"t", "tutorial"}:
+            current_key = "tutorial"
+            print_manual_entry(current_key)
+            continue
+        if lowered in {"lang", "language"}:
+            print_language_status()
+            continue
+        if lowered.startswith("lang ") or lowered.startswith("language "):
+            value = user_input.split(None, 1)[1]
+            current_key = switch_language(value, current_key)
+            continue
+        if lowered in {"n", "p", "u"}:
+            target = manual_link.get(current_key, {}).get(lowered)
+            if target:
+                current_key = target
+                print_manual_entry(current_key)
+            else:
+                print(
+                    UI[current_language]["no_nav"].format(
+                        direction=UI[current_language]["direction_" + lowered]
+                    )
+                )
+            continue
+
+        resolved = resolve_key(user_input)
+        if resolved is not None:
+            current_key = resolved
+            print_manual_entry(current_key)
         else:
-            print(f"'{user_input}' not found in the manual. Please try another word.")
+            print(UI[current_language]["not_found_entry"].format(entry=user_input))
+            print_suggestions(user_input)
+            print(UI[current_language]["browse_hint"])
+
 
 if __name__ == "__main__":
     main()
-

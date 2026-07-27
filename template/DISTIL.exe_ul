@@ -1,0 +1,30 @@
+#!/bin/bash
+#SBATCH -p REPLACE_WITH_PARTITION
+#SBATCH -t 168:00:00
+#SBATCH --rsc p=1:t=1:c=8:m=64G
+#SBATCH --export=ALL
+#SBATCH -o %x.%j.out
+set -x
+
+# Prevent automatic multithreading by BLAS/OMP
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+export NUMBA_NUM_THREADS=8
+unset OMP_PROC_BIND
+unset OMP_PLACES
+export PYTHONUNBUFFERED=1
+
+echo "HOST=$(hostname)"
+echo "SLURM_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK"
+echo "OMP_NUM_THREADS=$OMP_NUM_THREADS"
+echo "OPENBLAS_NUM_THREADS=$OPENBLAS_NUM_THREADS"
+echo "MKL_NUM_THREADS=$MKL_NUM_THREADS"
+echo "NUMEXPR_NUM_THREADS=$NUMEXPR_NUM_THREADS"
+echo "NUMBA_NUM_THREADS=$NUMBA_NUM_THREADS"
+taskset -pc $$
+grep Cpus_allowed_list /proc/self/status
+
+srun --cpu-bind=none j_presto DISTIL -A ensemble_A.list -B ensemble_B.list -rA reference_A.pdb -rB reference_B.pdb -tA topology_A.tpl -tB topology_B.tpl -a "!H*,h*" -o DISTIL -fs 1
+#srun --cpu-bind=none j_presto DISTIL -A ensemble_A.list -B ensemble_B.list -r reference.pdb -t topology.tpl -a "!H*,h*" -o DISTIL_CED -fs 1 -sm ced

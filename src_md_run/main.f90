@@ -27,7 +27,7 @@
       call iniprs
      write(iprint,*)'**************************************************'
      write(iprint,*)'*'
-     write(iprint,*)'*    md_run (Version 1.0.1)'
+     write(iprint,*)'*    md_run (Version 1.1.0)'
      write(iprint,*)'*'
      write(iprint,*)'*        Author : Jinzen Ikebe'
      write(iprint,*)'* First Release : 2024-11-11'

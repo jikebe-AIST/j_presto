@@ -36,6 +36,14 @@
                         '(defalt is "test")'
           write(6,'(a)')"  -i, --input      "//                        &
                         "Specify input PCAcod file(s) (required)"
+          write(6,'(a)')"  -p, --inputPDB   "//                        &
+                        "Specify input PDB file to visualize axes"//   &
+                        " on the structure."
+          write(6,'(a)')"  -n, --naxes       "//                       &
+                        "Specify the number of axes to visualize "//   &
+                        "(default is 3)."
+          write(6,'(a)')"  -al, --arrow_length       "//               &
+                        "Specify a scaling factor for arrow length "
           stop
         endif
       enddo
@@ -74,6 +82,40 @@
         inquire(file=trim(filelist(i)), exist=ex)
         if ( .not. ex ) call error(10201)
       enddo
+
+      ! Input a PDB file
+      do i = 1,nargs-1
+        if ( trim(argv(i)).eq."-p" .or.                                &
+             trim(argv(i)).eq."-inputPDB" ) then
+          INPPDB = argv(i+1) ; exit
+        endif
+      enddo
+      if ( len(trim(INPPDB)) .ne. 0 ) then
+        write(6,'(2x,a)')"* Input a PDB file : "
+        write(6,'(8x,a)')trim(INPPDB)
+        inquire(file=trim(INPPDB), exist=ex)
+        if ( .not. ex ) call error(10201)
+
+        naxes = 3 ; alfac = 1.0
+        do i = 1,nargs-1
+          if ( trim(argv(i)).eq."-n" .or.                              &
+               trim(argv(i)).eq."-naxes" ) then
+            read(argv(i+1),*)naxes ; exit
+          endif
+        enddo
+        if ( naxes .le. 0 ) naxes = 3
+        write(6,'(2x,a,i0)')"* Number of axes to visualize : ",&
+          naxes
+        do i = 1,nargs-1
+          if ( trim(argv(i)).eq."-al" .or.                             &
+               trim(argv(i)).eq."-arrow_length" ) then
+            read(argv(i+1),*)alfac ; exit
+          endif
+        enddo
+        if ( alfac .lt. 0.0 ) alfac = 1.0
+        write(6,'(2x,a,f)')"* Scaling factor for arrow length : ",&
+          alfac
+      endif
 
 !***************************
 

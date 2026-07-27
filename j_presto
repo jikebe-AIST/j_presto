@@ -1,89 +1,357 @@
 #!/usr/bin/env python3
+"""Top-level launcher for the j_presto program suite."""
 
+from __future__ import annotations
+
+import hashlib
+import os
+from pathlib import Path
+import platform
 import subprocess
-import sys, os
+import sys
+from typing import Sequence
 
-def display_credits():
+
+PROGRAM_NAME = "j_presto"
+PROGRAM_VERSION = "1.2.0"
+AUTHOR = "Jinzen Ikebe"
+FIRST_RELEASE_DATE = "2024-11-11"
+CURRENT_VERSION_DATE = "2026-07-23"
+
+# These compiled programs are installed in J_PRESTO_PATH/sp together with the
+# Python subprograms.  The first three read their input file from standard
+# input rather than from ordinary command-line options.
+FORTRAN_PROGRAMS = frozenset(
+    {"md_run", "GEprep", "Ens_Ana", "PCAaxis", "PCAproj", "distrib"}
+)
+FORTRAN_STDIN_PROGRAMS = frozenset({"md_run", "GEprep", "Ens_Ana"})
+HELP_FLAGS = frozenset({"-h", "--help"})
+VERSION_FLAGS = frozenset({"-v", "--version"})
+
+# Only programs listed here are shown in the public top-level help.  Other
+# executable files in J_PRESTO_PATH/sp remain callable by name, which allows
+# development-stage subprograms to remain available without advertising them.
+PUBLIC_PROGRAM_GROUPS: tuple[
+    tuple[str, tuple[tuple[str, str], ...]], ...
+] = (
+    (
+        "Simulation preparation and execution",
+        (
+            ("initpep", "Generate extended peptide structures for folding simulations."),
+            (
+                "pdb_alignfit",
+                "Superimpose a query structure onto a target using sequence alignment.",
+            ),
+            (
+                "nt_gen",
+                "Generate an atom-name correspondence table from PREP and PDB files.",
+            ),
+            (
+                "nt_conv",
+                "Convert residue and atom names in PREP/PDB files using a name table.",
+            ),
+            (
+                "gen_db",
+                "Generate a topology database (*.tpldb) for creating j_presto topology files (*.tpl).",
+            ),
+            ("prep", "Prepare PDB, TPL, and SHK input files for MD simulations."),
+            (
+                "pepchk",
+                "Check peptide-bond geometry and classify cis, trans, and twisted bonds.",
+            ),
+            ("md_run", "Run MD simulations or energy-minimization calculations."),
+            (
+                "batch_set",
+                "Set up files and directories for multiple MD simulation runs.",
+            ),
+            (
+                "GEprep",
+                "Prepare generalized-ensemble parameter files (*.nf) for McMD, ALSD, and related methods.",
+            ),
+        ),
+    ),
+    (
+        "Analysis, conversion, and visualization",
+        (
+            ("Ens_Ana", "Analyze conformational ensembles obtained from simulations."),
+            (
+                "PCAaxis",
+                "Calculate principal-component axes by covariance-matrix diagonalization.",
+            ),
+            ("PCAproj", "Project structures onto a PCA subspace."),
+            (
+                "distrib",
+                "Generate weighted one- or two-dimensional statistical distributions.",
+            ),
+            (
+                "pick_conf",
+                "Extract and rank structures using user-defined conditions and event timing.",
+            ),
+            (
+                "ttp_se",
+                "Calculate weighted means and standard errors across independent runs.",
+            ),
+            (
+                "pdb_movie",
+                "Combine sequential PDB files into a multi-model PDB trajectory.",
+            ),
+            (
+                "traj_conv",
+                "Convert structures and trajectories between j_presto and external formats.",
+            ),
+            (
+                "DISTIL",
+                "Detect and interpret structural differences between two molecular ensembles.",
+            ),
+            (
+                "struct_formula",
+                "Draw 2D molecular structures with atom names mapped from a PDB file.",
+            ),
+        ),
+    ),
+    (
+        "Enzyme engineering",
+        (
+            ("MSPER", "Predict mutation sites for improving enzyme regioselectivity."),
+            (
+                "conmut",
+                "Propose stability-enhancing mutations using sequence consensus.",
+            ),
+        ),
+    ),
+    (
+        "Utilities and documentation",
+        (
+            ("get_tmpl", "Copy templates for j_presto input files and scripts."),
+            (
+                "genlist",
+                "Generate file-path lists and data ranges for MD and analysis inputs.",
+            ),
+            ("manual", "Open the interactive j_presto manual."),
+        ),
+    ),
+)
+
+
+class LauncherError(RuntimeError):
+    """A user-facing launcher error."""
+
+
+def sha256_8(path: Path) -> str:
+    """Return the first eight hexadecimal characters of a file SHA-256."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()[:8]
+
+
+def launcher_path() -> Path:
+    return Path(__file__).resolve()
+
+
+def resolve_jpresto_path() -> Path:
+    """Resolve the installed j_presto root directory.
+
+    J_PRESTO_PATH is preferred.  Falling back to the launcher's own directory
+    also permits direct execution from a source tree or an installed J_PRESTO
+    directory before the environment variable is configured.
+    """
+    env_value = os.environ.get("J_PRESTO_PATH", "").strip()
+    if env_value:
+        env_path = Path(env_value).expanduser().resolve()
+        if (env_path / "sp").is_dir():
+            return env_path
+        print(
+            f"[WARN] J_PRESTO_PATH does not contain an sp directory: {env_path}",
+            file=sys.stderr,
+        )
+
+    local_path = launcher_path().parent
+    if (local_path / "sp").is_dir():
+        return local_path
+
+    raise LauncherError(
+        "Cannot locate the j_presto installation directory.\n"
+        "Set J_PRESTO_PATH to the directory containing the sp directory."
+    )
+
+
+def display_credits(jpresto_path: Path) -> None:
+    """Display launcher version information in the current j_presto format."""
     print("*" * 50)
     print("*")
-    print(f"*    j_presto (Version 1.1.1)")
+    print(f"*    {PROGRAM_NAME} (Version {PROGRAM_VERSION})")
     print("*")
-    print(f"*        Author : Jinzen Ikebe")
-    print(f"* First Release : 2024-11-11")
-    print(f"*  Current ver. : 2025-07-10")
+    print(f"*        Author : {AUTHOR}")
+    print(f"* First Release : {FIRST_RELEASE_DATE}")
+    print(f"*  Current ver. : {CURRENT_VERSION_DATE}")
     print("*")
-    print(f"*" * 50)
+    print("*" * 50)
     print()
-    license_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "LICENSE.md")
+
+    # Current subprograms consult LICENSE.md but do not print its full contents
+    # at every invocation.  Keep the same behavior here and warn only if the
+    # installed file is missing.
+    license_path = jpresto_path / "LICENSE.md"
+    if not license_path.is_file():
+        print(f"[WARN] License file not found: {license_path}", file=sys.stderr)
+
+
+def display_runtime_header(jpresto_path: Path) -> None:
+    """Display reproducibility and runtime information for the launcher."""
+    display_credits(jpresto_path)
     try:
-        with open(license_path, "r", encoding="utf-8") as file:
-            license_content = file.read()
-            print(license_content)
-    except FileNotFoundError:
-        print("Error: License file not found.") ; sys.exit(1)
+        launcher_sha = sha256_8(launcher_path())
+    except OSError as exc:
+        launcher_sha = f"unavailable ({exc})"
 
-def run_program(program_name, args):
-    program_dict = {"md_run", "GEprep", "Ens_Ana", "PCAaxis", "PCAproj", "distrib", "pdb_alignfit", "nt_gen", "nt_conv", "conmut", "pick_conf", "ttp_se", "genlist", "MSPER", "initpep", "gen_db", "prep", "batch_set", "pdb_movie", "get_tmpl", "manual"}
-    program_dict_nohelp = {"md_run", "GEprep", "Ens_Ana"}
+    print(f'{"Program SHA256_8 : ".rjust(20)}{launcher_sha}')
+    print(
+        f'{"Python : ".rjust(20)}{platform.python_version()} '
+        f'({sys.executable})'
+    )
+    print(f'{"J_PRESTO_PATH : ".rjust(20)}{jpresto_path}')
+    print(f'{"Working dir : ".rjust(20)}{Path.cwd()}')
+    print()
+    sys.stdout.flush()
+
+
+def display_version() -> None:
+    """Display the launcher version and source-file checksum."""
     try:
-        sys.stdout.flush()
-        program_path = os.path.join(os.environ.get("J_PRESTO_PATH"), "sp", program_name)
-        if program_name in program_dict:
-            if len(args) > 1:
-                if program_name in program_dict_nohelp:
-                    if args[1] == "-h":
-                        print(f"To check how to use '{program_name}', please execute 'j_presto manual'.") ; sys.exit(0)
-                    elif os.path.isfile(args[1]):
-                        with open(args[1], 'r') as input_file:
-                            subprocess.run([program_path], stdin=input_file, check=True)
-                else:
-                    subprocess.run([program_path] + args, check=True)
-        else:
-            subprocess.run([program_path] + args, check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"Error occurred while running {program_name}: {e}") ; sys.exit(1)
+        launcher_sha = sha256_8(launcher_path())
+    except OSError:
+        launcher_sha = "unavailable"
+    print(f"{PROGRAM_NAME} {PROGRAM_VERSION}")
+    print(f"Release date: {CURRENT_VERSION_DATE}")
+    print(f"Program SHA256_8: {launcher_sha}")
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: j_presto <program_name> <arguments>")
-        sys.exit(1)
 
-    if sys.argv[1] == "-h":
-        print("Usage: j_presto <function> <arguments>\n")
-        print("functions:")
-        print("")
-        print("initpep         : Preperation of extended initial structures for folding simulation.")
-        print("pdb_alignfit    : Superimposition of query structure to target one based on sequence alignment.")
-        print("nt_gen          : Generation of atomic name correspondence table from a PREP and a PDB file.")
-        print("nt_conv         : Convert residue and atom names in a PREP and a PDB file based on a name table.")
-        print("gen_db          : Generation of a database file (*.tpldb) for creating j_presto topology files (*.tpl).")
-        print("prep            : Preparation of input files (*.pdb, *.tpl, and *.shk files) for MD simulations.")
-        print("md_run          : Execution of MD simulation or energy minimization calculation.")
-        print("batch_set       : Setting up all the necessary files and directories required to run multiple MD simulations efficiently.")
-        print("GEprep          : Preparation of a parameter file (*.nf) for Generalized Ensemble MD simulations such as McMD and ALSD.")
-        print("Ens_Ana         : Performing analysis of conformational ensembles obtained from simulation results.")
-        print("PCAaxis         : Calculating axes for principal component analysis (PCA) through diagonalization.")
-        print("PCAproj         : Projecting each structure onto PCA subspace.")
-        print("distrib         : Generation of statistical distribution data from weighted input values for one- or two-dimensional variables.")
-        print("pick_conf       : Extraction and ranking structures based on user-defined conditions and event timings.")
-        print("ttp_se          : Calculation of weighted averages and standard errors of the data.")
-        print("pdb_movie       : Generation of a multi-model PDB file from sequential single-structure PDB files for trajectory visualization.")
-        print("MSPER           : Predict mutation sites to improve enzyme selectivity.")
-        print("conmut          : Propose mutations to improve enzyme stability from input amino acid sequences using the consensus method.")
-        print("get_tmpl        : Obtaining templates of input files and scripts for excuting j_presto.")
-        print("genlist         : Generate file path lists and data ranges for MD and analysis inputs.")
-        print("manual          : Viewing the manual.")
-        print("\n")
-        sys.exit(1)
+def display_help() -> None:
+    """Display the public j_presto subprogram list."""
+    all_public_names = [
+        name
+        for _, entries in PUBLIC_PROGRAM_GROUPS
+        for name, _ in entries
+    ]
+    name_width = max(len(name) for name in all_public_names)
 
-    program_name = sys.argv[1]
-    args = ["j_presto"] + sys.argv[2:]
+    print(f"{PROGRAM_NAME} {PROGRAM_VERSION}")
+    print("Biomolecular molecular dynamics simulation and analysis suite.\n")
+    print("Usage:")
+    print("  j_presto <function> [arguments]")
+    print("  j_presto -h | --help")
+    print("  j_presto -v | --version\n")
+    print("Public functions:")
 
-    display_credits()
-    if program_name == "manual":
-        args = [args[0], os.path.join(os.environ.get("J_PRESTO_PATH"), "manual.txt")] + sys.argv[2:]
-    run_program(program_name, args)
+    for group_name, entries in PUBLIC_PROGRAM_GROUPS:
+        print(f"  {group_name}:")
+        for name, description in entries:
+            print(f"    {name:<{name_width}}  {description}")
+        print()
+
+    print("Run 'j_presto <function> -h' for function-specific help.")
+    print(
+        "For md_run, GEprep, and Ens_Ana input details, run "
+        "'j_presto manual'."
+    )
+
+
+def normalize_returncode(returncode: int) -> int:
+    """Convert a subprocess return code into a portable shell exit status."""
+    return returncode if returncode >= 0 else 128 + abs(returncode)
+
+
+def run_program(
+    jpresto_path: Path,
+    program_name: str,
+    program_args: Sequence[str],
+) -> int:
+    """Run a j_presto subprogram and return its exit status."""
+    # Help for stdin-driven Fortran programs is provided by the interactive
+    # manual and remains available even before the compiled executable has
+    # been installed into the sp directory.
+    if program_name in FORTRAN_STDIN_PROGRAMS:
+        if not program_args:
+            raise LauncherError(
+                f"{program_name} requires an input file.\n"
+                f"Run 'j_presto manual' for {program_name} input details."
+            )
+        if program_args[0] in HELP_FLAGS:
+            print(
+                f"To check how to use '{program_name}', run "
+                f"'j_presto manual'."
+            )
+            return 0
+
+    program_path = jpresto_path / "sp" / program_name
+    if not program_path.is_file():
+        raise LauncherError(
+            f"Unknown j_presto function: {program_name!r}\n"
+            "Run 'j_presto -h' to list public functions."
+        )
+    if not os.access(program_path, os.X_OK):
+        raise LauncherError(f"Subprogram is not executable: {program_path}")
+
+    sys.stdout.flush()
+
+    if program_name in FORTRAN_STDIN_PROGRAMS:
+        input_path = Path(program_args[0]).expanduser()
+        if not input_path.is_file():
+            raise LauncherError(f"Input file does not exist: {input_path}")
+        try:
+            with input_path.open("r", encoding="utf-8", errors="replace") as input_file:
+                completed = subprocess.run(
+                    [str(program_path)],
+                    stdin=input_file,
+                    check=False,
+                )
+        except OSError as exc:
+            raise LauncherError(
+                f"Failed to run {program_name}: {exc}"
+            ) from exc
+        return normalize_returncode(completed.returncode)
+
+    child_args = ["j_presto", *program_args]
+    try:
+        completed = subprocess.run(
+            [str(program_path), *child_args],
+            check=False,
+        )
+    except OSError as exc:
+        raise LauncherError(f"Failed to run {program_name}: {exc}") from exc
+    return normalize_returncode(completed.returncode)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    raw_args = list(sys.argv[1:] if argv is None else argv)
+
+    if not raw_args or raw_args[0] in HELP_FLAGS or raw_args[0] == "help":
+        display_help()
+        return 0
+    if raw_args[0] in VERSION_FLAGS:
+        display_version()
+        return 0
+
+    program_name = raw_args[0]
+    program_args = raw_args[1:]
+
+    try:
+        jpresto_path = resolve_jpresto_path()
+        display_runtime_header(jpresto_path)
+
+        if program_name == "manual":
+            program_args = [str(jpresto_path / "manual.txt"), *program_args]
+
+        return run_program(jpresto_path, program_name, program_args)
+    except LauncherError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("\n[ERROR] Interrupted by user.", file=sys.stderr)
+        return 130
+
 
 if __name__ == "__main__":
-    main()
-
+    raise SystemExit(main())

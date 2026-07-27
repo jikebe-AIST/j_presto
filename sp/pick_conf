@@ -7,11 +7,11 @@ from decimal import Decimal, getcontext
 def display_credits():
     print("*" * 50)
     print("*")
-    print(f"*    pick_conf (Version 1.0.1)")
+    print(f"*    pick_conf (Version 1.0.2)")
     print("*")
     print(f"*        Author : Jinzen Ikebe")
     print(f"* First Release : 2025-05-23")
-    print(f"*  Current ver. : 2025-07-10")
+    print(f"*  Current ver. : 2026-07-27")
     print("*")
     print(f"*" * 50)
     print()
@@ -271,7 +271,7 @@ def event_detection(ncnf, ename, eminv, emaxv, output):
             f.write(f"# {rank}: {ID}  {time}\n")
     return
 
-def output_pick(output, sindex, sname, pick_flag, tops):
+def output_pick(output, sindex, sname, pick_flag, tops, ncnf):
     global data
     print(f"* Data file is output as {output}.pick")
     with open(output+".pick", "w") as f:
@@ -440,7 +440,7 @@ def main():
         event_detection(ncnf, ename, eminv, emaxv, args.output)
 
     #For output
-    output_pick(args.output, sindex, sname, pick_flag, tops)
+    output_pick(args.output, sindex, sname, pick_flag, tops, ncnf)
     if args.loginfo is not None and args.weight is not None:
         output_list(ncnf, loginfo, args.output, sname, sindex, pick_flag, tops)
 

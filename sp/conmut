@@ -2,16 +2,17 @@
 import argparse, os, subprocess, sys, shutil, re, tempfile
 from Bio import SeqIO
 from Bio.Blast import NCBIWWW, NCBIXML
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, OrderedDict
+from textwrap import wrap
 
 def display_credits():
     print("*" * 50)
     print("*")
-    print(f"*    conmut (Version 1.0.0)")
+    print(f"*    conmut (Version 1.1.0)")
     print("*")
     print(f"*        Author : Jinzen Ikebe")
     print(f"* First Release : 2025-04-21")
-    print(f"*  Current ver. : 2025-04-21")
+    print(f"*  Current ver. : 2026-07-27")
     print("*")
     print(f"*" * 50)
     print()
@@ -27,13 +28,38 @@ def check_dependency(program):
         print(f"Error: {program} is not installed or not in PATH.\nPlease install '{program}' and ensure it is accessible from the command line."); sys.exit(1)
 
 def write_alignment_view(query_seq, sequences, consensus_seq, species_list, output_txt, line_width, srn):
-    from textwrap import wrap
-
+    """Pretty-print alignment view.
+    - ラベルは短く（相同性は付けない）
+    - ファイル末尾に Query 対各配列の相同性サマリーを追加
+    - sequences は「query を除いた全ホモログ」＋ key "query" を含むこと
+    - species_list は sequences（query 以外）と同じ順序で並ぶこと
+    """
     aligned_query = sequences["query"]
-    del sequences["query"]
+    # Keep order of sequences as provided (excluding "query")
+    seq_items = [(k, v) for k, v in sequences.items() if k != "query"]
     aln_len = len(aligned_query)
-    max_label_len = max(len(name) for name in species_list + ["query", "consensus", "diff"])
+    # species_list には「種名（またはID）」が順序対応で入っている想定。
+    # ここで query に対する identity を付け足したラベルを作る。
+    def _ident_stats(q, s):
+        m = c = 0
+        for qa, sa in zip(q, s):
+            if qa != "-" and sa != "-":
+                c += 1
+                if qa == sa:
+                    m += 1
+        pct = (100.0 * m / c) if c else 0.0
+        return m, c, pct
 
+    # ラベルは素の名前のみ（相同性は末尾サマリーに回す）
+    labels_plain = []
+    ident_stats = []  # 末尾サマリー用に保持
+    for idx, (name, seq) in enumerate(seq_items):
+        m, c, pct = _ident_stats(aligned_query, seq)
+        base = species_list[idx] if idx < len(species_list) else name
+        labels_plain.append(base)
+        ident_stats.append((base, m, c, pct))
+
+    max_label_len = max(len(name) for name in labels_plain + ["query", "consensus", "diff"])
     number_line = [" "] * aln_len
     query_position = srn
     for i in range(aln_len):
@@ -63,9 +89,12 @@ def write_alignment_view(query_seq, sequences, consensus_seq, species_list, outp
             f.write(" " * (max_label_len + 3) + number_line_str[start:end] + "\n")
             f.write(" " * (max_label_len + 3) + position_line_str[start:end] + "\n")
             f.write(f"{'query'.ljust(max_label_len)} : {aligned_query[start:end]}\n\n")
-            for ii, (name, seq) in enumerate(sequences.items()):
-                f.write(f"{species_list[ii].ljust(max_label_len)} : {seq[start:end]}\n")
-            f.write(f"\n{'consensus'.ljust(max_label_len)} : {consensus_seq[start:end]}\n")
+            # ↓ ここが壊れていた（ループ外に出ていた）ので修正：各配列行を出力
+            for ii, (name, seq) in enumerate(seq_items):
+                label = labels_plain[ii] if ii < len(labels_plain) else name
+                f.write(f"{label.ljust(max_label_len)} : {seq[start:end]}\n")
+            f.write("\n")
+            f.write(f"{'consensus'.ljust(max_label_len)} : {consensus_seq[start:end]}\n")
             diff_line = "".join(
                 "*" if aligned_query[i] != consensus_seq[i] and aligned_query[i] != "-" and consensus_seq[i] != "-"
                 else " "
@@ -73,9 +102,27 @@ def write_alignment_view(query_seq, sequences, consensus_seq, species_list, outp
             )
             f.write(f"{'diff'.ljust(max_label_len)} : {diff_line}\n\n")
 
+        # === 末尾に相同性サマリーを追加（非ギャップ位置のみで比較） ===
+        f.write("\n# Identity summary vs query (non-gap positions)\n")
+        for base, m, c, pct in ident_stats:
+            f.write(f"{base} : {m}/{c} = {pct:.1f}%\n")
+
 def extract_organism(description):
-    matches = re.findall(r"\[(.+?)\]", description)
-    return matches[-1] if matches else "Unknown_species"
+    """
+    Extract a short label (species preferred).
+    Priority:
+      1) value after '|organism=' if present
+      2) last [...] block (NCBI/UniProt style)
+      3) first token of the description (ID)
+    """
+    m = re.search(r"\|organism=([^|]+)", description or "")
+    if m:
+        return m.group(1).strip()
+    matches = re.findall(r"\[(.+?)\]", description or "")
+    if matches:
+        return matches[-1]
+    desc = (description or "").strip()
+    return desc.split()[0] if desc else "Unknown_species"
 
 def select_representative(hit_list_for_species):
     best_score = -1
@@ -112,9 +159,9 @@ def parse_blast_results(blast_records):
                     "score": hsp.score,
                     "evalue": hsp.expect,
                     "identity": hsp.identities,
-                    "identity_pct": hsp.identities / hsp.align_length,
+                    "identity_pct": hsp.identities / hsp.align_length if hsp.align_length else 0.0,
                     "align_len": hsp.align_length,
-                    "query_coverage": hsp.align_length / query_length
+                    "query_coverage": hsp.align_length / query_length if query_length else 0.0
                 })
     return hits
 
@@ -204,30 +251,43 @@ def run_alignment(input_fasta, output_fasta, aligner):
                 f.write(result.stdout)
             return "fasta"
         except FileNotFoundError:
-            print("Error: MAFFT is not installed or not found in PATH.\nPlease install 'mafft' and ensure it is accessible from the command line."); sys.exit(1)
+            print("Error: MAFFT is not installed or not in PATH. Please install 'mafft' and ensure it is accessible from the command line.")
+            sys.exit(1)
         except subprocess.CalledProcessError as e:
             print(f"Error running MAFFT:\n{e.stderr}"); sys.exit(1)
 
-def calculate_consensus(msa_file, fmt="fasta"):
-    alignment = list(SeqIO.parse(msa_file, fmt))
-    consensus = "" ; consensus_percentages = [] ; consensus_list = []
-    for i in range(len(alignment[0])):
-        column = [record.seq[i] for record in alignment if i < len(record)]
-        column_counts = Counter(column)
-        most_common = Counter(column).most_common(1)[0][0]
+def calculate_consensus(msa_file, fmt="fasta", exclude_ids=None):
+    """Compute consensus over MSA.
+    - Excludes gaps '-' from voting.
+    - If exclude_ids is provided, sequences with those IDs are ignored when voting.
+    - Entirely-gapped columns yield '-' in the consensus and 0.0%.
+    """
+    alignment_all = list(SeqIO.parse(msa_file, fmt))
+    alignment = [r for r in alignment_all if not exclude_ids or r.id not in exclude_ids]
+    if not alignment:
+        alignment = alignment_all
 
-        most_common_count = column_counts[most_common]
-        most_common_items = [item for item, count in column_counts.items() if count == most_common_count]
-        consensus_list.append(most_common_items)
+    consensus = []
+    consensus_percentages = []
+    consensus_list = []
 
-        total_sequences = len(column)
-        most_common_count = column.count(most_common)
-        percentage = (most_common_count / total_sequences) * 100
-        consensus_percentages.append(percentage)
-        if len(most_common_items) > 1:
-            most_common = 'X'
-        consensus += most_common
-    return consensus, consensus_percentages, consensus_list
+    aln_len = len(alignment[0].seq)
+    for i in range(aln_len):
+        column = [str(rec.seq[i]) for rec in alignment if i < len(rec.seq)]
+        non_gap = [aa for aa in column if aa != '-']
+        if not non_gap:
+            consensus.append('-')
+            consensus_percentages.append(0.0)
+            consensus_list.append([])
+            continue
+        counts = Counter(non_gap)
+        top_count = counts.most_common(1)[0][1]
+        top_aas = [aa for aa, c in counts.items() if c == top_count]
+        consensus_list.append(top_aas)
+        consensus_percentages.append(100.0 * top_count / sum(counts.values()))
+        consensus.append('X' if len(top_aas) > 1 else top_aas[0])
+
+    return ''.join(consensus), consensus_percentages, consensus_list
 
 def suggest_mutations(query_seq, consensus, consensus_pcts, consensus_list, srn, output_file):
     with open(output_file, "w") as f:
@@ -273,26 +333,44 @@ def main():
     else:
         homolog_fasta = args.homologs
 
-    fmt = run_alignment(homolog_fasta, f"{args.output_prefix}_aln.fasta", args.aligner)
+    # Build input for alignment: query first, then ALL homologs (no de-dup)
+    query_record_in = next(SeqIO.parse(args.query, "fasta"))
+    combined_fasta = f"{args.output_prefix}_with_query.fasta"
+    with open(combined_fasta, "w") as wf:
+        SeqIO.write(query_record_in, wf, "fasta")
+        for rec in SeqIO.parse(homolog_fasta, "fasta"):
+            SeqIO.write(rec, wf, "fasta")
+    # Cache species labels from pre-alignment headers
+    pre_species_map = {rec.id: extract_organism(rec.description) for rec in SeqIO.parse(combined_fasta, "fasta")}
+    # Run alignment
+    fmt = run_alignment(combined_fasta, f"{args.output_prefix}_aln.fasta", args.aligner)
 
-    consensus_seq, consensus_pct, consensus_list = calculate_consensus(f"{args.output_prefix}_aln.fasta", fmt=fmt)
+    # Compute consensus excluding the query to avoid self-bias
+    consensus_seq, consensus_pct, consensus_list = calculate_consensus(
+        f"{args.output_prefix}_aln.fasta", fmt=fmt, exclude_ids={query_record_in.id}
+    )
     with open(f"{args.output_prefix}_consensus.fasta", "w") as f:
         f.write(f">consensus\n{consensus_seq}\n")
 
-    first_record_id = next(SeqIO.parse(f"{args.output_prefix}_aln.fasta", "fasta")).id
-    alignment_records = SeqIO.to_dict(SeqIO.parse(f"{args.output_prefix}_aln.fasta", "fasta"))
-    query_record = alignment_records[first_record_id]
-    
-    species_dict = {}
-    for record in alignment_records.values():
-        species_name = extract_organism(record.description)
-        species_dict[record.id] = species_name
-    species_list = [species_dict[record.id] for record in alignment_records.values()]
-    
+    # Read aligned sequences preserving order
+    alignment_order = list(SeqIO.parse(f"{args.output_prefix}_aln.fasta", fmt))
+    alignment_records = {rec.id: rec for rec in alignment_order}
+    # Select query record by original query ID; fallback to first in alignment
+    if query_record_in.id in alignment_records:
+        query_record = alignment_records[query_record_in.id]
+    else:
+        query_record = alignment_order[0]
+    # Species labels: prefer pre-alignment extraction, else fallback to aligned header
+    species_all = [pre_species_map.get(rec.id, extract_organism(rec.description)) for rec in alignment_order]
+    # Suggest mutations
     suggest_mutations(str(query_record.seq), consensus_seq, consensus_pct, consensus_list, args.start_residue_number, f"{args.output_prefix}_suggested_mutations.txt")
-
-    sequences = {record.id: str(record.seq) for record in alignment_records.values()}
-    sequences["query"] = str(alignment_records[query_record.id].seq)
+    # Prepare sequences for view (preserve order), ※クエリ重複を一覧から除外
+    from collections import OrderedDict
+    sequences = OrderedDict((rec.id, str(rec.seq)) for rec in alignment_order if rec.id != query_record.id)
+    sequences["query"] = str(query_record.seq)
+    # species_list も同じ順序（query 除外）に揃える
+    species_list = [pre_species_map.get(rec.id, extract_organism(rec.description)) for rec in alignment_order if rec.id != query_record.id]
     write_alignment_view(str(query_record.seq), sequences, consensus_seq, species_list, f"{args.output_prefix}_aln_view.txt", 60, args.start_residue_number)
+
 if __name__ == "__main__":
     main()

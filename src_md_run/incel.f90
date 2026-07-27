@@ -331,7 +331,7 @@
       case default
         select case (ixfbou)
         case (1)
-          i = nint(nv(1)*0.5d0)
+          i = anint(nv(1)*0.5d0)
           mx1 = ceiling(i - 0.5d0*fxcell(1)/siz(1))
           mx2 = ceiling(i + 0.5d0*fxcell(1)/siz(1))
           my1 = ceiling(i - 0.5d0*fxcell(2)/siz(1))

@@ -11,11 +11,12 @@
 
       implicit none
 
-      integer(4):: ifil,i,j,system,ndim,ier,iopt
+      integer(4):: ifil,i,j,system,ndim,ier,iopt,natm
       integer(4),allocatable:: iflg(:),iwk(:)
-      real(4),allocatable:: cod(:)
+      real(4),allocatable:: cod(:),PDBcod(:,:)
       real(8),allocatable:: av1(:),av2(:,:),eval(:),evec(:,:),work(:,:)
       real(8):: wei,sumwei,esum,eps
+      character(999):: tmp
 
 !********************************
 !     Input file
@@ -80,6 +81,51 @@
            form="unformatted")
       write(1)ndim
       write(1)av1(1:ndim),eval(1:ndim),evec(1:ndim,1:ndim)
+      close(1)
+
+      ! Input PDB data
+      if ( len(trim(INPPDB)) .ne. 0 ) then
+        natm = ndim / 3 ; allocate(PDBcod(3,natm)) ; i = 0
+        open(unit=1,file=trim(INPPDB),status="old")
+        do
+          read(1,'(a)',end=802)tmp
+          if ( tmp(1:6).ne."ATOM  " .and. tmp(1:6).ne."HETATM" ) cycle
+          i = i + 1
+          if ( i .gt. natm ) then
+            write(6,*)"!! ERROR !!"
+            write(6,*)"  Number of eigen value = ",ndim
+            write(6,*)"  Number of atoms       = ",natm
+            write(6,*)"The number of eigen values must match the "//   &
+              "number of atoms x 3 in the PDB."
+            stop
+          endif
+          read(tmp(31:54),*)PDBcod(1:3,i)
+        enddo
+802     close(1)
+        if ( i .ne. natm ) then
+          write(6,*)"!! ERROR !!"
+          write(6,*)"  Number of eigen value = ",ndim
+          write(6,*)"  Number of atoms       = ",natm
+          write(6,*)"The number of eigen values must match the "//   &
+            "number of atoms x 3 in the PDB."
+          stop
+        endif
+
+        ! Output arrow data
+        if ( naxes .gt. ndim ) naxes = ndim
+        write(6,*) ; write(6,*)"* Output axes data as .bild files."
+        do j = 1,naxes
+          write(tmp,'(i0)')j
+          tmp = trim(PROJNM)//"_"//trim(tmp)
+          write(6,*)"+ Now output "//trim(tmp)//".bild"
+          open(unit=1,file=trim(tmp)//".bild",status="replace")
+          do i = 1,natm
+            write(1,'(a,6(f8.3,x))')".arrow ",PDBcod(1:3,i),           &
+            PDBcod(1:3,i)+evec(3*i-2:3*i,j)*eval(j)*alfac
+          enddo
+          close(1)
+        enddo
+      endif
 
 !********************************
 
